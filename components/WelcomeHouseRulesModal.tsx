@@ -60,7 +60,7 @@ export function WelcomeHouseRulesModal() {
           id="welcome-rules-title"
           className="text-xl font-bold text-center text-gray-900 mb-2"
         >
-          Hoe het werkt
+          Huisregels
         </h2>
         <p className="text-sm text-center text-gray-600 mb-6">
           Even de afspraken — daarna ga je direct naar je feed.
@@ -68,24 +68,15 @@ export function WelcomeHouseRulesModal() {
         <ul className="space-y-3 text-sm text-gray-800 leading-relaxed mb-8">
           <li className="flex gap-2">
             <span className="text-primary font-bold shrink-0">•</span>
-            <span>
-              <strong>Chatten is gratis.</strong> Stuur zoveel berichten als je wilt naar
-              meerdere vrouwen tegelijk.
-            </span>
+            <span>Wees discreet met de vrouwen en respecteer hun privacy.</span>
           </li>
           <li className="flex gap-2">
             <span className="text-primary font-bold shrink-0">•</span>
-            <span>
-              Wil je een foto van haar zien? <strong>1 foto = 100 credits</strong> (≈ €19,99).
-              Vraag haar wat je wilt zien — ze maakt er eentje speciaal voor jou.
-            </span>
+            <span>Wees eerlijk over je intenties; veel vrouwen houden van open contact.</span>
           </li>
           <li className="flex gap-2">
             <span className="text-primary font-bold shrink-0">•</span>
-            <span>
-              De vrouwen zijn vaak <strong>heel geil en seksueel ingesteld</strong>. Speel
-              mee, wees respectvol en neem geen contact op buiten de app.
-            </span>
+            <span>Hoe meer je over jezelf vertelt, hoe sneller er contact is.</span>
           </li>
           <li className="flex gap-2">
             <span className="text-primary font-bold shrink-0">•</span>

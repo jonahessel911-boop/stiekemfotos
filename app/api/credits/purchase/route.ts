@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { isUserEmailVerified, markCreditPurchase } from "@/lib/server/users";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
+import { appendPurchaseThanksMessage } from "@/lib/server/conversations";
 
 export async function POST() {
   try {
@@ -11,7 +12,10 @@ export async function POST() {
     if (!(await isUserEmailVerified(userId))) {
       return NextResponse.json({ error: "Verifieer eerst je e-mail." }, { status: 403 });
     }
-    await markCreditPurchase(userId);
+    const firstPurchase = await markCreditPurchase(userId);
+    if (firstPurchase) {
+      await appendPurchaseThanksMessage(userId);
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(

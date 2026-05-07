@@ -12,7 +12,7 @@ export interface ChatMessage {
    * Zonder `ttsText`: alleen speler, tekst verborgen (normale voice-reply).
    * Met `ttsText`: `content` zichtbaar (bijv. prijzen), audio gebruikt `ttsText`.
    */
-  voice?: { language: string; ttsText?: string; transcript?: string; mimeType?: string };
+  voice?: { language: string; ttsText?: string };
   /**
    * User: `false` = nog niet gelezen door contact; `true` of ontbreekt = gelezen.
    * Oude berichten zonder veld worden als gelezen getoond.
@@ -24,14 +24,6 @@ export interface ChatMessage {
   readAt?: string;
   /** User: bestandsnaam in data/conv-images/{conversationId}/ (jpg/png). */
   imageFile?: string;
-  /**
-   * Assistant-foto's worden vergrendeld verstuurd. Pas na betaling van
-   * `credits` mag de gebruiker de foto bekijken.
-   */
-  photoLock?: {
-    credits: number;
-    unlockedAt?: string;
-  };
   /** Gift-badge die in de chat zichtbaar is. */
   gift?: {
     credits: number;
@@ -91,15 +83,7 @@ export interface Conversation {
    */
   ownerLastPollAt?: string;
   /** Voice flow: na herhaalde inspreekvraag eerst verduidelijking vragen in chat. */
-  /** Delayed tease after locked photo if still not unlocked. */
-  pendingLockedPhotoNudgeAt?: string;
-  pendingLockedPhotoMessageId?: string;
-  pendingLockedPhotoNudgeText?: string;
-  /** Assistant asked user what kind of photo he wants; wait for concrete visual details. */
-  pendingPhotoPreferenceRequest?: boolean;
-  /** First generated assistant photo in this conversation; used as identity reference for future images. */
-  firstGeneratedPhotoMessageId?: string;
-  firstGeneratedPhotoFile?: string;
+  pendingVoiceRequestClarification?: boolean;
 
   /** === ULTRA-REALISM ENGINE FIELDS (Project Echo) === */
   realismState?: {

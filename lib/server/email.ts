@@ -65,11 +65,7 @@ function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref
 
 async function sendMail(payload: MailPayload): Promise<void> {
   if (!POSTMARK_SERVER_TOKEN) {
-    // Postmark staat uit (testing): mail wordt niet verstuurd, geen error.
-    console.info(
-      `[email] Postmark uitgeschakeld — mail "${payload.subject}" naar ${payload.to} overgeslagen.`
-    );
-    return;
+    throw new Error("POSTMARK_SERVER_TOKEN ontbreekt. Verificatiemail kan niet worden verstuurd.");
   }
   if (!payload.to) {
     throw new Error("Ontvanger ontbreekt voor e-mailverzending.");

@@ -8,7 +8,7 @@ import {
   addCredits,
   getCreditsBalance,
   getCreditPurchaseHistory,
-  CREDITS_PER_PHOTO_UNLOCK,
+  INITIAL_FREE_CREDITS,
   type CreditPurchaseRecord,
 } from '@/lib/credits-client';
 import { ArrowUpRight, Wallet } from 'lucide-react';
@@ -29,7 +29,7 @@ function formatWhen(iso: string) {
 }
 
 export default function CreditsPage() {
-  const [balance, setBalance] = useState(0);
+  const [balance, setBalance] = useState(INITIAL_FREE_CREDITS);
   const [purchases, setPurchases] = useState<CreditPurchaseRecord[]>([]);
   const [claimingFreeCredits, setClaimingFreeCredits] = useState(false);
 
@@ -47,14 +47,14 @@ export default function CreditsPage() {
 
   const claimFreeCredits = useCallback(() => {
     setClaimingFreeCredits(true);
-    addCredits(CREDITS_PER_PHOTO_UNLOCK, `Test: +${CREDITS_PER_PHOTO_UNLOCK} credits`);
+    addCredits(100, 'Test: 100 free credits');
     void refresh().finally(() => setClaimingFreeCredits(false));
   }, [refresh]);
 
   return (
-    <div className="min-h-screen bg-[var(--surface)] pb-28 lg:pb-10">
+    <div className="min-h-screen bg-[var(--surface)] pb-28 md:pb-10">
       <Navbar />
-      <main className="mx-auto w-full max-w-screen-xl px-4 py-8 pt-16 sm:px-6 lg:px-8 lg:pt-20">
+      <main className="pt-16 md:pt-20 max-w-3xl mx-auto px-4 py-8">
         <div className="flex items-start gap-3 mb-8">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <Wallet className="h-6 w-6" />
@@ -62,22 +62,22 @@ export default function CreditsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Credits</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Chatten is gratis. Je gebruikt credits om foto’s van vrouwen te ontgrendelen — 1 foto = {CREDITS_PER_PHOTO_UNLOCK} credits.
+              Overzicht van je saldo. Ieder bericht kost 10 credits.
             </p>
           </div>
         </div>
 
-        <div className="mb-8 rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-5 text-center shadow-sm sm:p-8">
+        <div className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-8 shadow-sm text-center mb-8">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-6">
             <Wallet className="h-8 w-8 text-primary" />
           </div>
           <p className="text-sm font-medium text-gray-500 mb-1">HUIDIG SALDO</p>
-          <p className="text-5xl font-bold tracking-tighter text-primary tabular-nums sm:text-6xl">
+          <p className="text-6xl font-bold text-primary tabular-nums tracking-tighter">
             {balance}
           </p>
           <p className="text-sm text-gray-500 mt-1">credits over</p>
           <p className="text-xs text-gray-400 mt-6">
-            1 foto ontgrendelen kost {CREDITS_PER_PHOTO_UNLOCK} credits
+            Iedere verstuurde bericht kost 10 credits
           </p>
         </div>
 
@@ -91,7 +91,7 @@ export default function CreditsPage() {
           {purchases.length === 0 ? (
             <p className="px-4 py-16 text-center text-sm text-gray-500">
               Nog geen aankopen.<br />
-              Koop credits hieronder om foto’s te ontgrendelen.
+              Koop credits hieronder om te chatten.
             </p>
           ) : (
             <ul className="divide-y divide-gray-100 max-h-[min(420px,50vh)] overflow-y-auto">
@@ -119,21 +119,20 @@ export default function CreditsPage() {
         <section className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-5 md:p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900 mb-1">Credits bijkopen</h2>
           <p className="text-sm text-gray-600 mb-6">
-            Chatten is gratis. Koop credits om foto’s van de vrouwen te ontgrendelen — 1 foto kost {CREDITS_PER_PHOTO_UNLOCK} credits.
+            Koop credits om te blijven chatten. Ieder bericht kost 10 credits.
           </p>
           <div className="mb-5 rounded-xl border border-dashed border-primary/35 bg-primary/[0.05] p-4">
             <p className="text-sm font-semibold text-gray-900">Testmodus</p>
             <p className="mt-1 text-xs text-gray-600">
-              Voor development kun je gratis {CREDITS_PER_PHOTO_UNLOCK} credits toevoegen
-              (genoeg voor 1 foto).
+              Voor development kun je gratis 100 credits toevoegen.
             </p>
             <button
               type="button"
               onClick={claimFreeCredits}
               disabled={claimingFreeCredits}
-              className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+              className="mt-3 inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {claimingFreeCredits ? 'Bezig…' : `+${CREDITS_PER_PHOTO_UNLOCK} test credits`}
+              {claimingFreeCredits ? 'Bezig…' : '100 free credits'}
             </button>
           </div>
           <CreditsPricingOffers showIntro={false} onAfterPurchase={() => void refresh()} />

@@ -24,7 +24,6 @@ import {
   MoreVertical,
   X,
   Loader2,
-  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -35,11 +34,8 @@ import {
   addCredits,
   spendChatCredit,
   refundChatCredit,
-  spendPhotoUnlock,
-  canAffordPhotoUnlock,
   creditsCostForBatchSize,
   CREDITS_PER_MESSAGE,
-  CREDITS_PER_PHOTO_UNLOCK,
   INITIAL_FREE_CREDITS,
 } from '@/lib/credits-client';
 import { useCreditsPricing } from '@/components/CreditsPricingProvider';
@@ -78,16 +74,6 @@ function formatMessageTime(iso: string): string {
   } catch {
     return '';
   }
-}
-
-function formatRecordingDuration(totalSeconds: number): string {
-  const mins = Math.floor(totalSeconds / 60)
-    .toString()
-    .padStart(2, '0');
-  const secs = Math.floor(totalSeconds % 60)
-    .toString()
-    .padStart(2, '0');
-  return `${mins}:${secs}`;
 }
 
 /** Keep typing indicator snappy so replies feel immediate. */
@@ -165,12 +151,7 @@ function MessageTimestamp({
 function snippetForReply(m: ChatMessage | undefined): string {
   if (!m) return '';
   if (m.gift) return `${m.gift.emoji ?? '🎁'} ${m.gift.credits} credits`;
-  if (m.imageFile) {
-    if (m.role === 'assistant' && m.photoLock && !m.photoLock.unlockedAt) {
-      return '🔒 vergrendelde foto';
-    }
-    return (m.content ?? '').trim() ? `📷 ${(m.content ?? '').trim()}` : '📷 foto';
-  }
+  if (m.imageFile) return (m.content ?? '').trim() ? `📷 ${(m.content ?? '').trim()}` : '📷 foto';
   const t = (m.content ?? '').trim();
   return t.length > 110 ? `${t.slice(0, 110)}…` : t;
 }
@@ -187,6 +168,40 @@ const CHAT_GIFT_OPTIONS = [
   { id: 'starter', credits: 125, priceLabel: '€9,99', featured: false },
   { id: 'best', credits: 250, priceLabel: '€13,99', featured: true },
 ] as const;
+
+/**
+ * Mock spraakbericht + toast alleen bij credits op, max. één keer per chat,
+ * totaal max. 2 verschillende chats (daarna alleen prijsmodal).
+ */
+const MAX_CREDIT_WALL_VOICE_CHATS = 2;
+const CREDIT_WALL_VOICE_CHAT_IDS_LS = 'dm_credit_wall_voice_chat_ids_v1';
+
+function readCreditWallVoiceChatIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CREDIT_WALL_VOICE_CHAT_IDS_LS);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string' && x.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function canShowCreditWallVoiceInChat(convId: string): boolean {
+  const ids = readCreditWallVoiceChatIds();
+  if (ids.length >= MAX_CREDIT_WALL_VOICE_CHATS) return false;
+  if (ids.includes(convId)) return false;
+  return true;
+}
+
+function recordCreditWallVoiceChat(convId: string): void {
+  if (typeof window === 'undefined') return;
+  const ids = readCreditWallVoiceChatIds();
+  if (ids.includes(convId)) return;
+  const next = [...ids, convId].slice(0, MAX_CREDIT_WALL_VOICE_CHATS);
+  localStorage.setItem(CREDIT_WALL_VOICE_CHAT_IDS_LS, JSON.stringify(next));
+}
 
 function BerichtenInner() {
   const router = useRouter();
@@ -233,22 +248,11 @@ function BerichtenInner() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
-  const speechRecognitionRef = useRef<any>(null);
-  const speechTranscriptRef = useRef<string>('');
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
-  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const [isTranscribingVoice, setIsTranscribingVoice] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [voiceDraftBlob, setVoiceDraftBlob] = useState<Blob | null>(null);
-  const [voiceDraftTranscript, setVoiceDraftTranscript] = useState('');
-  const [localVoiceUrlById, setLocalVoiceUrlById] = useState<Record<string, string>>({});
-  const localVoiceUrlByIdRef = useRef<Record<string, string>>({});
   const [showGiftPanel, setShowGiftPanel] = useState(false);
   const [giftNote, setGiftNote] = useState('ik vind je leuk');
   const [creditsBalance, setCreditsBalance] = useState(INITIAL_FREE_CREDITS);
+  const [hasCreditPurchase, setHasCreditPurchase] = useState(false);
   const { openPricing } = useCreditsPricing();
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
@@ -259,6 +263,10 @@ function BerichtenInner() {
   /** Tot deze tijd (epoch ms) tonen we “Online” na jouw bericht / haar antwoord. */
   const [peerOnlineUntil, setPeerOnlineUntil] = useState<number | null>(null);
   const [arrivalToast, setArrivalToast] = useState<string | null>(null);
+  /** Bij credits-wall tonen we na 2s een systeemhint in de achtergrond. */
+  const [creditWallVoiceHintAtByConv, setCreditWallVoiceHintAtByConv] = useState<
+    Record<string, string>
+  >({});
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const [uiNow, setUiNow] = useState(() => Date.now());
   const onlineDelayTimerRef = useRef<number | null>(null);
@@ -267,6 +275,7 @@ function BerichtenInner() {
   const listRef = useRef<ConversationSummary[]>([]);
   const messagesLenByConvRef = useRef<Record<string, number>>({});
   const optimisticConversationIdRef = useRef<string | null>(null);
+  const creditWallHintTimerByConvRef = useRef<Record<string, number>>({});
   /** Synchronous guard to block rapid double-send before React state updates land. */
   const sendGuardByConvRef = useRef<Set<string>>(new Set());
   const [openedGiftByMessageId, setOpenedGiftByMessageId] = useState<Record<string, boolean>>({});
@@ -283,11 +292,6 @@ function BerichtenInner() {
   const handleAddDebugCredits = useCallback(() => {
     addCredits(1000, 'Debug +1000');
   }, []);
-
-  /** Vergrendelde foto's per bericht-id; key = messageId, value = busy/unlocking. */
-  const [unlockingByMessageId, setUnlockingByMessageId] = useState<Record<string, boolean>>({});
-  /** Lokaal: foto's die deze sessie al ontgrendeld zijn (ook als server nog niet gepolld is). */
-  const [locallyUnlockedByMessageId, setLocallyUnlockedByMessageId] = useState<Record<string, boolean>>({});
 
   const openGiftMessage = useCallback((messageId: string) => {
     setOpenedGiftByMessageId((prev) => (prev[messageId] ? prev : { ...prev, [messageId]: true }));
@@ -473,63 +477,6 @@ function BerichtenInner() {
     }
   }, []);
 
-  const handleUnlockPhoto = useCallback(
-    async (m: ChatMessage) => {
-      if (!selectedId) return;
-      if (!m.photoLock || m.photoLock.unlockedAt || locallyUnlockedByMessageId[m.id]) return;
-      const cost = m.photoLock.credits ?? CREDITS_PER_PHOTO_UNLOCK;
-      if (unlockingByMessageId[m.id]) return;
-
-      if (getCreditsBalance() < cost) {
-        openPricing();
-        return;
-      }
-
-      setUnlockingByMessageId((prev) => ({ ...prev, [m.id]: true }));
-      spendPhotoUnlock(cost);
-      setLocallyUnlockedByMessageId((prev) => ({ ...prev, [m.id]: true }));
-
-      try {
-        const res = await fetch(
-          `/api/conversations/${selectedId}/messages/${m.id}/unlock`,
-          {
-            method: 'POST',
-            credentials: 'include',
-          }
-        );
-        const data = (await res.json()) as {
-          ok?: boolean;
-          alreadyUnlocked?: boolean;
-          error?: string;
-        };
-        if (!res.ok) throw new Error(data.error || 'Foto ontgrendelen mislukt');
-        if (data.alreadyUnlocked) {
-          refundChatCredit(cost);
-        }
-        await fetchConversation(selectedId, { soft: true });
-      } catch (e) {
-        refundChatCredit(cost);
-        setLocallyUnlockedByMessageId((prev) => {
-          const { [m.id]: _omit, ...rest } = prev;
-          return rest;
-        });
-        setError(e instanceof Error ? e.message : 'Foto ontgrendelen mislukt');
-      } finally {
-        setUnlockingByMessageId((prev) => {
-          const { [m.id]: _omit, ...rest } = prev;
-          return rest;
-        });
-      }
-    },
-    [
-      selectedId,
-      locallyUnlockedByMessageId,
-      unlockingByMessageId,
-      openPricing,
-      fetchConversation,
-    ]
-  );
-
   useEffect(() => {
     const sync = () => {
       setCreditsBalance(getCreditsBalance());
@@ -545,10 +492,32 @@ function BerichtenInner() {
   }, [fetchConversation, fetchList]);
 
   useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me', { credentials: 'include' });
+        const d = (await r.json()) as { user?: { hasCreditPurchase?: boolean } | null };
+        if (!cancel) setHasCreditPurchase(Boolean(d.user?.hasCreditPurchase));
+      } catch {
+        if (!cancel) setHasCreditPurchase(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  useEffect(() => {
     const onPurchased = () => {
+      setHasCreditPurchase(true);
       const sid = selectedIdRef.current;
       if (sid) {
         void fetchConversation(sid, { soft: true });
+        setCreditWallVoiceHintAtByConv((prev) => {
+          if (!(sid in prev)) return prev;
+          const { [sid]: _, ...rest } = prev;
+          return rest;
+        });
       }
       void fetchList({ silent: true });
     };
@@ -628,9 +597,22 @@ function BerichtenInner() {
 
   const displayMessages = useMemo(() => {
     if (!conversationForUi) return [];
+    const hintIso = creditWallVoiceHintAtByConv[conversationForUi.id];
+    const hintMessage: ChatMessage[] = hintIso
+      ? [
+          {
+            id: `credit-wall-voice-hint-${conversationForUi.id}-${hintIso}`,
+            role: 'assistant',
+            content: '',
+            createdAt: hintIso,
+            voice: { language: 'nl' },
+          },
+        ]
+      : [];
     const merged = [
       ...conversationForUi.messages,
       ...(optimisticConversationId === selectedId ? optimisticBatch : []),
+      ...hintMessage,
     ];
     const deduped = deduplicateMessages(merged);
     return sortChatMessagesChronologically(deduped);
@@ -639,6 +621,7 @@ function BerichtenInner() {
     optimisticConversationId,
     selectedId,
     optimisticBatch,
+    creditWallVoiceHintAtByConv,
   ]);
 
   const activeConversation =
@@ -740,34 +723,12 @@ function BerichtenInner() {
     return () => {
       if (audioRef.current) audioRef.current.pause();
       if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
+      for (const id of Object.values(creditWallHintTimerByConvRef.current)) {
+        window.clearTimeout(id);
       }
-      if (recordingStreamRef.current) {
-        for (const t of recordingStreamRef.current.getTracks()) t.stop();
-      }
-      if (speechRecognitionRef.current) {
-        try {
-          speechRecognitionRef.current.stop();
-        } catch {}
-      }
-      for (const url of Object.values(localVoiceUrlByIdRef.current)) {
-        URL.revokeObjectURL(url);
-      }
+      creditWallHintTimerByConvRef.current = {};
     };
   }, []);
-
-  useEffect(() => {
-    if (!isRecordingVoice) return;
-    const id = window.setInterval(() => {
-      setRecordingSeconds((s) => s + 1);
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [isRecordingVoice]);
-
-  useEffect(() => {
-    localVoiceUrlByIdRef.current = localVoiceUrlById;
-  }, [localVoiceUrlById]);
 
   const stopVoicePlayback = useCallback(() => {
     if (audioRef.current) {
@@ -784,6 +745,13 @@ function BerichtenInner() {
   const toggleVoiceMessage = useCallback(
     async (m: ChatMessage) => {
       if (!m.voice || !selectedId) return;
+      if (m.id.startsWith('credit-wall-voice-hint-')) {
+        setError(
+          `Om deze voice van ${activeConversation?.profileName ?? 'haar'} te luisteren heb je credits nodig. Tijdelijke aanbieding actief.`
+        );
+        openPricing();
+        return;
+      }
       if (playingVoiceId === m.id) {
         stopVoicePlayback();
         return;
@@ -791,15 +759,12 @@ function BerichtenInner() {
       stopVoicePlayback();
       setPlayingVoiceId(m.id);
       try {
-        let url = localVoiceUrlByIdRef.current[m.id];
-        if (!url) {
-          const res = await fetch(`/api/conversations/${selectedId}/voice/${m.id}`, {
-            credentials: 'include',
-          });
-          if (!res.ok) throw new Error('Voice niet gevonden');
-          const blob = await res.blob();
-          url = URL.createObjectURL(blob);
-        }
+        const res = await fetch(`/api/conversations/${selectedId}/voice/${m.id}`, {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Voice niet gevonden');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
         audioUrlRef.current = url;
         const audio = new Audio(url);
         audioRef.current = audio;
@@ -809,192 +774,8 @@ function BerichtenInner() {
         stopVoicePlayback();
       }
     },
-    [playingVoiceId, selectedId, stopVoicePlayback]
+    [playingVoiceId, selectedId, stopVoicePlayback, activeConversation?.profileName, openPricing]
   );
-
-  const sendRecordedVoice = useCallback(
-    async (blob: Blob) => {
-      const sid = selectedIdRef.current;
-      if (!sid) return;
-      const localVoiceId = `local-voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const nowIso = new Date().toISOString();
-      const localVoiceUrl = URL.createObjectURL(blob);
-      setLocalVoiceUrlById((prev) => ({ ...prev, [localVoiceId]: localVoiceUrl }));
-      const localVoiceMessage: ChatMessage = {
-        id: localVoiceId,
-        role: 'user',
-        content: '🎤 Spraakbericht',
-        createdAt: nowIso,
-        readByPeer: false,
-        voice: {
-          language: 'nl',
-          transcript: voiceDraftTranscript.trim() || undefined,
-          mimeType: blob.type || 'audio/webm',
-        },
-      };
-      setConversation((c) => {
-        if (!c || c.id !== sid) return c;
-        return {
-          ...c,
-          messages: sortChatMessagesChronologically([...c.messages, localVoiceMessage]),
-          updatedAt: nowIso,
-        };
-      });
-      setIsTranscribingVoice(true);
-      setError(null);
-      void (async () => {
-        try {
-        const form = new FormData();
-        form.append("audio", blob, "voice.webm");
-        form.append("language", "nl");
-        form.append("clientMessageId", localVoiceId);
-        if (voiceDraftTranscript.trim()) {
-          form.append("fallbackText", voiceDraftTranscript.trim());
-        }
-        const res = await fetch(`/api/conversations/${sid}/messages/voice`, {
-          method: "POST",
-          credentials: "include",
-          body: form,
-        });
-        const data = (await res.json()) as {
-          error?: string;
-          userMessages?: ChatMessage[];
-          assistantMessage?: ChatMessage | null;
-          transcript?: string;
-        };
-        if (!res.ok) throw new Error(data.error || "Spraak versturen mislukt");
-
-        const u = data.userMessages ?? [];
-        const a = data.assistantMessage;
-        if (u.some((msg) => msg.id === localVoiceId)) {
-          setLocalVoiceUrlById((prev) => {
-            const current = prev[localVoiceId];
-            if (current) URL.revokeObjectURL(current);
-            const { [localVoiceId]: _omit, ...rest } = prev;
-            return rest;
-          });
-        }
-        if (u.length > 0 || a) {
-          setConversation((c) => {
-            if (!c || c.id !== sid) return c;
-            const add = [...u, ...(a ? [a] : [])];
-            const existingIds = new Set(c.messages.map((m) => m.id));
-            const newOnly = add.filter((m) => !existingIds.has(m.id));
-            if (newOnly.length === 0) return c;
-            return {
-              ...c,
-              messages: sortChatMessagesChronologically([...c.messages, ...newOnly]),
-              updatedAt: newOnly[newOnly.length - 1]?.createdAt ?? c.updatedAt,
-            };
-          });
-        }
-
-        await fetchConversation(sid, { soft: true });
-        await fetchList({ silent: true });
-        } catch (e) {
-          setError(e instanceof Error ? e.message : "Spraak versturen mislukt");
-        } finally {
-          setIsTranscribingVoice(false);
-        }
-      })();
-    },
-    [fetchConversation, fetchList, voiceDraftTranscript]
-  );
-
-  const sendVoiceDraft = useCallback(() => {
-    if (!voiceDraftBlob || isTranscribingVoice) return;
-    void sendRecordedVoice(voiceDraftBlob);
-    setVoiceDraftBlob(null);
-    setVoiceDraftTranscript('');
-    setRecordingSeconds(0);
-  }, [voiceDraftBlob, isTranscribingVoice, sendRecordedVoice]);
-
-  const cancelVoiceDraft = useCallback(() => {
-    setVoiceDraftBlob(null);
-    setVoiceDraftTranscript('');
-    setRecordingSeconds(0);
-  }, []);
-
-  const toggleVoiceRecording = useCallback(async () => {
-    if (isTranscribingVoice) return;
-    const sid = selectedIdRef.current;
-    if (!sid) return;
-
-    if (isRecordingVoice) {
-      const rec = mediaRecorderRef.current;
-      if (rec && rec.state !== "inactive") rec.stop();
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recordingStreamRef.current = stream;
-      recordingChunksRef.current = [];
-      setVoiceDraftBlob(null);
-      setVoiceDraftTranscript('');
-      setRecordingSeconds(0);
-      speechTranscriptRef.current = '';
-      const recorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
-
-      const w = window as any;
-      const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-      if (SR) {
-        const sr = new SR();
-        sr.lang = 'nl-NL';
-        sr.continuous = true;
-        sr.interimResults = true;
-        sr.onresult = (event: any) => {
-          let merged = '';
-          for (let i = 0; i < event.results.length; i += 1) {
-            merged += event.results[i][0]?.transcript ?? '';
-          }
-          speechTranscriptRef.current = merged.trim();
-          setVoiceDraftTranscript(speechTranscriptRef.current);
-        };
-        try {
-          sr.start();
-          speechRecognitionRef.current = sr;
-        } catch {
-          speechRecognitionRef.current = null;
-        }
-      }
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) recordingChunksRef.current.push(event.data);
-      };
-      recorder.onerror = () => {
-        setError("Opname mislukt.");
-      };
-      recorder.onstop = () => {
-        setIsRecordingVoice(false);
-        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        recordingChunksRef.current = [];
-        if (speechRecognitionRef.current) {
-          try {
-            speechRecognitionRef.current.stop();
-          } catch {}
-          speechRecognitionRef.current = null;
-        }
-        if (recordingStreamRef.current) {
-          for (const t of recordingStreamRef.current.getTracks()) t.stop();
-        }
-        recordingStreamRef.current = null;
-        mediaRecorderRef.current = null;
-        if (blob.size > 0) {
-          setVoiceDraftBlob(blob);
-          setVoiceDraftTranscript(speechTranscriptRef.current.trim());
-        }
-      };
-
-      recorder.start();
-      setAttachMenuOpen(false);
-      setIsRecordingVoice(true);
-    } catch {
-      setError("Microfoon-toegang geweigerd of niet beschikbaar.");
-      setIsRecordingVoice(false);
-    }
-  }, [isRecordingVoice, isTranscribingVoice]);
 
   // Deduplicate by profileId — meest recente thread (updatedAt), niet op "HH:mm" string
   const dedupedList = useMemo(() => {
@@ -1070,9 +851,32 @@ function BerichtenInner() {
     optimisticHere ||
     (peerOnlineUntil !== null && Date.now() < peerOnlineUntil);
 
-  const triggerNoCreditsFlow = useCallback((_convId: string) => {
+  const triggerNoCreditsFlow = useCallback((convId: string) => {
     openPricing();
-  }, [openPricing]);
+    if (hasCreditPurchase) return;
+    if (!canShowCreditWallVoiceInChat(convId)) return;
+    recordCreditWallVoiceChat(convId);
+    const pname =
+      listRef.current.find((c) => c.id === convId)?.profileName ??
+      conversationProfileNameRef.current;
+    setArrivalToast(`${pname} heeft een spraakbericht gestuurd`);
+    if (arrivalToastTimerRef.current) {
+      window.clearTimeout(arrivalToastTimerRef.current);
+    }
+    arrivalToastTimerRef.current = window.setTimeout(() => {
+      arrivalToastTimerRef.current = null;
+      setArrivalToast(null);
+    }, 5200);
+    const prevTimer = creditWallHintTimerByConvRef.current[convId];
+    if (prevTimer) window.clearTimeout(prevTimer);
+    creditWallHintTimerByConvRef.current[convId] = window.setTimeout(() => {
+      setCreditWallVoiceHintAtByConv((prev) => ({
+        ...prev,
+        [convId]: new Date().toISOString(),
+      }));
+      delete creditWallHintTimerByConvRef.current[convId];
+    }, 2000);
+  }, [openPricing, hasCreditPurchase]);
 
   const clearBatchTimer = useCallback(() => {
     if (batchFlushTimerRef.current) {
@@ -1239,21 +1043,11 @@ function BerichtenInner() {
               setArrivalToast(null);
             }, 4800);
           }
-          const assistantText = (data.assistantMessage?.content ?? '').toLowerCase();
-          const goesTemporarilyOffline =
-            /kom zo terug|zo terug|ik ga .*camera|ik pak .*camera|heel even weg|ben zo terug/.test(
-              assistantText
-            );
-          if (goesTemporarilyOffline) {
-            // Als ze zegt dat ze zo terugkomt, toon haar even offline.
-            setPeerOnlineUntil(null);
-          } else {
-            setPeerOnlineUntil((prev) => {
-              const extra = 40_000 + Math.floor(Math.random() * 110_000);
-              const until = Date.now() + extra;
-              return Math.max(prev ?? 0, until);
-            });
-          }
+          setPeerOnlineUntil((prev) => {
+            const extra = 40_000 + Math.floor(Math.random() * 110_000);
+            const until = Date.now() + extra;
+            return Math.max(prev ?? 0, until);
+          });
         }
 
         // Clear loading/typing state as soon as server accepted the message
@@ -1277,10 +1071,7 @@ function BerichtenInner() {
         return true;
       } catch (e) {
         if (prepaid) refundChatCredit(cost);
-        // Server kan user-berichten al hebben opgeslagen terwijl het antwoord traag/time-out is.
-        // Houd optimistic bubble zichtbaar zodat het bericht niet "verdwijnt" in de UI.
-        await fetchConversation(sid, { soft: true });
-        await fetchList({ silent: true });
+        clearOptimisticForConversation(sid);
         if (!batchOverride) {
           outgoingConversationIdRef.current = null;
         }
@@ -1302,17 +1093,6 @@ function BerichtenInner() {
       }
     } finally {
       sendGuardByConvRef.current.delete(sid);
-      // Als er tijdens een lopende request alweer nieuwe user-berichten zijn
-      // getypt/verzonden, flush ze direct erna als volgende batch.
-      if (
-        outgoingConversationIdRef.current === sid &&
-        outgoingAccumRef.current.length > 0 &&
-        !sendGuardByConvRef.current.has(sid)
-      ) {
-        window.setTimeout(() => {
-          void flushOutgoingBatch(sid);
-        }, 0);
-      }
     }
   }, [
     clearBatchTimer,
@@ -1408,7 +1188,7 @@ function BerichtenInner() {
   };
 
   const handleSend = () => {
-    if (!selectedId) return;
+    if (!selectedId || inflightSends.has(selectedId) || sendGuardByConvRef.current.has(selectedId)) return;
     const trimmed = input.trim();
     if (!trimmed && !pendingImage) return;
 
@@ -1465,16 +1245,14 @@ function BerichtenInner() {
       bumpPeerOnline();
     }
 
-    outgoingAccumRef.current.push({
-      text: trimmed,
-      image: sentImage ?? undefined,
-      replyToId: replyToId ?? undefined,
-    });
-    if (!inflightSends.has(selectedId) && !sendGuardByConvRef.current.has(selectedId)) {
-      clearBatchTimer();
-      // Direct starten: voorkomt dat berichten blijven hangen als timer niet vuurt.
-      void flushOutgoingBatch(selectedId);
-    }
+    clearBatchTimer();
+    void flushOutgoingBatch(selectedId, [
+      {
+        text: trimmed,
+        image: sentImage ?? undefined,
+        replyToId: replyToId ?? undefined,
+      },
+    ]);
     setReplyToId(null);
   };
 
@@ -1588,11 +1366,11 @@ function BerichtenInner() {
     <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-[var(--surface)]">
       <Navbar />
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-12 sm:pt-14 lg:pt-20">
-        <div className="mx-auto flex min-h-0 w-full max-w-screen-xl flex-1 flex-col overflow-hidden px-2 sm:px-4 lg:flex-row lg:items-stretch lg:px-6">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-12 sm:pt-14 md:pt-20">
+        <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden px-2 lg:flex-row lg:items-stretch xl:px-4">
         {/* Inbox list - fully responsive, full height on mobile */}
         <div
-          className={`flex w-full flex-shrink-0 flex-col border-b border-gray-200/80 bg-[var(--surface-card)] lg:min-h-0 lg:max-h-none lg:basis-[32%] lg:max-w-sm lg:border-b-0 lg:border-r lg:overflow-hidden ${
+          className={`flex w-full flex-shrink-0 flex-col border-b border-gray-200/80 bg-[var(--surface-card)] lg:w-[360px] lg:min-h-0 lg:max-h-none lg:border-b-0 lg:border-r lg:overflow-hidden xl:w-[390px] ${
             selectedId 
               ? 'hidden lg:flex' 
               : 'flex flex-1 min-h-0 lg:flex-none lg:h-auto'
@@ -1767,8 +1545,8 @@ function BerichtenInner() {
                         className="transition-transform duration-150"
                         style={{ transform: `translateX(${swipeOffsetByMessageId[m.id] ?? 0}px)` }}
                       >
-                      {m.voice ? (
-                        <div className={`flex max-w-[88%] flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} space-y-2`}>
+                      {m.role === 'assistant' && m.voice ? (
+                        <div className="flex max-w-[88%] flex-col items-start space-y-2">
                           {m.voice.ttsText && (
                             <div className="rounded-2xl px-4 py-3 text-[15px] leading-snug bg-[var(--surface-card)] text-gray-900 border border-gray-200/60 shadow-md shadow-black/10">
                               <p className="whitespace-pre-wrap">{m.content}</p>
@@ -1804,91 +1582,10 @@ function BerichtenInner() {
                           </button>
                           <MessageTimestamp
                             iso={m.createdAt}
-                            align={m.role === 'user' ? 'right' : 'left'}
-                            variant={m.role === 'user' ? 'outgoing-meta' : 'incoming'}
+                            align="left"
+                            variant="incoming"
                           />
                         </div>
-                      ) : m.role === 'assistant' && m.imageFile ? (
-                        (() => {
-                          const isUnlocked =
-                            Boolean(m.photoLock?.unlockedAt) ||
-                            !m.photoLock ||
-                            Boolean(locallyUnlockedByMessageId[m.id]);
-                          const isUnlocking = Boolean(unlockingByMessageId[m.id]);
-                          const cost = m.photoLock?.credits ?? CREDITS_PER_PHOTO_UNLOCK;
-                          const imgSrc = selectedId
-                            ? `/api/conversations/${selectedId}/image/${m.id}`
-                            : '';
-                          const replied = m.replyToId
-                            ? displayMessages.find((x) => x.id === m.replyToId)
-                            : undefined;
-                          return (
-                            <div className="flex max-w-[88%] flex-col items-start space-y-2">
-                              {m.content?.trim() && (
-                                <div className="rounded-2xl rounded-bl-sm border border-gray-200/60 bg-[var(--surface-card)] px-4 py-3 text-[15px] leading-snug text-gray-900 shadow-md shadow-black/10">
-                                  {replied ? (
-                                    <div className="mb-2 rounded-xl border border-gray-200/60 bg-white px-2.5 py-2 text-[12px] leading-snug text-gray-700">
-                                      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                                        reply
-                                      </div>
-                                      <div className="mt-1 line-clamp-2">{snippetForReply(replied)}</div>
-                                    </div>
-                                  ) : null}
-                                  <p className="whitespace-pre-wrap">{m.content}</p>
-                                </div>
-                              )}
-                              {isUnlocked ? (
-                                <div className="overflow-hidden rounded-2xl border border-primary/25 shadow-md">
-                                  <img
-                                    src={imgSrc}
-                                    alt=""
-                                    className="max-h-80 w-full object-cover bg-black/5"
-                                  />
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => void handleUnlockPhoto(m)}
-                                  disabled={isUnlocking}
-                                  className="group relative w-full max-w-[260px] overflow-hidden rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/15 via-primary/5 to-pink-500/15 text-left shadow-lg active:scale-[0.99] transition-all disabled:cursor-wait"
-                                  aria-label={`Foto ontgrendelen voor ${cost} credits`}
-                                >
-                                  {imgSrc ? (
-                                    <img
-                                      src={imgSrc}
-                                      alt=""
-                                      aria-hidden
-                                      className="h-56 w-full object-cover blur-2xl scale-110 select-none pointer-events-none brightness-90"
-                                      draggable={false}
-                                    />
-                                  ) : (
-                                    <div className="h-56 w-full bg-gradient-to-br from-primary/30 to-pink-500/30" />
-                                  )}
-                                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 px-4 py-3 text-center">
-                                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-primary shadow-md">
-                                      {isUnlocking ? (
-                                        <Loader2 className="h-6 w-6 animate-spin" />
-                                      ) : (
-                                        <Lock className="h-6 w-6" />
-                                      )}
-                                    </span>
-                                    <p className="text-sm font-semibold text-white drop-shadow">
-                                      Foto van {activeConversation?.profileName ?? 'haar'}
-                                    </p>
-                                    <p className="text-[12px] font-medium text-white/90 drop-shadow">
-                                      Tik om te ontgrendelen · {cost} credits
-                                    </p>
-                                  </div>
-                                </button>
-                              )}
-                              <MessageTimestamp
-                                iso={m.createdAt}
-                                align="left"
-                                variant="incoming"
-                              />
-                            </div>
-                          );
-                        })()
                       ) : m.role === 'user' ? (
                         (() => {
                           const replied = m.replyToId
@@ -2328,73 +2025,9 @@ function BerichtenInner() {
                     }}
                     placeholder="Typ je bericht… (Shift+Enter voor nieuwe regel)"
                     rows={4}
-                    disabled={false}
+                    disabled={sendingHere}
                     className="min-h-[6.5rem] w-full resize-y rounded-2xl border border-gray-200 px-4 py-4 text-lg leading-relaxed text-gray-900 shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 md:min-h-[5.75rem] md:text-[17px]"
                   />
-                  {(isRecordingVoice || voiceDraftBlob) && (
-                    <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2">
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (isRecordingVoice) void toggleVoiceRecording();
-                          }}
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white"
-                          title={isRecordingVoice ? 'Stop opname' : 'Opname klaar'}
-                        >
-                          {isRecordingVoice ? (
-                            <Pause className="h-4 w-4" />
-                          ) : (
-                            <Mic className="h-4 w-4" />
-                          )}
-                        </button>
-                        <div className="flex min-w-0 flex-1 items-center gap-2">
-                          {isRecordingVoice ? (
-                            <div className="flex items-end gap-1">
-                              {[0, 1, 2, 3, 4].map((i) => (
-                                <span
-                                  key={i}
-                                  className="inline-block w-1.5 rounded-full bg-primary/80 animate-pulse"
-                                  style={{
-                                    height: `${10 + ((i % 3) + 1) * 5}px`,
-                                    animationDelay: `${i * 120}ms`,
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-xs font-medium text-gray-600">Opname klaar</div>
-                          )}
-                          <div className="text-sm font-semibold tabular-nums text-gray-800">
-                            {formatRecordingDuration(recordingSeconds)}
-                          </div>
-                        </div>
-                      </div>
-                      {!isRecordingVoice && voiceDraftTranscript.trim() && (
-                        <div className="max-w-[220px] truncate text-xs text-gray-500">
-                          "{voiceDraftTranscript.trim()}"
-                        </div>
-                      )}
-                      <Button
-                        type="button"
-                        onClick={sendVoiceDraft}
-                        disabled={isRecordingVoice || !voiceDraftBlob}
-                        className="h-10 min-w-[7rem] rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
-                      >
-                        Verzend voice
-                      </Button>
-                      {!isRecordingVoice && (
-                        <button
-                          type="button"
-                          onClick={cancelVoiceDraft}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
-                          title="Verwijder opname"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  )}
                   <div className="flex items-center justify-between gap-3">
                     <div className="relative shrink-0" ref={attachMenuRef}>
                       <button
@@ -2439,29 +2072,13 @@ function BerichtenInner() {
                             <Sparkles className="h-5 w-5 shrink-0 text-primary" aria-hidden />
                             Cadeau sturen
                           </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            disabled={sendingHere}
-                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-                            onClick={() => {
-                              void toggleVoiceRecording();
-                            }}
-                          >
-                            {isRecordingVoice ? (
-                              <Pause className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                            ) : (
-                              <Mic className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                            )}
-                            {isRecordingVoice ? 'Opname stoppen' : 'Spraak inspreken'}
-                          </button>
                         </div>
                       ) : null}
                     </div>
                     <Button
                       type="button"
                       onClick={handleSend}
-                      disabled={!input.trim() && !pendingImage}
+                      disabled={sendingHere || (!input.trim() && !pendingImage)}
                       className="flex h-14 min-h-[56px] min-w-[7.75rem] shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary px-8 text-base font-semibold text-white shadow-sm transition-all active:scale-[0.97] hover:bg-primary/90 sm:min-w-[8.5rem]"
                     >
                       Verstuur
@@ -2605,43 +2222,51 @@ function CreditsSidebar({
   onBuyCredits: () => void;
 }) {
   return (
-    <div className="hidden lg:flex lg:min-h-0 lg:max-h-full lg:w-full lg:max-w-[360px] lg:flex-shrink-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:border-gray-200/80 lg:bg-[var(--surface-card)] lg:p-6">
+    <div className="hidden xl:flex xl:min-h-0 xl:max-h-full xl:w-[300px] xl:flex-shrink-0 xl:flex-col xl:overflow-y-auto xl:border-l xl:border-gray-200/80 xl:bg-[var(--surface-card)] xl:p-6">
       <div className="bg-gradient-to-br from-primary to-primary-deep text-white rounded-3xl p-6 shadow-xl">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <div className="uppercase tracking-wider text-[10px] opacity-80">FOTO PASS</div>
+            <div className="uppercase tracking-wider text-[10px] opacity-80">PREMIUM</div>
             <div className="text-2xl font-bold mt-1 leading-tight">
-              Foto’s ontgrendelen
+              Krijg meer met Credits
             </div>
             <p className="text-xs opacity-85 mt-2 leading-snug">
-              Chatten is gratis · 1 foto = {CREDITS_PER_PHOTO_UNLOCK} credits (≈ €19,99)
+              {CREDITS_PER_MESSAGE} credits per bericht · eerste {INITIAL_FREE_CREDITS} gratis
             </p>
           </div>
           <CreditCard className="w-8 h-8 opacity-80" />
         </div>
         <ul className="space-y-3 text-sm border-t border-white/20 pt-4">
-          <li className="flex justify-between gap-2 font-semibold">
-            <span>1 foto</span>
-            <span>€19,99</span>
+          <li className="flex flex-col gap-0.5 font-semibold">
+            <span className="flex justify-between gap-2">
+              <span>Aanbevolen</span>
+              <span className="text-amber-200 text-[10px] font-bold uppercase">
+                −{FEATURED_DEAL_DISCOUNT_PERCENT}%
+              </span>
+            </span>
+            <span className="opacity-95 text-sm font-normal">
+              <span className="line-through opacity-70 mr-1.5">{FEATURED_DEAL_WAS_PRICE_LABEL}</span>
+              {FEATURED_DEAL_PRICE_LABEL} · {FEATURED_DEAL_CREDITS.toLocaleString('nl-NL')}
+            </span>
           </li>
-          <li className="flex justify-between gap-2 text-sm opacity-95">
-            <span>3 foto’s</span>
-            <span>€49,99 · populair</span>
+          <li className="flex justify-between gap-2 opacity-75 text-xs">
+            <span>Express</span>
+            <span>€59,99 · 800 · veel duurder</span>
           </li>
-          <li className="flex justify-between gap-2 text-sm opacity-90">
-            <span>5 foto’s</span>
-            <span>€74,99</span>
+          <li className="flex justify-between gap-2 opacity-75 text-xs">
+            <span>Express plus</span>
+            <span>€44,99 · 500</span>
           </li>
         </ul>
         <ul className="space-y-4 text-sm mt-4">
           <li className="flex gap-3">
-            <span className="text-lg">💬</span> Onbeperkt en gratis chatten
+            <span className="text-lg">🚀</span> Profiel boost
           </li>
           <li className="flex gap-3">
-            <span className="text-lg">📸</span> Custom foto’s op aanvraag
+            <span className="text-lg">💬</span> Onbeperkt chatten
           </li>
           <li className="flex gap-3">
-            <span className="text-lg">⚡️</span> Direct te ontgrendelen
+            <span className="text-lg">⭐</span> Top in zoekresultaten
           </li>
         </ul>
         <Button
@@ -2653,9 +2278,9 @@ function CreditsSidebar({
           Koop Credits <ArrowRight className="inline ml-1 w-4 h-4" />
         </Button>
         <p className="text-center text-xs mt-4 opacity-70">
-          {balance < CREDITS_PER_PHOTO_UNLOCK ? (
+          {balance < CREDITS_PER_MESSAGE ? (
             <span className="font-semibold">
-              Te weinig credits voor een foto — open prijzen om bij te kopen.
+              Te weinig credits voor een bericht — open prijzen om bij te kopen.
             </span>
           ) : (
             <>Je hebt nog {balance} credits</>

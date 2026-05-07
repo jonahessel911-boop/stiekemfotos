@@ -35,27 +35,27 @@ export default function NieuwsfeedPage() {
   const [liked, setLiked] = useState<Record<string, boolean>>({});
 
   return (
-    <div className="min-h-screen bg-[var(--surface)] pb-24 lg:pb-10">
+    <div className="min-h-screen bg-[var(--surface)] pb-24">
       <WelcomeHouseRulesModal />
       <Navbar />
 
-      <div className="mx-auto w-full max-w-screen-xl px-4 pt-12 sm:px-6 sm:pt-14 lg:px-8 lg:pt-20">
-        <div className="sticky top-12 z-30 mb-6 flex border-b border-gray-200 bg-[var(--surface)] py-1 sm:top-14 lg:top-20">
+      <div className="pt-12 sm:pt-14 md:pt-20 max-w-2xl mx-auto px-4">
+        <div className="flex border-b border-gray-200 mb-6 sticky top-12 sm:top-14 md:top-20 bg-[var(--surface)] z-30 py-1">
           <button
             type="button"
-            className="px-4 py-3 text-sm font-semibold border-b-2 border-primary text-primary sm:px-6 sm:text-base"
+            className="px-6 py-3 text-base font-semibold border-b-2 border-primary text-primary"
           >
             Alle posts
           </button>
           <button
             type="button"
-            className="px-4 py-3 text-sm font-semibold text-gray-500 sm:px-6 sm:text-base"
+            className="px-6 py-3 text-base font-semibold text-gray-500"
           >
             Volgend
           </button>
         </div>
 
-        <div className="mx-auto w-full max-w-4xl space-y-6 lg:space-y-8">
+        <div className="space-y-8">
           {posts.length === 0 ? (
             <p className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-gray-500">
               Nog geen posts. Bekijk{' '}
@@ -105,7 +105,7 @@ function FeedPostCard({
   onToggleLike: () => void;
 }) {
   return (
-    <article className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-sm">
+    <article className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-gray-100">
         <div className="flex items-center gap-3">
           <img
@@ -130,11 +130,11 @@ function FeedPostCard({
       <div className="p-4 md:p-6 pt-2">
         <p className="text-[17px] leading-relaxed text-gray-800 mb-4">{post.caption}</p>
 
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <span className="text-sm text-gray-600">
             {post.likes} mensen vonden dit leuk
           </span>
-          <div className="flex flex-wrap gap-3 text-sm text-gray-500 sm:gap-4">
+          <div className="flex gap-4 text-sm text-gray-500">
             <button
               type="button"
               onClick={onToggleLike}
@@ -163,13 +163,13 @@ function FeedPostCard({
           ))}
         </div>
 
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button className="flex-1 rounded-2xl py-4" onClick={onToggleLike}>
+        <div className="flex gap-3 mt-6">
+          <Button className="flex-1 py-4 rounded-2xl" onClick={onToggleLike}>
             Vind ik leuk
           </Button>
           <Link
             href={`/profielen/${post.profileId}`}
-            className="inline-flex flex-1 items-center justify-center rounded-2xl bg-[#f97316] py-4 text-sm font-semibold text-white hover:bg-[#ea580c]"
+            className="flex-1 inline-flex items-center justify-center rounded-2xl bg-[#f97316] py-4 text-sm font-semibold text-white hover:bg-[#ea580c]"
           >
             Bekijk profiel
           </Link>

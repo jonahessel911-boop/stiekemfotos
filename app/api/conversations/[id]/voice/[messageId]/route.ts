@@ -12,24 +12,16 @@ export async function GET(
     return NextResponse.json({ error: "Ongeldig" }, { status: 400 });
   }
 
-  const candidates: Array<{ filename: string; mime: string }> = [
-    { filename: `${messageId}.mp3`, mime: "audio/mpeg" },
-    { filename: `${messageId}.webm`, mime: "audio/webm" },
-    { filename: `${messageId}.wav`, mime: "audio/wav" },
-    { filename: `${messageId}.ogg`, mime: "audio/ogg" },
-  ];
-  for (const c of candidates) {
-    try {
-      const buf = await readFile(path.join(convVoiceDir(conversationId), c.filename));
-      return new NextResponse(buf, {
-        headers: {
-          "Content-Type": c.mime,
-          "Cache-Control": "private, max-age=3600",
-        },
-      });
-    } catch {
-      // try next extension
-    }
+  const filePath = path.join(convVoiceDir(conversationId), `${messageId}.mp3`);
+  try {
+    const buf = await readFile(filePath);
+    return new NextResponse(buf, {
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  } catch {
+    return NextResponse.json({ error: "Niet gevonden" }, { status: 404 });
   }
-  return NextResponse.json({ error: "Niet gevonden" }, { status: 404 });
 }

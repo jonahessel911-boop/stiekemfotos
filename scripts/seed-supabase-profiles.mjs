@@ -132,9 +132,6 @@ async function run() {
     const heritage = heritagePool[i % heritagePool.length];
     const age = 21 + (i % 12);
     const photosCount = 4 + (i % 3);
-    const lengte_cm = 160 + (i % 18);
-    const gewicht_kg = 52 + (i % 19);
-    const cup_maat = ["A", "B", "C", "D", "E"][i % 5];
     const slug = `${slugify(firstName)}-${i + 1}`;
     const personality =
       "warm, direct, speels en vrouwelijk. licht ondeugend, veel oogcontact in tekst, oost-europese flair.";
@@ -151,9 +148,6 @@ async function run() {
       interests,
       personality,
       voice_language: ["ro", "uk", "pl", "bg"][i % 4],
-      lengte_cm,
-      gewicht_kg,
-      cup_maat,
       photosCount,
     };
   });
@@ -177,9 +171,6 @@ async function run() {
       age: p.age,
       city: p.city,
       country: p.country,
-      lengte_cm: p.lengte_cm,
-      gewicht_kg: p.gewicht_kg,
-      cup_maat: p.cup_maat,
       bio: p.bio,
       interests: p.interests,
       personality: p.personality,
