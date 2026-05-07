@@ -6,6 +6,10 @@ export interface Profile {
   name: string;
   age: number;
   location: string;
+  /** Lichaamskenmerken (optioneel voor profielkaart/filtering). */
+  lengte?: number;
+  gewicht?: number;
+  cupMaat?: string;
   /** Woont in NL; heritage = herkomst voor persona (bijv. "Oekraïne"). */
   heritage?: string;
   personaStyle: PersonaStyle;

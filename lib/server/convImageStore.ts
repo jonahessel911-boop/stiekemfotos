@@ -41,3 +41,25 @@ export async function saveConversationVoice(
   await writeFile(path.join(dir, filename), buffer);
   return filename;
 }
+
+/** Schrijft user-opnamebytes (webm/mp3/wav/ogg); retourneert bestandsnaam. */
+export async function saveConversationVoiceInput(
+  conversationId: string,
+  messageId: string,
+  buffer: Buffer,
+  mime: string
+): Promise<string> {
+  const m = (mime || "").toLowerCase();
+  const ext = m.includes("webm")
+    ? "webm"
+    : m.includes("wav")
+      ? "wav"
+      : m.includes("ogg")
+        ? "ogg"
+        : "mp3";
+  const filename = `${messageId}.${ext}`;
+  const dir = convVoiceDir(conversationId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, filename), buffer);
+  return filename;
+}

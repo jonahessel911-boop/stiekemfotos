@@ -4,7 +4,6 @@ import Stripe from "stripe";
 import { getStripe, STRIPE_WEBHOOK_SECRET } from "@/lib/server/stripe";
 import { markStripeCheckoutPaid } from "@/lib/server/stripeCheckoutStore";
 import { markCreditPurchase } from "@/lib/server/users";
-import { appendPurchaseThanksMessage } from "@/lib/server/conversations";
 
 export async function POST(req: Request) {
   try {
@@ -25,7 +24,6 @@ export async function POST(req: Request) {
         const userId = String(session.metadata?.userId ?? "");
         if (userId) {
           await markCreditPurchase(userId);
-          await appendPurchaseThanksMessage(userId);
         }
       }
     }

@@ -76,7 +76,7 @@ export default function Navbar() {
 
   const mobileBar = (
     <div
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(190,18,60,0.35)]"
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-[100] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(190,18,60,0.35)]"
       role="navigation"
       aria-label="Hoofdmenu mobiel"
     >
@@ -114,7 +114,7 @@ export default function Navbar() {
   return (
     <>
       {/* Desktop left navigation */}
-      <aside className="hidden md:flex fixed left-0 top-12 sm:top-14 md:top-16 bottom-0 w-56 border-r border-gray-200/80 bg-[var(--surface-card)] z-40">
+      <aside className="fixed left-0 top-12 bottom-0 z-40 hidden w-60 border-r border-gray-200/80 bg-[var(--surface-card)] lg:flex lg:top-16">
         <div className="flex min-h-0 flex-1 flex-col p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2 py-2">
             menu
@@ -151,7 +151,7 @@ export default function Navbar() {
       </aside>
 
       <nav className="fixed top-0 left-0 right-0 bg-[var(--surface-card)] border-b border-gray-200/80 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-8 h-12 sm:h-14 md:h-16 flex items-center justify-between gap-2">
+        <div className="mx-auto flex h-12 max-w-screen-xl items-center justify-between gap-2 px-3 sm:h-14 sm:px-4 lg:h-16 lg:px-8">
           <div className="flex min-w-0 flex-1 items-center pr-1 md:flex-initial md:pr-0">
             <Logo />
           </div>

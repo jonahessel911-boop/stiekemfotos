@@ -48,3 +48,51 @@ export async function xaiTextToSpeech(
 
   return res.arrayBuffer();
 }
+
+export async function xaiSpeechToText(
+  audio: ArrayBuffer,
+  options?: { mimeType?: string; filename?: string; language?: string }
+): Promise<string> {
+  const key = requireXaiApiKey();
+  const mimeType = (options?.mimeType || "audio/webm").trim() || "audio/webm";
+  const filename = (options?.filename || "voice.webm").trim() || "voice.webm";
+  const model = process.env.XAI_STT_MODEL?.trim() || "grok-2-audio-transcribe";
+
+  const buildForm = () => {
+    const form = new FormData();
+    form.append("model", model);
+    form.append("file", new Blob([audio], { type: mimeType }), filename);
+    if (options?.language?.trim()) {
+      form.append("language", options.language.trim());
+    }
+    return form;
+  };
+
+  const callStt = async (url: string) => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+      },
+      body: buildForm(),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`STT (${res.status}): ${err.slice(0, 400)}`);
+    }
+    const data = (await res.json()) as { text?: string };
+    const text = (data.text || "").trim();
+    if (!text) throw new Error("STT gaf geen transcriptie terug.");
+    return text;
+  };
+
+  try {
+    // Current xAI endpoint
+    return await callStt("https://api.x.ai/v1/stt");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Backward compatibility fallback for older gateways
+    if (!msg.includes("404")) throw e;
+    return callStt("https://api.x.ai/v1/audio/transcriptions");
+  }
+}

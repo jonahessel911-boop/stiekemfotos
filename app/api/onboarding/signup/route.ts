@@ -4,7 +4,6 @@ import { readJson, writeJson } from "@/lib/server/store";
 import { createUser } from "@/lib/server/users";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
 import { TIKTOK_ACCESS_TOKEN, TIKTOK_PIXEL_ID, TIKTOK_TRACK_URL } from "@/lib/tiktok";
-import { sendAccountVerificationEmail } from "@/lib/server/email";
 
 type SignupBody = {
   naam: string;
@@ -93,20 +92,7 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
     writeJson("onboarding-signups.json", list);
-    if (user.emailVerifyToken) {
-      try {
-        await sendAccountVerificationEmail({
-          to: email,
-          naam,
-          verifyToken: user.emailVerifyToken,
-        });
-      } catch {
-        return NextResponse.json(
-          { error: "Verificatiemail kon niet worden verstuurd. Probeer opnieuw." },
-          { status: 500 }
-        );
-      }
-    }
+    // E-mailverificatie staat uit voor testing — geen Postmark-mail.
 
     // Server-side conversion fire zodat submit-events altijd mee gaan na geslaagde form-submit.
     try {
@@ -155,7 +141,7 @@ export async function POST(req: Request) {
 
     const res = NextResponse.json({
       ok: true,
-      needsEmailVerification: true,
+      needsEmailVerification: false,
       user: {
         id: user.id,
         email: user.email,

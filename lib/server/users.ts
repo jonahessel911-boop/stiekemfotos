@@ -119,7 +119,8 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     discreetAkkoord: input.discreetAkkoord,
     voorwaardenAkkoord: input.voorwaardenAkkoord,
     createdAt,
-    emailVerifyToken: randomUUID(),
+    // E-mail verificatie staat uit voor testing: account is direct geverifieerd.
+    emailVerifiedAt: createdAt,
     engagementSlots: await resolveEngagementSlotsForNewUser(createdAt),
     ...(input.zoekLeeftijdCategorie
       ? { zoekLeeftijdCategorie: input.zoekLeeftijdCategorie }
@@ -144,7 +145,8 @@ export function toPublicUser(u: UserRecord) {
     naam: u.naam,
     leeftijd: u.leeftijd,
     createdAt: u.createdAt,
-    emailVerified: Boolean(u.emailVerifiedAt),
+    // E-mailverificatie staat uit voor testing.
+    emailVerified: true,
     hasCreditPurchase: Boolean(u.firstCreditPurchaseAt),
   };
 }
@@ -216,9 +218,10 @@ export async function updateUserEmailForVerification(
 }
 
 export async function isUserEmailVerified(userId: string): Promise<boolean> {
+  // E-mail verificatie staat uit voor testing: zolang de gebruiker bestaat
+  // beschouwen we hem als geverifieerd.
   const user = await findUserById(userId);
-  if (!user) return false;
-  return Boolean(user.emailVerifiedAt) || !user.emailVerifyToken;
+  return Boolean(user);
 }
 
 export async function updateUserEngagementSlots(

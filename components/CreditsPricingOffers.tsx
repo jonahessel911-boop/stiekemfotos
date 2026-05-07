@@ -4,14 +4,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import {
   addCredits,
-  CREDITS_PER_MESSAGE,
-  INITIAL_FREE_CREDITS,
+  CREDITS_PER_PHOTO_UNLOCK,
 } from '@/lib/credits-client';
 
 const PACKAGES = [
-  { id: 'left', credits: 125, priceLabel: '€9,99', title: 'Starter', featured: false },
-  { id: 'middle', credits: 250, priceLabel: '€13,99', title: 'Beste deal', featured: true },
-  { id: 'right', credits: 75, priceLabel: '€5,99', title: 'Mini', featured: false },
+  { id: 'left', credits: 100, priceLabel: '€19,99', title: '1 foto', featured: false },
+  { id: 'middle', credits: 300, priceLabel: '€49,99', title: '3 foto\u2019s', featured: true },
+  { id: 'right', credits: 500, priceLabel: '€74,99', title: '5 foto\u2019s', featured: false },
 ] as const;
 
 type Props = {
@@ -110,11 +109,11 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
     <div className="space-y-5">
       {showIntro ? (
         <p className="text-sm text-gray-600 leading-relaxed">
-          Je eerste <strong>{INITIAL_FREE_CREDITS} credits</strong> waren gratis. Elk bericht dat je
-          stuurt kost <strong>{CREDITS_PER_MESSAGE} credits</strong>. Kies hieronder een pakket om
-          verder te gaan.{' '}
+          Chatten met de vrouwen is <strong>gratis</strong>. Wil je een foto van haar zien? Dat kost{' '}
+          <strong>{CREDITS_PER_PHOTO_UNLOCK} credits per foto</strong>. Kies hieronder een pakket
+          dat bij je past.{' '}
           <span className="font-semibold text-primary">
-            Tijdelijke actie: Beste deal €13,99 met 60% korting.
+            Populair: 3 foto’s voor €49,99.
           </span>
         </p>
       ) : null}
@@ -142,12 +141,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
             {pkg.featured ? (
               <span className="absolute -top-2.5 left-4 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                 <Sparkles className="h-3 w-3" />
-                Beste deal
-              </span>
-            ) : null}
-            {pkg.featured ? (
-              <span className="absolute right-4 top-4 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-                60% korting
+                Populair
               </span>
             ) : null}
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -158,7 +152,9 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
               {pkg.credits.toLocaleString('nl-NL')} credits
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {Math.ceil(pkg.credits / CREDITS_PER_MESSAGE)} berichten
+              {Math.floor(pkg.credits / CREDITS_PER_PHOTO_UNLOCK)} foto
+              {Math.floor(pkg.credits / CREDITS_PER_PHOTO_UNLOCK) === 1 ? '' : '’s'}{' '}
+              ontgrendelen
             </p>
             <button
               type="button"

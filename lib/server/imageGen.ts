@@ -1,7 +1,43 @@
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { saveConversationImage } from "@/lib/server/convImageStore";
 
 const HF_SPACE = "https://mrfakename-z-image-turbo.hf.space";
+
+/**
+ * Snelle development-fallback: download een random fotostreepje
+ * en sla het op als de bijlage bij dit assistent-bericht.
+ *
+ * Productie-image-generatie staat aan via `generateRealisticImage`,
+ * maar voor MVP gebruiken we een placeholder zodat de UX-flow
+ * (foto-vergrendeling, credits, ontgrendelen) instant te testen is.
+ */
+export async function fetchTestPhoto(
+  conversationId: string,
+  messageId: string
+): Promise<string | null> {
+  const seed =
+    `${conversationId}-${messageId}-${Math.random().toString(36).slice(2, 10)}`;
+  const candidates = [
+    `https://picsum.photos/seed/${encodeURIComponent(seed)}/1024/1024`,
+    `https://source.unsplash.com/1024x1024/?portrait,woman&sig=${encodeURIComponent(seed)}`,
+  ];
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, {
+        redirect: "follow",
+        headers: { "User-Agent": "Mozilla/5.0", Accept: "image/*" },
+      });
+      if (!res.ok) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 1024) continue;
+      return await saveConversationImage(conversationId, messageId, buf, "image/jpeg");
+    } catch (err) {
+      console.warn("[testPhoto] fetch failed:", url, err);
+    }
+  }
+  return null;
+}
 
 export type GenerateImageOptions = {
   prompt: string;

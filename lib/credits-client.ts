@@ -12,11 +12,18 @@ export type CreditPurchaseRecord = {
   priceLabel: string;
 };
 
-/** Eén verstuurd bericht (per stuk in een batch) kost dit veel credits. */
-export const CREDITS_PER_MESSAGE = 10;
+/**
+ * Chatten is gratis op het platform. Berichten kosten dus geen credits.
+ * Credits worden alleen ingezet om foto's van vrouwen te ontgrendelen
+ * (1 foto = `CREDITS_PER_PHOTO_UNLOCK`).
+ */
+export const CREDITS_PER_MESSAGE = 0;
 
-/** Startbalans: eerste credits gratis. */
-export const INITIAL_FREE_CREDITS = 100;
+/** Wat een foto van een vrouw ontgrendelen kost. */
+export const CREDITS_PER_PHOTO_UNLOCK = 100;
+
+/** Startbalans bij nieuwe accounts. Chatten is gratis dus geen extra startkrediet. */
+export const INITIAL_FREE_CREDITS = 0;
 
 export function notifyCreditsUpdated() {
   if (typeof window !== "undefined") {
@@ -161,9 +168,22 @@ export function addCredits(amount: number, priceLabel?: string) {
 }
 
 export function spendChatCredit(amount: number = CREDITS_PER_MESSAGE) {
+  if (amount <= 0) return;
   // Now primarily handled server-side via ledger. Local update for immediate UI feedback.
   const current = getCreditsBalanceSync();
   setCreditsBalance(current - amount);
+}
+
+/** Trekt credits af voor het ontgrendelen van een foto (client-side optimistic). */
+export function spendPhotoUnlock(amount: number = CREDITS_PER_PHOTO_UNLOCK) {
+  if (amount <= 0) return;
+  const current = getCreditsBalanceSync();
+  setCreditsBalance(current - amount);
+}
+
+/** True als de gebruiker genoeg saldo heeft om een foto te ontgrendelen. */
+export function canAffordPhotoUnlock(): boolean {
+  return getCreditsBalanceSync() >= CREDITS_PER_PHOTO_UNLOCK;
 }
 
 /** Terugboeken als verzending faalt na een directe (optimistische) aftrek. */
@@ -177,3 +197,7 @@ export function refundChatCredit(amount: number) {
 export function creditsCostForBatchSize(batchLength: number): number {
   return batchLength * CREDITS_PER_MESSAGE;
 }
+
+/** Prijs-label dat we tonen voor het standaardpakket (1 foto). */
+export const PHOTO_PACKAGE_PRICE_LABEL = "€19,99";
+export const PHOTO_PACKAGE_CREDITS = CREDITS_PER_PHOTO_UNLOCK;

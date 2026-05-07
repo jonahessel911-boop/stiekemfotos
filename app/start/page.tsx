@@ -13,14 +13,15 @@ type Step =
   | 'q2'
   | 'q3'
   | 'q4'
+  | 'q5'
   | 'zoekLeeftijd'
   | 'zoekEigenschappen'
   | 'loadingMatches'
   | 'signupForm'
   | 'akkoord';
 
-/** Vier ja/nee-vragen + leeftijdscategorie + eigenschappen */
-const ONBOARDING_VRAAG_TOTAAL = 6;
+/** Vijf ja/nee-vragen + leeftijdscategorie + eigenschappen */
+const ONBOARDING_VRAAG_TOTAAL = 7;
 
 const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   { id: 'q1', tekst: 'Ben je ouder dan 27?' },
@@ -32,12 +33,17 @@ const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   {
     id: 'q3',
     tekst:
-      'Op het platform heb je alleen toegang tot vrouwen die interesse hebben in persoonlijk & fysiek contact. Ben je daar oké mee?',
+      'Op het platform verdienen veel vrouwen bij door pikante & expliciete foto’s te delen met mannen die ze leuk vinden. Ben je daarvan op de hoogte?',
   },
   {
     id: 'q4',
     tekst:
-      'Kun je omgaan met vrouwen die pit hebben? De meeste zijn Oost-Europees.',
+      'Chatten met de vrouwen is helemaal gratis — let wel op: ze zijn vaak heel geil en seksueel ingesteld. Ben je daar oké mee?',
+  },
+  {
+    id: 'q5',
+    tekst:
+      'Vrouwen zullen je berichten sturen om met je in contact te komen. Ben je hier akkoord mee?',
   },
 ];
 
@@ -65,6 +71,7 @@ type Answers = {
   q2: boolean | null;
   q3: boolean | null;
   q4: boolean | null;
+  q5: boolean | null;
 };
 
 function randomMatchCount(): number {
@@ -78,6 +85,7 @@ export default function StartPage() {
     q2: null,
     q3: null,
     q4: null,
+    q5: null,
   });
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [zoekLeeftijdIds, setZoekLeeftijdIds] = useState<Set<string>>(() => new Set());
@@ -143,10 +151,12 @@ export default function StartPage() {
           ? 2
           : step === 'q4'
             ? 3
+            : step === 'q5'
+              ? 4
             : -1;
 
   const answerJaNee = (ja: boolean) => {
-    const keys: (keyof Answers)[] = ['q1', 'q2', 'q3', 'q4'];
+    const keys: (keyof Answers)[] = ['q1', 'q2', 'q3', 'q4', 'q5'];
     const current = keys[qIndex];
     if (!current) return;
     setAnswers((a) => ({ ...a, [current]: ja }));
@@ -281,7 +291,7 @@ export default function StartPage() {
   };
 
   const showVraagVoettekst =
-    step === 'q1' || step === 'q2' || step === 'q3' || step === 'q4';
+    step === 'q1' || step === 'q2' || step === 'q3' || step === 'q4' || step === 'q5';
 
   const zoekLeeftijdSamenvatting = LEEFTIJD_CATEGORIEEN.filter((c) => zoekLeeftijdIds.has(c.id))
     .map((c) => c.label)
@@ -319,7 +329,7 @@ export default function StartPage() {
           </div>
         )}
 
-        {(step === 'q1' || step === 'q2' || step === 'q3' || step === 'q4') && (
+        {(step === 'q1' || step === 'q2' || step === 'q3' || step === 'q4' || step === 'q5') && (
           <div className="w-full space-y-8">
             <div className="flex justify-center">
               <Logo variant="hero" className="scale-90" />
@@ -409,7 +419,7 @@ export default function StartPage() {
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setStep('q4')}
+                onClick={() => setStep('q5')}
                 className="flex-1 py-4 rounded-full border-2 border-gray-300 bg-white font-semibold text-gray-800"
               >
                 Terug
@@ -619,7 +629,7 @@ export default function StartPage() {
                 className="mt-1 w-5 h-5 rounded border-gray-400 text-primary focus:ring-primary"
               />
               <span className="text-sm text-gray-800 leading-relaxed">
-                Ik ga discreet omgaan en respecteer de privacy van de vrouwen.
+                Ik ga discreet om met de vrouwen en respecteer hun privacy.
               </span>
             </label>
             <label className="flex gap-3 items-start cursor-pointer rounded-2xl bg-[var(--surface-card)] p-4 border-2 border-gray-300 shadow-sm">

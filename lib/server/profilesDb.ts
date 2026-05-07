@@ -8,6 +8,9 @@ type DbProfileRow = {
   first_name: string;
   age: number;
   city: string;
+  lengte_cm: number | null;
+  gewicht_kg: number | null;
+  cup_maat: string | null;
   country: string;
   bio: string;
   interests: string[] | null;
@@ -37,6 +40,9 @@ function mapDbProfile(row: DbProfileRow): Profile {
     name: row.first_name,
     age: row.age,
     location: row.city,
+    lengte: row.lengte_cm ?? undefined,
+    gewicht: row.gewicht_kg ?? undefined,
+    cupMaat: row.cup_maat ?? undefined,
     heritage: row.heritage ?? row.country,
     personaStyle: "east_european",
     voiceLanguage: row.voice_language || "ro",
@@ -110,7 +116,7 @@ async function listDbProfilesFromSupabase(limit: number): Promise<Profile[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, age, city, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, is_active"
+      "id, first_name, age, city, lengte_cm, gewicht_kg, cup_maat, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, is_active"
     )
     .eq("is_active", true)
     .order("created_at", { ascending: false })
@@ -140,7 +146,7 @@ export async function getDbProfileById(id: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, age, city, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, is_active"
+      "id, first_name, age, city, lengte_cm, gewicht_kg, cup_maat, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, is_active"
     )
     .eq("id", id)
     .eq("is_active", true)

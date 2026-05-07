@@ -47,7 +47,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} className={poppins.variable}>
       <body
-        className={`${poppins.className} font-sans antialiased text-gray-900 bg-[var(--surface)] min-h-screen`}
+        className={`${poppins.className} min-h-screen overflow-x-hidden bg-[var(--surface)] font-sans text-gray-900 antialiased`}
       >
         <Suspense fallback={null}>
           <TikTokPixel />
@@ -57,7 +57,7 @@ export default async function RootLayout({
         </Suspense>
         <I18nProvider locale={locale} messages={messages}>
           {/* Desktop left sidebar lives in Navbar; offset content accordingly */}
-          <div className="md:pl-56">
+          <div className="lg:pl-60">
             <CreditsPricingProvider>{children}</CreditsPricingProvider>
           </div>
         </I18nProvider>

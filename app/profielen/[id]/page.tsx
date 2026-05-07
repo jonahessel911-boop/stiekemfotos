@@ -153,7 +153,7 @@ export default function ProfielDetailPage() {
   );
 
   return (
-    <div className="flex min-h-[100dvh] min-h-screen flex-col bg-[var(--surface)] pb-28 md:min-h-screen md:pb-10">
+    <div className="flex min-h-[100dvh] min-h-screen flex-col bg-[var(--surface)] pb-28 lg:pb-10">
       <Navbar />
 
       <div className="pointer-events-none fixed right-3 top-14 z-[45] md:hidden">
@@ -163,7 +163,7 @@ export default function ProfielDetailPage() {
       </div>
 
       {/* ——— Mobile: verticale stack, chat vult resterende hoogte ——— */}
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-3 pt-14 md:hidden">
+      <div className="mx-auto flex min-h-0 w-full max-w-screen-xl flex-1 flex-col px-4 pt-14 sm:px-6 lg:hidden">
         <div className="mb-2 shrink-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-conv">
           <button
             type="button"
@@ -254,9 +254,9 @@ export default function ProfielDetailPage() {
       </div>
 
       {/* ——— Desktop: bestaand grid ——— */}
-      <div className="mx-auto hidden max-w-6xl grid-cols-12 gap-6 px-4 py-6 md:grid lg:px-6">
-        <div className="space-y-4 lg:col-span-5">
-          <div className="mx-auto w-full max-w-[112px] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md ring-1 ring-black/5 sm:max-w-[128px] lg:mx-0">
+      <div className="mx-auto hidden w-full max-w-screen-xl grid-cols-1 gap-6 px-4 py-6 lg:grid lg:grid-cols-12 lg:px-8">
+        <div className="col-span-5 space-y-4">
+          <div className="mx-auto w-full max-w-[128px] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md ring-1 ring-black/5 xl:mx-0">
             <img
               src={avatarUrl}
               alt=""
@@ -278,7 +278,7 @@ export default function ProfielDetailPage() {
           </div>
         </div>
 
-        <div className="space-y-6 lg:col-span-7">
+        <div className="col-span-7 space-y-6">
           <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div className="flex items-center gap-2">

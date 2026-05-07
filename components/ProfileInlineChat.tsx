@@ -6,13 +6,6 @@ import { useRouter } from 'next/navigation';
 import type { ChatMessage, Conversation } from '@/lib/types/chat';
 import { sortChatMessagesChronologically } from '@/lib/chat-message-order';
 import { Button } from '@/components/ui/button';
-import {
-  getCreditsBalance,
-  spendChatCredit,
-  refundChatCredit,
-  CREDITS_PER_MESSAGE,
-  creditsCostForBatchSize,
-} from '@/lib/credits-client';
 import { useCreditsPricing } from '@/components/CreditsPricingProvider';
 
 function formatTime(iso: string): string {
@@ -217,17 +210,6 @@ export function ProfileInlineChat({
     const noCredits = opts?.noCredits === true;
     if (!noCredits && !trimmed) return;
 
-    const firstFree = !noCredits && userMessageCount === 0;
-
-    if (!noCredits && !firstFree && getCreditsBalance() < CREDITS_PER_MESSAGE) {
-      void fetch(`/api/conversations/${conversationId}/credit-runout`, {
-        method: 'POST',
-        credentials: 'include',
-      }).catch(() => {});
-      openPricing();
-      return;
-    }
-
     const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const optimisticMsg: ChatMessage = {
       id: optimisticId,
@@ -239,18 +221,6 @@ export function ProfileInlineChat({
     setOptimisticOutgoing((prev) => [...prev, optimisticMsg]);
     setSendingConversationId(conversationId);
     setError(null);
-
-    const shouldCharge = !noCredits && !firstFree;
-    const chargeAmount = creditsCostForBatchSize(1);
-    if (shouldCharge) {
-      spendChatCredit(chargeAmount);
-      if (getCreditsBalance() < CREDITS_PER_MESSAGE) {
-        void fetch(`/api/conversations/${conversationId}/credit-runout`, {
-          method: 'POST',
-          credentials: 'include',
-        }).catch(() => {});
-      }
-    }
 
     try {
       const res = await fetch(`/api/conversations/${conversationId}/messages`, {
@@ -267,17 +237,17 @@ export function ProfileInlineChat({
       if (!res.ok) throw new Error(data.error || 'Versturen mislukt');
 
       if (data.creditWall) {
-        if (shouldCharge) refundChatCredit(chargeAmount);
+        // Op het foto-platform is chatten gratis, dus dit zou niet moeten triggeren.
+        // Toch tonen we credit-prijzen voor het geval het ooit terugkomt.
         openPricing();
         return;
       }
 
-      // Immediately redirect to the full inbox chat after successful send.
-      // The profile inline chat is no longer used for ongoing conversation.
       router.push(`/berichten?chat=${conversationId}`);
     } catch (e) {
-      if (shouldCharge) refundChatCredit(chargeAmount);
-      setOptimisticOutgoing((prev) => prev.filter((m) => m.id !== optimisticId));
+      // Bij trage server-responses kan het bericht al opgeslagen zijn, maar de client timeouten.
+      // Doe een silent refresh en laat optimistic staan zodat het bericht niet verdwijnt.
+      void fetchConv({ silent: true });
       setError(e instanceof Error ? e.message : 'Fout bij versturen');
     } finally {
       setSendingConversationId((prev) => (prev === conversationId ? null : prev));
@@ -395,7 +365,7 @@ export function ProfileInlineChat({
         <div className="sticky bottom-0 z-10 shrink-0 border-t border-gray-100 bg-white/95 px-3 py-3 backdrop-blur-sm transition-conv pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {isFirstUserMessage && threadLenDisplay === 0 ? (
             <p className="mb-2 text-center text-xs font-medium text-primary">
-              Eerste bericht gratis ✨
+              Chatten is gratis ✨
             </p>
           ) : null}
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 sm:flex-row sm:items-stretch">
@@ -419,16 +389,12 @@ export function ProfileInlineChat({
             <div className="relative flex shrink-0 justify-end sm:justify-stretch">
               {sendCostTip && !isFirstUserMessage && (
                 <div className="absolute bottom-full right-0 z-20 mb-1 whitespace-nowrap rounded-lg bg-gray-900 px-2 py-1 text-[10px] font-medium text-white shadow-lg">
-                  {CREDITS_PER_MESSAGE} credits
+                  Chat = gratis
                 </div>
               )}
               <Button
                 type="button"
-                title={
-                  !isFirstUserMessage
-                    ? `${CREDITS_PER_MESSAGE} credits per bericht`
-                    : 'Eerste bericht gratis'
-                }
+                title="Chatten is gratis"
                 className="h-12 min-h-[48px] w-full min-w-[48px] rounded-2xl px-5 sm:h-auto sm:w-auto sm:min-w-[100px]"
                 disabled={sendingHere || !input.trim()}
                 onPointerDown={onSendPointerDown}

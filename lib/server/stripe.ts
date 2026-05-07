@@ -6,13 +6,17 @@ export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.discreetemeisjes.nl";
 
+/**
+ * Credit-pakketten voor het foto-platform.
+ * 1 foto = 100 credits, dus 1 / 3 / 5 foto's.
+ */
 export const CREDIT_PACKAGES: Record<
   CreditPackageId,
   { credits: number; priceEurCents: number; title: string }
 > = {
-  left: { credits: 125, priceEurCents: 999, title: "Starter" },
-  middle: { credits: 250, priceEurCents: 1399, title: "Beste deal" },
-  right: { credits: 75, priceEurCents: 599, title: "Mini" },
+  left: { credits: 100, priceEurCents: 1999, title: "1 foto" },
+  middle: { credits: 300, priceEurCents: 4999, title: "3 foto's" },
+  right: { credits: 500, priceEurCents: 7499, title: "5 foto's" },
 };
 
 let stripeSingleton: Stripe | null = null;
