@@ -38,11 +38,8 @@ export function triggersTrustProofVoiceRequest(message: string): boolean {
   )
     return true;
   if (/\binspreek/.test(t) && /(gewoon |alleen |zeg |)\s*ho+i+/i.test(message)) return true;
-  if (
-    /^(gewoon |alleen |zeg |)\s*ho+i+\s*!?\s*$/i.test(message.trim()) ||
-    /^(alleen maar |)(een )?ho+i+\s*!?\s*$/i.test(message.trim())
-  )
-    return true;
+  /** Alleen met expliciete “zeg hoi”-context; niet op een gewone begroeting “hoi”. */
+  if (/^(gewoon |alleen |zeg |)\s*ho+i+\s*!?\s*$/i.test(message.trim())) return true;
   if (/\b(zeg|doe|stuur) (maar |)(een |)(kort |)(hoi|hey)\b/i.test(t)) return true;
 
   return false;

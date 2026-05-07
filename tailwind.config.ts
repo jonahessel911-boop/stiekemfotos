@@ -10,10 +10,10 @@ const config: Config = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#c6003f",
+          DEFAULT: "#e11d48",
           foreground: "#ffffff",
-          hover: "#a30035",
-          deep: "#7a0028",
+          hover: "#be123c",
+          deep: "#9f1239",
         },
         accent: {
           DEFAULT: "#f97316", // orange for secondary buttons to match BestDates style

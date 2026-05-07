@@ -1,5 +1,11 @@
 import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
-import { readJson, writeJson } from "@/lib/server/store";
+import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
+import {
+  resolveEngagementSlotsForNewUser,
+  type EngagementSlot,
+} from "@/lib/server/engagementSlots";
+import { upsertAppUserToSupabaseUsers } from "@/lib/server/supabaseUserSync";
+import { mergePersonalFacts, type UserPersonalFacts } from "@/lib/user-personal-facts";
 
 const FILE = "users.json";
 
@@ -12,6 +18,35 @@ export type UserRecord = {
   discreetAkkoord: boolean;
   voorwaardenAkkoord: boolean;
   createdAt: string;
+  emailVerifyToken?: string;
+  emailVerifiedAt?: string;
+  /** Voorkeuren uit onboarding (optioneel) */
+  zoekLeeftijdCategorie?: string;
+  zoekEigenschappen?: string[];
+  geschatteMatches?: number;
+  /** Geplande ijsbrekers van 4 profielen over meerdere dagen. */
+  engagementSlots?: EngagementSlot[];
+  /** Eerste echte credit-aankoopmoment (server side marker). */
+  firstCreditPurchaseAt?: string;
+  /** Laatste actieve moment in de app (voor offline e-mail triggers). */
+  lastSeenAt?: string;
+  /**
+   * Laatste “inbox”-notificatie (offline nieuw bericht / cadeau-mail).
+   * Max. 1 per uur; los van verificatie- en wachtwoordmails.
+   */
+  lastInboxNotificationEmailAt?: string;
+  reactionNudges?: ReactionNudge[];
+  passwordResetToken?: string;
+  passwordResetExpiresAt?: string;
+  /** Live extracted user facts from chats (relationship, kids, work, birthday, ...). */
+  personalFacts?: UserPersonalFacts;
+};
+
+export type ReactionNudge = {
+  profileId: string;
+  source: "profile_like" | "post_like";
+  fireAt: string;
+  sentAt?: string;
 };
 
 function hashPassword(password: string): string {
@@ -34,21 +69,27 @@ export function verifyPassword(password: string, stored: string): boolean {
   }
 }
 
-function load(): UserRecord[] {
-  return readJson<UserRecord[]>(FILE, []);
+async function load(): Promise<UserRecord[]> {
+  return readJsonBlob<UserRecord[]>(FILE, []);
 }
 
-function save(list: UserRecord[]) {
-  writeJson(FILE, list);
+async function save(list: UserRecord[]): Promise<void> {
+  await writeJsonBlob(FILE, list);
 }
 
-export function findUserByEmail(email: string): UserRecord | null {
+export async function listUsers(): Promise<UserRecord[]> {
+  return load();
+}
+
+export async function findUserByEmail(email: string): Promise<UserRecord | null> {
   const e = email.trim().toLowerCase();
-  return load().find((u) => u.email === e) ?? null;
+  const list = await load();
+  return list.find((u) => u.email === e) ?? null;
 }
 
-export function findUserById(id: string): UserRecord | null {
-  return load().find((u) => u.id === id) ?? null;
+export async function findUserById(id: string): Promise<UserRecord | null> {
+  const list = await load();
+  return list.find((u) => u.id === id) ?? null;
 }
 
 export type CreateUserInput = {
@@ -58,13 +99,17 @@ export type CreateUserInput = {
   password: string;
   discreetAkkoord: boolean;
   voorwaardenAkkoord: boolean;
+  zoekLeeftijdCategorie?: string;
+  zoekEigenschappen?: string[];
+  geschatteMatches?: number;
 };
 
-export function createUser(input: CreateUserInput): UserRecord {
+export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   const email = input.email.trim().toLowerCase();
-  if (findUserByEmail(email)) {
+  if (await findUserByEmail(email)) {
     throw new Error("Dit e-mailadres is al geregistreerd. Log in.");
   }
+  const createdAt = new Date().toISOString();
   const user: UserRecord = {
     id: randomUUID(),
     email,
@@ -73,11 +118,22 @@ export function createUser(input: CreateUserInput): UserRecord {
     passwordHash: hashPassword(input.password),
     discreetAkkoord: input.discreetAkkoord,
     voorwaardenAkkoord: input.voorwaardenAkkoord,
-    createdAt: new Date().toISOString(),
+    createdAt,
+    emailVerifyToken: randomUUID(),
+    engagementSlots: await resolveEngagementSlotsForNewUser(createdAt),
+    ...(input.zoekLeeftijdCategorie
+      ? { zoekLeeftijdCategorie: input.zoekLeeftijdCategorie }
+      : {}),
+    ...(input.zoekEigenschappen?.length
+      ? { zoekEigenschappen: input.zoekEigenschappen }
+      : {}),
+    ...(typeof input.geschatteMatches === "number"
+      ? { geschatteMatches: input.geschatteMatches }
+      : {}),
   };
-  const list = load();
+  const list = await load();
   list.push(user);
-  save(list);
+  await save(list);
   return user;
 }
 
@@ -88,5 +144,235 @@ export function toPublicUser(u: UserRecord) {
     naam: u.naam,
     leeftijd: u.leeftijd,
     createdAt: u.createdAt,
+    emailVerified: Boolean(u.emailVerifiedAt),
+    hasCreditPurchase: Boolean(u.firstCreditPurchaseAt),
   };
+}
+
+export async function verifyUserEmailByToken(token: string): Promise<UserRecord | null> {
+  const t = token.trim();
+  if (!t) return null;
+  const list = await load();
+  const i = list.findIndex((u) => u.emailVerifyToken === t);
+  if (i === -1) return null;
+  const user = list[i]!;
+  if (user.emailVerifiedAt) return user;
+  const next = {
+    ...user,
+    emailVerifiedAt: new Date().toISOString(),
+    emailVerifyToken: undefined,
+  };
+  list[i] = next;
+  await save(list);
+  return next;
+}
+
+export async function ensureUserEmailVerifyToken(userId: string): Promise<string | null> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return null;
+  const user = list[i]!;
+  if (user.emailVerifiedAt) return null;
+  const token = user.emailVerifyToken?.trim() || randomUUID();
+  if (user.emailVerifyToken !== token) {
+    list[i] = { ...user, emailVerifyToken: token };
+    await save(list);
+  }
+  return token;
+}
+
+export async function updateUserEmailForVerification(
+  userId: string,
+  nextEmailRaw: string
+): Promise<{ ok: true; token: string } | { ok: false; reason: string }> {
+  const nextEmail = nextEmailRaw.trim().toLowerCase();
+  if (!nextEmail) return { ok: false, reason: "E-mail is verplicht." };
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail);
+  if (!emailOk) return { ok: false, reason: "Vul een geldig e-mailadres in." };
+
+  const list = await load();
+  const userIndex = list.findIndex((u) => u.id === userId);
+  if (userIndex === -1) return { ok: false, reason: "Gebruiker niet gevonden." };
+
+  const duplicate = list.find((u) => u.email === nextEmail && u.id !== userId);
+  if (duplicate) {
+    return { ok: false, reason: "Dit e-mailadres is al in gebruik." };
+  }
+
+  const user = list[userIndex]!;
+  if (user.emailVerifiedAt) {
+    return { ok: false, reason: "E-mail is al geverifieerd." };
+  }
+
+  const token = randomUUID();
+  list[userIndex] = {
+    ...user,
+    email: nextEmail,
+    emailVerifyToken: token,
+    emailVerifiedAt: undefined,
+  };
+  await save(list);
+  return { ok: true, token };
+}
+
+export async function isUserEmailVerified(userId: string): Promise<boolean> {
+  const user = await findUserById(userId);
+  if (!user) return false;
+  return Boolean(user.emailVerifiedAt) || !user.emailVerifyToken;
+}
+
+export async function updateUserEngagementSlots(
+  userId: string,
+  slots: EngagementSlot[]
+): Promise<void> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return;
+  list[i] = { ...list[i]!, engagementSlots: slots };
+  await save(list);
+}
+
+export async function updateUserReactionNudges(
+  userId: string,
+  nudges: ReactionNudge[]
+): Promise<void> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return;
+  list[i] = { ...list[i]!, reactionNudges: nudges };
+  await save(list);
+}
+
+export async function markCreditPurchase(userId: string): Promise<boolean> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return false;
+  const u = list[i]!;
+  if (u.firstCreditPurchaseAt) return false;
+  list[i] = { ...u, firstCreditPurchaseAt: new Date().toISOString() };
+  await save(list);
+  return true;
+}
+
+/** Minimale interval tussen lastSeenAt-writes om Supabase blob I/O te beperken. */
+const TOUCH_SEEN_MIN_MS = 120_000;
+
+export async function touchUserSeen(userId: string): Promise<void> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return;
+  const prev = list[i]!.lastSeenAt;
+  if (prev) {
+    const delta = Date.now() - new Date(prev).getTime();
+    if (delta >= 0 && delta < TOUCH_SEEN_MIN_MS) return;
+  }
+  list[i] = { ...list[i]!, lastSeenAt: new Date().toISOString() };
+  await save(list);
+}
+
+/** Offline nieuw-bericht / cadeau-mail: niet vaker dan 1× per uur per account. */
+export const INBOX_NOTIFICATION_EMAIL_MIN_INTERVAL_MS = 60 * 60 * 1000;
+
+export function canSendInboxNotificationEmail(user: UserRecord | null): boolean {
+  if (!user?.email) return false;
+  const last = user.lastInboxNotificationEmailAt;
+  if (!last) return true;
+  return Date.now() - new Date(last).getTime() >= INBOX_NOTIFICATION_EMAIL_MIN_INTERVAL_MS;
+}
+
+export async function touchLastInboxNotificationEmail(userId: string): Promise<void> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return;
+  list[i] = {
+    ...list[i]!,
+    lastInboxNotificationEmailAt: new Date().toISOString(),
+  };
+  await save(list);
+}
+
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+
+export type PasswordResetRequestResult = {
+  token: string;
+  email: string;
+  naam: string;
+};
+
+/** Maakt reset-token aan. Retourneert null als e-mail niet bestaat. */
+export async function createPasswordResetRequest(
+  emailRaw: string
+): Promise<PasswordResetRequestResult | null> {
+  const email = emailRaw.trim().toLowerCase();
+  if (!email) return null;
+  const user = await findUserByEmail(email);
+  if (!user) return null;
+  const token = randomUUID();
+  const expires = new Date(Date.now() + PASSWORD_RESET_TTL_MS).toISOString();
+  const list = await load();
+  const i = list.findIndex((u) => u.id === user.id);
+  if (i === -1) return null;
+  list[i] = {
+    ...list[i]!,
+    passwordResetToken: token,
+    passwordResetExpiresAt: expires,
+  };
+  await save(list);
+  return { token, email: user.email, naam: user.naam };
+}
+
+export async function completePasswordReset(
+  tokenRaw: string,
+  newPassword: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const token = tokenRaw.trim();
+  if (!token) return { ok: false, error: "Ongeldige link." };
+  if (newPassword.length < 8) {
+    return { ok: false, error: "Kies een wachtwoord van minimaal 8 tekens." };
+  }
+  const list = await load();
+  const i = list.findIndex((u) => u.passwordResetToken === token);
+  if (i === -1) {
+    return { ok: false, error: "Ongeldige of verlopen link. Vraag een nieuwe aan." };
+  }
+  const user = list[i]!;
+  const exp = user.passwordResetExpiresAt
+    ? new Date(user.passwordResetExpiresAt).getTime()
+    : 0;
+  if (!exp || Date.now() > exp) {
+    list[i] = {
+      ...user,
+      passwordResetToken: undefined,
+      passwordResetExpiresAt: undefined,
+    };
+    await save(list);
+    return { ok: false, error: "Deze link is verlopen. Vraag een nieuwe aan." };
+  }
+  const passwordHash = hashPassword(newPassword);
+  list[i] = {
+    ...user,
+    passwordHash,
+    passwordResetToken: undefined,
+    passwordResetExpiresAt: undefined,
+  };
+  await save(list);
+  await upsertAppUserToSupabaseUsers(list[i]!);
+  return { ok: true };
+}
+
+export async function updateUserPersonalFacts(
+  userId: string,
+  patch: Partial<UserPersonalFacts>
+): Promise<UserRecord | null> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return null;
+  const current = list[i]!;
+  const merged = mergePersonalFacts(current.personalFacts, patch);
+  if (!merged) return current;
+  const next: UserRecord = { ...current, personalFacts: merged };
+  list[i] = next;
+  await save(list);
+  await upsertAppUserToSupabaseUsers(next);
+  return next;
 }

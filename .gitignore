@@ -34,3 +34,4 @@ yarn-error.log*
 /data/onboarding-signups.json
 /data/users.json
 /data/conv-images/
+.vercel

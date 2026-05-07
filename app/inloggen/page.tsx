@@ -1,15 +1,25 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Navbar from '@/components/Navbar';
 import Logo from '@/components/Logo';
 import { setStoredUser } from '@/lib/onboarding-client';
 import Link from 'next/link';
 
 export default function InloggenPage() {
+  const getQueryParam = (key: string) => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get(key)?.trim() ?? '';
+  };
+  const getNextUrl = () => {
+    if (typeof window === 'undefined') return '/nieuwsfeed';
+    const raw = new URLSearchParams(window.location.search).get('next')?.trim();
+    if (!raw || !raw.startsWith('/')) return '/nieuwsfeed';
+    return raw;
+  };
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -17,8 +27,21 @@ export default function InloggenPage() {
     (async () => {
       const r = await fetch('/api/auth/me', { credentials: 'include' });
       const d = (await r.json()) as { user?: { naam: string; email: string; leeftijd: number } };
-      if (!cancel && d.user) window.location.replace('/nieuwsfeed');
+      if (!cancel && d.user) window.location.replace(getNextUrl());
     })();
+    const verifyPending = getQueryParam('verify_pending') === '1';
+    const verified = getQueryParam('verified');
+    const prefEmail = getQueryParam('email');
+    if (prefEmail) setEmail(prefEmail);
+    if (verifyPending) {
+      setNotice(
+        'Je hebt een e-mail ontvangen die je moet bevestigen om de discreete meisjes te zien.'
+      );
+    } else if (verified === '1') {
+      setNotice('Je e-mail is bevestigd. Je kunt nu inloggen.');
+    } else if (verified === '0') {
+      setError('Verificatielink ongeldig of verlopen. Vraag een nieuwe e-mail aan.');
+    }
     return () => {
       cancel = true;
     };
@@ -37,11 +60,15 @@ export default function InloggenPage() {
       });
       const data = (await res.json()) as {
         error?: string;
-        user?: { naam: string; email: string; leeftijd: number; createdAt: string };
+        user?: { id: string; naam: string; email: string; leeftijd: number; createdAt: string };
+        needsEmailVerification?: boolean;
       };
-      if (!res.ok) throw new Error(data.error || 'Inloggen mislukt');
+      if (!res.ok) {
+        throw new Error(data.error || 'Inloggen mislukt');
+      }
       if (data.user) {
         setStoredUser({
+          id: data.user.id,
           naam: data.user.naam,
           email: data.user.email,
           leeftijd: data.user.leeftijd,
@@ -51,7 +78,7 @@ export default function InloggenPage() {
         });
       }
       /** Volledige document-load voorkomt ontbrekende CSS na client-only navigatie (Next 15). */
-      window.location.assign('/nieuwsfeed');
+      window.location.assign(getNextUrl());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fout');
     } finally {
@@ -61,8 +88,7 @@ export default function InloggenPage() {
 
   return (
     <div className="min-h-screen bg-[var(--surface)] pb-24">
-      <Navbar />
-      <div className="pt-24 max-w-md mx-auto px-4">
+      <div className="pt-10 max-w-md mx-auto px-4">
         <div className="flex justify-center mb-6">
           <Logo variant="hero" className="scale-90" />
         </div>
@@ -71,6 +97,11 @@ export default function InloggenPage() {
           Gebruik het e-mailadres en wachtwoord van je account.
         </p>
         <form onSubmit={submit} className="space-y-4 bg-[var(--surface-card)] rounded-2xl border border-gray-200 p-6 shadow-sm">
+          {notice && (
+            <p className="text-sm text-blue-700 bg-blue-50 rounded-xl px-4 py-2 border border-blue-100">
+              {notice}
+            </p>
+          )}
           {error && (
             <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2 border border-red-100">
               {error}
@@ -98,6 +129,11 @@ export default function InloggenPage() {
               className="mt-1.5 w-full rounded-xl border border-gray-200 px-4 py-3 text-[16px]"
             />
           </label>
+          <p className="text-right text-sm">
+            <Link href="/wachtwoord-vergeten" className="text-primary font-semibold underline">
+              Wachtwoord vergeten?
+            </Link>
+          </p>
           <button
             type="submit"
             disabled={busy}

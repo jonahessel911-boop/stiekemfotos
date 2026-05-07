@@ -3,13 +3,16 @@ export { allProfiles as mockProfiles } from "@/lib/profiles";
 
 export interface Post {
   id: string;
+  /** Profiel-UUID of statisch id voor deep links + engagement. */
+  profileId: string;
   user: {
     name: string;
     avatar: string;
     age: number;
     location: string;
   };
-  image: string;
+  /** Optioneel: grote post-afbeelding (nieuwsfeed gebruikt alleen avatar). */
+  image?: string;
   caption: string;
   likes: number;
   liked: boolean;

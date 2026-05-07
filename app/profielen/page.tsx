@@ -3,44 +3,42 @@
 import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { mockProfiles } from '@/lib/mockData';
-import { Heart, MapPin, Users, Camera, Video } from 'lucide-react';
+import type { Profile } from '@/lib/types/profile';
+import { Heart, Users, Camera, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useCreditsPricing } from '@/components/CreditsPricingProvider';
-import { getCreditsBalance, CREDITS_PER_MESSAGE } from '@/lib/credits-client';
+import { profilePhotoSrc } from '@/lib/profile-image-url';
+import { isProfileDisplayedOnline } from '@/lib/profile-display-online';
 
 export default function ProfielenPage() {
-  const router = useRouter();
-  const { openPricing } = useCreditsPricing();
   const [activeTab, setActiveTab] = useState<'all' | 'online' | 'following'>('all');
   const [likedProfiles, setLikedProfiles] = useState<string[]>([]);
-  const [starting, setStarting] = useState<string | null>(null);
-
-  const startChat = async (profileId: string) => {
-    if (getCreditsBalance() < CREDITS_PER_MESSAGE) {
-      openPricing();
-      return;
-    }
-    setStarting(profileId);
-    try {
-      const res = await fetch('/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      router.push(`/berichten?chat=${data.conversation.id}`);
-    } catch {
-      alert('Chat starten mislukt.');
-    } finally {
-      setStarting(null);
-    }
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  React.useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/profiles', { credentials: 'include' });
+        const data = (await res.json()) as { profiles?: Profile[] };
+        if (!cancel && Array.isArray(data.profiles)) {
+          setProfiles(data.profiles);
+        }
+      } catch {
+        if (!cancel) setProfiles([]);
+      } finally {
+        if (!cancel) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+  const redirectToLogin = () => {
+    window.location.assign('/inloggen?next=%2Fprofielen');
   };
 
-  const filteredProfiles = mockProfiles.filter(profile => {
-    if (activeTab === 'online') return profile.isOnline;
+  const filteredProfiles = profiles.filter((profile) => {
+    if (activeTab === 'online') return isProfileDisplayedOnline(profile.id);
     return true;
   });
 
@@ -49,6 +47,14 @@ export default function ProfielenPage() {
       setLikedProfiles(likedProfiles.filter(p => p !== id));
     } else {
       setLikedProfiles([...likedProfiles, id]);
+      void fetch('/api/engagement/like', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: id, source: 'profile_like' }),
+      }).catch(() => {
+        /* best effort */
+      });
     }
   };
 
@@ -58,84 +64,96 @@ export default function ProfielenPage() {
 
       <div className="pt-12 sm:pt-14 md:pt-20 max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
         {/* Header with Tabs - exact BestDates style */}
-        <div className="flex items-center justify-between mb-10">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight text-gray-900">Profielen</h1>
-            <p className="text-gray-500 mt-1">Ontdek nieuwe connecties</p>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">Profielen</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Ontdek nieuwe connecties</p>
           </div>
           
-          <Button variant="outline" className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="flex items-center gap-2 shrink-0">
             <Users className="w-4 h-4" />
             Filters
           </Button>
         </div>
 
         {/* Sub-tabs */}
-        <div className="flex border-b border-gray-200 mb-10">
+        <div className="flex border-b border-gray-200 mb-6">
           <button 
             onClick={() => setActiveTab('all')}
-            className={`px-10 py-4 font-medium text-lg transition-all border-b-2 ${activeTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            className={`px-5 py-2.5 text-sm font-medium transition-all border-b-2 sm:px-8 sm:py-3 sm:text-base ${activeTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             Alle
           </button>
           <button 
             onClick={() => setActiveTab('online')}
-            className={`px-10 py-4 font-medium text-lg transition-all border-b-2 ${activeTab === 'online' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            className={`px-5 py-2.5 text-sm font-medium transition-all border-b-2 sm:px-8 sm:py-3 sm:text-base ${activeTab === 'online' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             Online
           </button>
           <button 
             onClick={() => setActiveTab('following')}
-            className={`px-10 py-4 font-medium text-lg transition-all border-b-2 ${activeTab === 'following' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            className={`px-5 py-2.5 text-sm font-medium transition-all border-b-2 sm:px-8 sm:py-3 sm:text-base ${activeTab === 'following' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             Volgend
           </button>
         </div>
 
-        {/* Profile Grid - pixel-perfect to BestDates screenshots */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredProfiles.map((profile) => (
+        {/* Compact grid: meer kolommen = kleinere kaarten */}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          {!loaded ? (
+            <div className="col-span-full rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500">
+              Profielen laden…
+            </div>
+          ) : filteredProfiles.length === 0 ? (
+            <div className="col-span-full rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-600">
+              Nog geen profielen beschikbaar.
+            </div>
+          ) : (
+            filteredProfiles.map((profile) => (
             <div 
               key={profile.id}
-              className="group bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-2xl transition-all duration-200 cursor-pointer"
+              className="group flex flex-col bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
             >
-              <div className="relative overflow-hidden">
+              <div className="relative aspect-[4/5] max-h-[118px] w-full overflow-hidden sm:max-h-[128px]">
                 <img
-                  src={profile.photo}
+                  src={profilePhotoSrc(profile.photo, { widthCss: 280, heightCss: 350 })}
                   alt={profile.name}
-                  className="w-full h-40 sm:h-44 md:h-40 object-cover object-top"
+                  width={280}
+                  height={350}
+                  className="h-full w-full object-cover object-top"
+                  loading="lazy"
+                  decoding="async"
                 />
                 
-                {/* Heart - exact top-right position like BestDates */}
                 <button 
                   onClick={(e) => { e.stopPropagation(); toggleLike(profile.id); }}
-                  className="absolute top-4 right-4 w-9 h-9 bg-white rounded-2xl flex items-center justify-center shadow-md hover:scale-110 transition-all z-10"
+                  className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-xl bg-white shadow-md transition-all hover:scale-105 z-10 sm:h-8 sm:w-8 sm:rounded-2xl"
                 >
                   <Heart 
-                    className={`w-5 h-5 transition-all ${likedProfiles.includes(profile.id) 
+                    className={`h-3.5 w-3.5 transition-all sm:h-4 sm:w-4 ${likedProfiles.includes(profile.id) 
                       ? 'fill-[#ff3b5c] text-[#ff3b5c]' 
                       : 'text-gray-400 group-hover:text-gray-600'}`} 
                   />
                 </button>
 
-                {/* Online dot */}
-                {profile.isOnline && (
-                  <div className="absolute bottom-4 left-4 flex items-center gap-1.5 bg-white text-emerald-500 text-[10px] font-medium px-2.5 py-px rounded-full shadow">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full ring-2 ring-white"></div>
+                {isProfileDisplayedOnline(profile.id) ? (
+                  <div
+                    className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 shadow-md ring-1 ring-emerald-500/30"
+                    title="Online"
+                  >
+                    <span className="online-dot-pulse h-3 w-3 rounded-full bg-emerald-500" />
                   </div>
-                )}
+                ) : null}
                 
-                {/* Photo + video counts */}
-                <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
-                  <div />
-                  <div className="flex gap-2">
-                    <span className="bg-black/75 text-white text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
-                      <Camera className="w-3.5 h-3.5" />
+                <div className="absolute bottom-2 left-2 right-2 flex justify-end items-end pointer-events-none">
+                  <div className="flex gap-1 pointer-events-auto">
+                    <span className="bg-black/75 text-white text-[10px] px-1.5 py-0.5 rounded-md flex items-center gap-0.5 font-medium sm:text-xs sm:px-2 sm:py-1 sm:rounded-lg">
+                      <Camera className="h-3 w-3 sm:w-3.5 sm:h-3.5" />
                       {profile.photosCount}
                     </span>
                     {profile.videoCount != null && profile.videoCount > 0 ? (
-                      <span className="bg-black/75 text-white text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
-                        <Video className="w-3.5 h-3.5" />
+                      <span className="bg-black/75 text-white text-[10px] px-1.5 py-0.5 rounded-md flex items-center gap-0.5 font-medium sm:text-xs sm:px-2 sm:py-1 sm:rounded-lg">
+                        <Video className="h-3 w-3 sm:w-3.5 sm:h-3.5" />
                         {profile.videoCount}
                       </span>
                     ) : null}
@@ -143,38 +161,25 @@ export default function ProfielenPage() {
                 </div>
               </div>
               
-              <div className="px-5 pt-5 pb-6">
-                <div className="flex items-baseline gap-2 mb-1">
-                  <div className="font-bold text-2xl text-gray-900">{profile.name}</div>
-                  <div className="text-xl text-gray-400">,</div>
-                  <div className="text-2xl font-semibold text-gray-900">{profile.age}</div>
+              <div className="flex flex-1 flex-col px-3 pt-2.5 pb-3 sm:px-3.5 sm:pt-3 sm:pb-3.5">
+                <div className="mb-1.5 flex flex-wrap items-baseline gap-x-1 leading-tight">
+                  <span className="font-bold text-[15px] text-gray-900 sm:text-base">{profile.name}</span>
+                  <span className="text-gray-400 text-sm">,</span>
+                  <span className="font-semibold text-[15px] text-gray-900 sm:text-base">{profile.age}</span>
                 </div>
                 
-                <div className="flex items-center text-sm text-gray-500 mb-5">
-                  <MapPin className="w-4 h-4 mr-1" />
-                  {profile.location}
-                </div>
-                
-                <div className="flex flex-col gap-2">
+                <div className="mt-auto">
                   <Link
                     href={`/profielen/${profile.id}`}
-                    className="w-full text-center py-3 rounded-2xl border-2 border-primary text-primary font-bold text-sm hover:bg-primary/5"
+                    className="flex min-h-[44px] w-full items-center justify-center rounded-xl bg-gray-900 py-2.5 text-center text-xs font-bold text-white shadow-sm transition-colors hover:bg-gray-800 sm:min-h-[48px] sm:rounded-2xl sm:text-sm"
                   >
                     Bekijk profiel
                   </Link>
-                  <Button
-                    type="button"
-                    variant="default"
-                    className="w-full h-12 text-base font-bold rounded-2xl shadow-sm"
-                    onClick={() => startChat(profile.id)}
-                    disabled={starting === profile.id}
-                  >
-                    {starting === profile.id ? '…' : 'Start gesprek'}
-                  </Button>
                 </div>
               </div>
             </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

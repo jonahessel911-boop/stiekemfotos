@@ -3,37 +3,43 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Logo from './Logo';
-import { Home, MessageCircle, Users, CreditCard, Bell } from 'lucide-react';
+import { Home, MessageCircle, Users, CreditCard, Bell, LogOut } from 'lucide-react';
 import { clearStoredUser, getStoredUser } from '@/lib/onboarding-client';
+import { useI18n } from '@/components/I18nProvider';
 
 const navItems = [
-  { icon: Home, label: 'Nieuwsfeed', href: '/nieuwsfeed' },
-  { icon: MessageCircle, label: 'Berichten', href: '/berichten' },
-  { icon: Users, label: 'Profielen', href: '/profielen' },
-  { icon: CreditCard, label: 'Credits', href: '/credits' },
-];
+  { icon: Home, key: 'feed', href: '/nieuwsfeed' },
+  { icon: MessageCircle, key: 'messages', href: '/berichten' },
+  { icon: Users, key: 'profiles', href: '/profielen' },
+  { icon: CreditCard, key: 'credits', href: '/credits' },
+] as const;
 
-function labelForPathname(pathname: string): string | null {
-  if (pathname === '/' || pathname.startsWith('/nieuwsfeed')) return 'Nieuwsfeed';
-  if (pathname.startsWith('/berichten')) return 'Berichten';
-  if (pathname.startsWith('/profielen')) return 'Profielen';
-  if (pathname.startsWith('/credits')) return 'Credits';
+type NavKey = (typeof navItems)[number]['key'];
+
+function keyForPathname(pathname: string): NavKey | null {
+  if (pathname === '/' || pathname.startsWith('/nieuwsfeed')) return 'feed';
+  if (pathname.startsWith('/berichten')) return 'messages';
+  if (pathname.startsWith('/profielen')) return 'profiles';
+  if (pathname.startsWith('/credits')) return 'credits';
   return null;
 }
 
-const MOBILE_TAB_SHORT: Record<string, string> = {
-  Nieuwsfeed: 'Feed',
-  Berichten: 'Chat',
-  Profielen: 'Profielen',
-  Credits: 'Credits',
+const MOBILE_TAB_SHORT: Record<NavKey, string> = {
+  feed: 'Feed',
+  messages: 'Chat',
+  profiles: 'Profiles',
+  credits: 'Credits',
 };
 
 export default function Navbar() {
+  const { t, locale } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
-  const [activeItem, setActiveItem] = useState(() => labelForPathname(pathname) ?? 'Nieuwsfeed');
-  const [naamKort, setNaamKort] = useState('Gast');
-  const [initial, setInitial] = useState('G');
+  const stored = getStoredUser();
+  const storedShortName = stored?.naam?.trim().split(/\s+/)[0] ?? '';
+  const [activeItem, setActiveItem] = useState<NavKey>(() => keyForPathname(pathname) ?? 'feed');
+  const [naamKort, setNaamKort] = useState(storedShortName);
+  const [initial, setInitial] = useState(storedShortName.charAt(0).toUpperCase());
 
   useEffect(() => {
     let cancel = false;
@@ -50,10 +56,12 @@ export default function Navbar() {
         /* fallback local */
       }
       if (cancel) return;
+      // Geen "Gast"-fallback; toon alleen echte gebruikersnaam als die bekend is.
       const u = getStoredUser();
       if (u?.naam) {
-        setNaamKort(u.naam.split(/\s+/)[0] ?? u.naam);
-        setInitial(u.naam.charAt(0).toUpperCase());
+        const short = u.naam.split(/\s+/)[0] ?? u.naam;
+        setNaamKort(short);
+        setInitial(short.charAt(0).toUpperCase());
       }
     })();
     return () => {
@@ -62,37 +70,38 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
-    const label = labelForPathname(pathname);
-    if (label) setActiveItem(label);
+    const key = keyForPathname(pathname);
+    if (key) setActiveItem(key);
   }, [pathname]);
 
   const mobileBar = (
     <div
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t border-gray-200/90 bg-[var(--surface-card)]/95 backdrop-blur-md pb-[env(safe-area-inset-bottom,0px)]"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(190,18,60,0.35)]"
       role="navigation"
       aria-label="Hoofdmenu mobiel"
     >
-      <div className="flex max-w-7xl mx-auto items-stretch justify-between gap-0.5 px-1 pt-1">
+      <div className="mx-auto flex max-w-7xl items-stretch justify-between gap-0.5 px-1 pt-1">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = activeItem === item.label;
-          const short = MOBILE_TAB_SHORT[item.label] ?? item.label;
+          const isActive = activeItem === item.key;
+          const short =
+            locale === 'nl'
+              ? (MOBILE_TAB_SHORT[item.key] ?? t(`nav.${item.key}`))
+              : t(`nav.${item.key}`);
           return (
             <a
-              key={item.label}
+              key={item.key}
               href={item.href}
-              onClick={() => setActiveItem(item.label)}
-              className={`flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-colors active:scale-[0.98] ${
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-gray-600 active:bg-gray-100'
+              onClick={() => setActiveItem(item.key)}
+              className={`flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-white transition-colors active:scale-[0.98] ${
+                isActive ? 'bg-white/20 text-white' : 'text-white active:bg-white/10'
               }`}
             >
               <Icon
-                className={`h-7 w-7 shrink-0 ${isActive ? 'text-primary' : 'text-gray-500'}`}
-                strokeWidth={isActive ? 2.25 : 2}
+                className="h-7 w-7 shrink-0 text-white"
+                strokeWidth={isActive ? 2.35 : 2}
               />
-              <span className="max-w-full truncate text-[10px] font-semibold leading-tight">
+              <span className="max-w-full truncate text-[10px] font-semibold leading-tight text-white">
                 {short}
               </span>
             </a>
@@ -104,21 +113,59 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 bg-[var(--surface-card)] border-b border-gray-200/80 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-8 h-12 sm:h-14 md:h-16 flex items-center justify-between gap-2">
-          <div className="flex items-center min-w-0 flex-1 md:flex-initial">
-            <Logo className="max-md:max-w-[min(100%,calc(100vw-8.5rem))]" />
+      {/* Desktop left navigation */}
+      <aside className="hidden md:flex fixed left-0 top-12 sm:top-14 md:top-16 bottom-0 w-56 border-r border-gray-200/80 bg-[var(--surface-card)] z-40">
+        <div className="flex min-h-0 flex-1 flex-col p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2 py-2">
+            menu
           </div>
-
-          <div className="hidden md:flex items-center gap-6 lg:gap-8 text-sm font-medium">
+          <nav className="flex flex-col gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = activeItem === item.label;
+              const isActive = activeItem === item.key;
               return (
                 <a
-                  key={item.label}
+                  key={item.key}
                   href={item.href}
-                  onClick={() => setActiveItem(item.label)}
+                  onClick={() => setActiveItem(item.key)}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    isActive
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <Icon className={`h-5 w-5 ${isActive ? 'text-primary' : 'text-gray-500'}`} />
+                  <span className="truncate">{t(`nav.${item.key}`)}</span>
+                </a>
+              );
+            })}
+          </nav>
+          <div className="mt-auto px-2 py-3 text-[11px] text-gray-500">
+            {naamKort ? (
+              <span className="truncate">ingelogd als {naamKort}</span>
+            ) : (
+              <span className="truncate">...</span>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      <nav className="fixed top-0 left-0 right-0 bg-[var(--surface-card)] border-b border-gray-200/80 z-50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-8 h-12 sm:h-14 md:h-16 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center pr-1 md:flex-initial md:pr-0">
+            <Logo />
+          </div>
+
+          {/* Desktop menu moved to left sidebar */}
+          <div className="hidden md:flex items-center gap-6 lg:gap-8 text-sm font-medium opacity-0 pointer-events-none">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeItem === item.key;
+              return (
+                <a
+                  key={item.key}
+                  href={item.href}
+                  onClick={() => setActiveItem(item.key)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all hover:bg-gray-100 group ${
                     isActive
                       ? 'text-primary border-b-2 border-primary -mb-px'
@@ -126,29 +173,32 @@ export default function Navbar() {
                   }`}
                 >
                   <Icon className={`w-5 h-5 ${isActive ? 'text-primary' : 'group-hover:text-primary'}`} />
-                  <span className="hidden lg:inline">{item.label}</span>
+                  <span className="hidden lg:inline">{t(`nav.${item.key}`)}</span>
                 </a>
               );
             })}
           </div>
 
-          <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-6">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-2 md:gap-6">
             <button
               type="button"
-              className="text-gray-500 hover:text-gray-700 transition-colors rounded-xl p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center md:p-2 md:min-h-0 md:min-w-0"
-              aria-label="Meldingen"
+              className="relative flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:min-h-[44px] sm:min-w-[44px] md:min-h-0 md:min-w-0 md:p-2"
+              aria-label={t('common.notifications')}
             >
-              <Bell className="w-5 h-5 md:w-5 md:h-5" />
+              <Bell className="h-[1.125rem] w-[1.125rem] sm:h-5 sm:w-5" />
+              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary sm:right-1.5 sm:top-1.5 sm:h-2 sm:w-2" />
             </button>
 
-            <div className="flex items-center gap-1 sm:gap-2">
-              <div className="flex items-center gap-2 cursor-default group">
-                <div className="w-9 h-9 sm:w-8 sm:h-8 bg-primary text-white text-xs font-bold rounded-2xl flex items-center justify-center ring-2 ring-white shadow shrink-0">
-                  {initial}
+            <div className="flex items-center gap-0.5 sm:gap-2">
+              <div className="group flex cursor-default items-center gap-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-primary text-[11px] font-bold text-white shadow ring-2 ring-white sm:h-8 sm:w-8 md:h-9 md:w-9 md:text-xs">
+                  {initial || '•'}
                 </div>
                 <div className="hidden md:block">
-                  <div className="text-sm font-semibold text-gray-900">{naamKort}</div>
-                  <div className="text-[10px] text-emerald-500 -mt-0.5">Online</div>
+                  <div className="text-sm font-semibold text-gray-900">
+                    {naamKort || '...'}
+                  </div>
+                  <div className="-mt-0.5 text-[10px] text-emerald-500">{t('common.online')}</div>
                 </div>
               </div>
               <button
@@ -163,9 +213,13 @@ export default function Navbar() {
                     router.refresh();
                   });
                 }}
-                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 shadow-sm min-h-[40px] sm:min-h-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:underline sm:font-normal"
+                className="inline-flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 sm:min-h-0 sm:min-w-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:underline md:text-xs md:font-semibold"
+                aria-label={t('common.logout')}
               >
-                Uitloggen
+                <LogOut className="h-[1.125rem] w-[1.125rem] sm:hidden" />
+                <span className="hidden px-3 py-2 text-xs font-semibold sm:inline sm:px-0 sm:py-0 sm:text-sm sm:font-normal">
+                  {t('common.logout')}
+                </span>
               </button>
             </div>
           </div>

@@ -9,7 +9,7 @@ function defaultCommunication(profile: Profile): string {
   if (profile.personaStyle === "east_european") {
     return "Warm en direct, korte regels, soms plagerig; informeel Nederlands met Oost-Europees tempo.";
   }
-  return "Luchtig, warm, nieuwsgierig; typisch Nederlands informeel, geen formele mailtoon.";
+  return "Luchtig, warm, nieuwsgierig; typisch Nederlands informeel, geen formele mailtoon. Af en toe een kleine spelfout mag (menselijk).";
 }
 
 function defaultSpeech(profile: Profile): string {

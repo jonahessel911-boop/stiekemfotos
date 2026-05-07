@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { readJson, writeJson } from "@/lib/server/store";
 import { createUser } from "@/lib/server/users";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
+import { TIKTOK_ACCESS_TOKEN, TIKTOK_PIXEL_ID, TIKTOK_TRACK_URL } from "@/lib/tiktok";
+import { sendAccountVerificationEmail } from "@/lib/server/email";
 
 type SignupBody = {
   naam: string;
@@ -10,9 +13,16 @@ type SignupBody = {
   wachtwoord: string;
   discreetAkkoord: boolean;
   voorwaardenAkkoord: boolean;
+  zoekLeeftijdCategorie?: string;
+  zoekEigenschappen?: string[];
+  geschatteMatches?: number;
 };
 
 type StoredSignup = Omit<SignupBody, "wachtwoord"> & { createdAt: string };
+
+function sha256LowerTrim(value: string): string {
+  return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
+}
 
 export async function POST(req: Request) {
   try {
@@ -23,6 +33,18 @@ export async function POST(req: Request) {
     const wachtwoord = String(body.wachtwoord ?? "");
     const discreetAkkoord = Boolean(body.discreetAkkoord);
     const voorwaardenAkkoord = Boolean(body.voorwaardenAkkoord);
+    const zoekLeeftijdCategorie =
+      typeof body.zoekLeeftijdCategorie === "string"
+        ? body.zoekLeeftijdCategorie.trim()
+        : undefined;
+    const zoekEigenschappen = Array.isArray(body.zoekEigenschappen)
+      ? body.zoekEigenschappen.filter((x) => typeof x === "string")
+      : undefined;
+    const geschatteMatches =
+      typeof body.geschatteMatches === "number" &&
+      Number.isFinite(body.geschatteMatches)
+        ? Math.round(body.geschatteMatches)
+        : undefined;
 
     if (!naam || !email || !Number.isFinite(leeftijd) || leeftijd < 18) {
       return NextResponse.json({ error: "Ongeldige gegevens." }, { status: 400 });
@@ -42,13 +64,16 @@ export async function POST(req: Request) {
 
     let user;
     try {
-      user = createUser({
+      user = await createUser({
         naam,
         email,
         leeftijd,
         password: wachtwoord,
         discreetAkkoord,
         voorwaardenAkkoord,
+        ...(zoekLeeftijdCategorie ? { zoekLeeftijdCategorie } : {}),
+        ...(zoekEigenschappen?.length ? { zoekEigenschappen } : {}),
+        ...(geschatteMatches != null ? { geschatteMatches } : {}),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Fout";
@@ -68,9 +93,69 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
     writeJson("onboarding-signups.json", list);
+    if (user.emailVerifyToken) {
+      try {
+        await sendAccountVerificationEmail({
+          to: email,
+          naam,
+          verifyToken: user.emailVerifyToken,
+        });
+      } catch {
+        return NextResponse.json(
+          { error: "Verificatiemail kon niet worden verstuurd. Probeer opnieuw." },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Server-side conversion fire zodat submit-events altijd mee gaan na geslaagde form-submit.
+    try {
+      const common = {
+        event_time: Math.floor(Date.now() / 1000),
+        user: {
+          email: sha256LowerTrim(email),
+          phone: null,
+          external_id: sha256LowerTrim(user.id),
+        },
+        properties: {
+          currency: null,
+          content_type: "page",
+        },
+        page: {
+          url: req.headers.get("origin") ?? null,
+          referrer: req.headers.get("referer") ?? null,
+        },
+      };
+      await fetch(TIKTOK_TRACK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Token": TIKTOK_ACCESS_TOKEN,
+        },
+        body: JSON.stringify({
+          event_source: "web",
+          event_source_id: TIKTOK_PIXEL_ID,
+          pixel_code: TIKTOK_PIXEL_ID,
+          data: [
+            {
+              event: "CompleteRegistration",
+              ...common,
+            },
+            {
+              event: "SubmitForm",
+              ...common,
+            },
+          ],
+        }),
+        cache: "no-store",
+      });
+    } catch {
+      // best effort tracking
+    }
 
     const res = NextResponse.json({
       ok: true,
+      needsEmailVerification: true,
       user: {
         id: user.id,
         email: user.email,

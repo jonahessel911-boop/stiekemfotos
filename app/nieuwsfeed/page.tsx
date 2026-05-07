@@ -1,16 +1,37 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import { generateFeedPosts } from '@/lib/feedGenerator';
 import type { Post } from '@/lib/mockData';
+import type { Profile } from '@/lib/types/profile';
 import { Heart, MessageCircle, Share2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { WelcomeHouseRulesModal } from '@/components/WelcomeHouseRulesModal';
 
 export default function NieuwsfeedPage() {
-  const posts = useMemo(() => generateFeedPosts(), []);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/profiles', { credentials: 'include' });
+        const data = (await res.json()) as { profiles?: Profile[] };
+        if (!cancel && Array.isArray(data.profiles)) {
+          setProfiles(data.profiles);
+        }
+      } catch {
+        if (!cancel) setProfiles([]);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  const posts = useMemo(() => generateFeedPosts(profiles), [profiles]);
   const [liked, setLiked] = useState<Record<string, boolean>>({});
 
   return (
@@ -35,16 +56,39 @@ export default function NieuwsfeedPage() {
         </div>
 
         <div className="space-y-8">
-          {posts.map((post: Post) => (
-            <FeedPostCard
-              key={post.id}
-              post={post}
-              liked={!!liked[post.id]}
-              onToggleLike={() =>
-                setLiked((s) => ({ ...s, [post.id]: !s[post.id] }))
-              }
-            />
-          ))}
+          {posts.length === 0 ? (
+            <p className="rounded-2xl border border-gray-200 bg-white px-6 py-12 text-center text-gray-500">
+              Nog geen posts. Bekijk{' '}
+              <Link href="/profielen" className="font-semibold text-primary underline">
+                profielen
+              </Link>{' '}
+              om te beginnen.
+            </p>
+          ) : (
+            posts.map((post: Post) => (
+              <FeedPostCard
+                key={post.id}
+                post={post}
+                liked={!!liked[post.id]}
+                onToggleLike={() => {
+                  const nowLiked = !liked[post.id];
+                  setLiked((s) => ({ ...s, [post.id]: nowLiked }));
+                  if (!nowLiked) return;
+                  void fetch('/api/engagement/like', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      profileId: post.profileId,
+                      source: 'post_like',
+                    }),
+                  }).catch(() => {
+                    /* best effort */
+                  });
+                }}
+              />
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -67,7 +111,7 @@ function FeedPostCard({
           <img
             src={post.user.avatar}
             alt=""
-            className="w-11 h-11 rounded-2xl object-cover ring-2 ring-primary/10"
+            className="h-11 w-11 shrink-0 rounded-2xl object-cover ring-2 ring-primary"
           />
           <div>
             <div className="font-semibold text-base">
@@ -83,15 +127,7 @@ function FeedPostCard({
         </Button>
       </div>
 
-      <div className="relative">
-        <img
-          src={post.image}
-          alt=""
-          className="w-full h-auto object-cover max-h-[480px]"
-        />
-      </div>
-
-      <div className="p-4 md:p-6">
+      <div className="p-4 md:p-6 pt-2">
         <p className="text-[17px] leading-relaxed text-gray-800 mb-4">{post.caption}</p>
 
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
@@ -132,10 +168,10 @@ function FeedPostCard({
             Vind ik leuk
           </Button>
           <Link
-            href="/profielen"
+            href={`/profielen/${post.profileId}`}
             className="flex-1 inline-flex items-center justify-center rounded-2xl bg-[#f97316] py-4 text-sm font-semibold text-white hover:bg-[#ea580c]"
           >
-            Bekijk profielen
+            Bekijk profiel
           </Link>
         </div>
       </div>

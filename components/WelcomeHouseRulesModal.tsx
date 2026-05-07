@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Logo from '@/components/Logo';
+import { getStoredUser } from '@/lib/onboarding-client';
 import { clearWelcomeModalFlag, shouldShowWelcomeModal } from '@/lib/welcome-modal-client';
 
 export function WelcomeHouseRulesModal() {
@@ -12,6 +13,32 @@ export function WelcomeHouseRulesModal() {
   }, []);
 
   const onBegin = () => {
+    try {
+      const href = typeof window !== 'undefined' ? window.location.href : '';
+      const referrer = typeof document !== 'undefined' ? document.referrer || undefined : undefined;
+      const su = getStoredUser();
+      const w = window as Window & { ttq?: { track?: (e: string) => void } };
+      w.ttq?.track?.('SubmitApplication');
+
+      const payload = JSON.stringify({
+        event: 'SubmitApplication' as const,
+        url: href || undefined,
+        referrer,
+        ...(su?.email ? { email: su.email.trim().toLowerCase() } : {}),
+      });
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        navigator.sendBeacon('/api/tiktok/track', new Blob([payload], { type: 'application/json' }));
+      } else {
+        void fetch('/api/tiktok/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true,
+        });
+      }
+    } catch {
+      /* tracking best-effort */
+    }
     clearWelcomeModalFlag();
     setOpen(false);
   };

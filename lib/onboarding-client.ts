@@ -3,6 +3,7 @@
 export const STORAGE_KEY = "dm_user_v1";
 
 export type StoredUser = {
+  id?: string;
   naam: string;
   email: string;
   leeftijd: number;

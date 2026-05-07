@@ -3,14 +3,13 @@
  * Nooit vanuit de browser aanroepen met je echte key.
  */
 
+import { requireXaiApiKey } from "@/lib/xai-env";
+
 export async function xaiTextToSpeech(
   text: string,
   options?: { voiceId?: string; language?: string }
 ): Promise<ArrayBuffer> {
-  const key = process.env.XAI_API_KEY?.trim();
-  if (!key) {
-    throw new Error("XAI_API_KEY ontbreekt in .env.local — sla het bestand op en herstart de dev server.");
-  }
+  const key = requireXaiApiKey();
 
   /** eve = jong, energiek; override met XAI_TTS_VOICE (bijv. ara, sal). */
   const voiceId =

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findUserByEmail, verifyPassword } from "@/lib/server/users";
+import { findUserByEmail, touchUserSeen, verifyPassword } from "@/lib/server/users";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
 
 export async function POST(req: Request) {
@@ -12,13 +12,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "E-mail en wachtwoord verplicht." }, { status: 400 });
     }
 
-    const user = findUserByEmail(email);
+    const user = await findUserByEmail(email);
     if (!user || !verifyPassword(password, user.passwordHash)) {
       return NextResponse.json({ error: "Onjuiste inloggegevens." }, { status: 401 });
     }
+    await touchUserSeen(user.id);
 
     const res = NextResponse.json({
       ok: true,
+      needsEmailVerification: Boolean(user.emailVerifyToken && !user.emailVerifiedAt),
       user: {
         id: user.id,
         email: user.email,

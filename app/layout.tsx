@@ -1,6 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Poppins } from "next/font/google";
+import { Suspense } from "react";
+import { headers } from "next/headers";
 import { CreditsPricingProvider } from "@/components/CreditsPricingProvider";
+import EmailVerificationGate from "@/components/EmailVerificationGate";
+import TikTokPixel from "@/components/TikTokPixel";
+import { I18nProvider } from "@/components/I18nProvider";
+import { detectLocaleFromAcceptLanguage } from "@/lib/i18n";
+import { nl } from "@/lib/messages/nl";
+import { en } from "@/lib/messages/en";
 import "./globals.css";
 
 const poppins = Poppins({
@@ -9,6 +17,11 @@ const poppins = Poppins({
   variable: "--font-poppins",
   display: "swap",
 });
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
 export const metadata: Metadata = {
   title: {
@@ -22,17 +35,32 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const acceptLanguage = (await headers()).get("accept-language");
+  const locale = detectLocaleFromAcceptLanguage(acceptLanguage);
+  const messages = locale === "en" ? en : nl;
+
   return (
-    <html lang="nl" className={poppins.variable}>
+    <html lang={locale} className={poppins.variable}>
       <body
         className={`${poppins.className} font-sans antialiased text-gray-900 bg-[var(--surface)] min-h-screen`}
       >
-        <CreditsPricingProvider>{children}</CreditsPricingProvider>
+        <Suspense fallback={null}>
+          <TikTokPixel />
+        </Suspense>
+        <Suspense fallback={null}>
+          <EmailVerificationGate />
+        </Suspense>
+        <I18nProvider locale={locale} messages={messages}>
+          {/* Desktop left sidebar lives in Navbar; offset content accordingly */}
+          <div className="md:pl-56">
+            <CreditsPricingProvider>{children}</CreditsPricingProvider>
+          </div>
+        </I18nProvider>
       </body>
     </html>
   );

@@ -1,10 +1,9 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-
-const ROOT = path.join(process.cwd(), "data", "conv-images");
+import { getDataDir } from "@/lib/server/store";
 
 export function convImageDir(conversationId: string): string {
-  return path.join(ROOT, conversationId);
+  return path.join(getDataDir(), "conv-images", conversationId);
 }
 
 /** Schrijft raw bytes; retourneert bestandsnaam (alleen naam, geen pad). */
@@ -24,4 +23,21 @@ export async function saveConversationImage(
 
 export function convImageAbsolutePath(conversationId: string, filename: string): string {
   return path.join(convImageDir(conversationId), filename);
+}
+
+export function convVoiceDir(conversationId: string): string {
+  return path.join(getDataDir(), "conv-voice", conversationId);
+}
+
+/** Schrijft MP3-bytes; retourneert bestandsnaam (alleen naam, geen pad). */
+export async function saveConversationVoice(
+  conversationId: string,
+  messageId: string,
+  buffer: Buffer
+): Promise<string> {
+  const filename = `${messageId}.mp3`;
+  const dir = convVoiceDir(conversationId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, filename), buffer);
+  return filename;
 }

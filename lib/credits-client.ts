@@ -3,6 +3,7 @@
 const KEY_V2 = "dm_credits_balance_v2";
 const KEY_V1 = "dm_credits_balance_v1";
 const PURCHASES_KEY = "dm_credits_purchases_v1";
+const USER_KEY = "dm_user_v1";
 
 export type CreditPurchaseRecord = {
   id: string;
@@ -23,38 +24,95 @@ export function notifyCreditsUpdated() {
   }
 }
 
+export function notifyCreditsPurchased(detail?: { credits?: number; priceLabel?: string }) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("dm-credits-purchased", {
+      detail: detail ?? {},
+    })
+  );
+}
+
+function currentUserScope(): string {
+  if (typeof window === "undefined") return "guest";
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    if (!raw) return "guest";
+    const parsed = JSON.parse(raw) as { id?: string; email?: string };
+    const key = (parsed.id ?? parsed.email ?? "").trim().toLowerCase();
+    return key || "guest";
+  } catch {
+    return "guest";
+  }
+}
+
+function scopedBalanceKey(): string {
+  return `${KEY_V2}:${currentUserScope()}`;
+}
+
+function scopedPurchasesKey(): string {
+  return `${PURCHASES_KEY}:${currentUserScope()}`;
+}
+
 export function getCreditsBalance(): number {
   if (typeof window === "undefined") return INITIAL_FREE_CREDITS;
   try {
-    const v2 = localStorage.getItem(KEY_V2);
+    const key = scopedBalanceKey();
+    const v2 = localStorage.getItem(key);
     if (v2 !== null) {
       const n = parseInt(v2, 10);
       return Number.isFinite(n) ? Math.max(0, n) : INITIAL_FREE_CREDITS;
     }
-    const v1 = localStorage.getItem(KEY_V1);
-    if (v1 !== null) {
-      const n = parseInt(v1, 10);
-      const migrated = Number.isFinite(n) ? Math.max(0, n) : INITIAL_FREE_CREDITS;
-      localStorage.setItem(KEY_V2, String(migrated));
-      return migrated;
+    const scope = currentUserScope();
+    // Alleen guest: migreer oude globale sleutels. Ingelogde accounts krijgen anders per ongeluk
+    // een oud demo-/testsaldo (bijv. 1100) van dezelfde browser mee i.p.v. INITIAL_FREE_CREDITS.
+    if (scope === "guest") {
+      const legacyV2 = localStorage.getItem(KEY_V2);
+      if (legacyV2 !== null) {
+        const n = parseInt(legacyV2, 10);
+        const migrated = Number.isFinite(n) ? Math.max(0, n) : INITIAL_FREE_CREDITS;
+        localStorage.setItem(key, String(migrated));
+        return migrated;
+      }
+      const v1 = localStorage.getItem(KEY_V1);
+      if (v1 !== null) {
+        const n = parseInt(v1, 10);
+        const migrated = Number.isFinite(n) ? Math.max(0, n) : INITIAL_FREE_CREDITS;
+        localStorage.setItem(key, String(migrated));
+        return migrated;
+      }
     }
-    localStorage.setItem(KEY_V2, String(INITIAL_FREE_CREDITS));
+    localStorage.setItem(key, String(INITIAL_FREE_CREDITS));
     return INITIAL_FREE_CREDITS;
   } catch {
     return INITIAL_FREE_CREDITS;
   }
 }
 
+// Keep sync version for backward compatibility (uses cached or local)
+export function getCreditsBalanceSync(): number {
+  if (typeof window === "undefined") return INITIAL_FREE_CREDITS;
+  try {
+    const key = scopedBalanceKey();
+    const v2 = localStorage.getItem(key);
+    if (v2 !== null) {
+      const n = parseInt(v2, 10);
+      return Number.isFinite(n) ? Math.max(0, n) : INITIAL_FREE_CREDITS;
+    }
+  } catch {}
+  return INITIAL_FREE_CREDITS;
+}
+
 export function setCreditsBalance(n: number) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(KEY_V2, String(Math.max(0, Math.floor(n))));
+  localStorage.setItem(scopedBalanceKey(), String(Math.max(0, Math.floor(n))));
   notifyCreditsUpdated();
 }
 
 function readPurchases(): CreditPurchaseRecord[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(PURCHASES_KEY);
+    const raw = localStorage.getItem(scopedPurchasesKey());
     if (!raw) return [];
     const p = JSON.parse(raw) as CreditPurchaseRecord[];
     return Array.isArray(p) ? p : [];
@@ -65,7 +123,7 @@ function readPurchases(): CreditPurchaseRecord[] {
 
 function writePurchases(records: CreditPurchaseRecord[]) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(PURCHASES_KEY, JSON.stringify(records));
+  localStorage.setItem(scopedPurchasesKey(), JSON.stringify(records));
 }
 
 /** Aankopen (demo) voor transactie-overzicht op /credits. */
@@ -89,10 +147,31 @@ export function addCredits(amount: number, priceLabel?: string) {
     writePurchases([rec, ...readPurchases()]);
   }
   notifyCreditsUpdated();
+  notifyCreditsPurchased({ credits: n, priceLabel });
+  // Server-side marker voor "eerste aankoop gedaan" (best effort).
+  if (typeof window !== "undefined") {
+    void fetch("/api/credits/purchase", {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+    }).catch(() => {
+      /* ignore */
+    });
+  }
 }
 
 export function spendChatCredit(amount: number = CREDITS_PER_MESSAGE) {
-  setCreditsBalance(getCreditsBalance() - amount);
+  // Now primarily handled server-side via ledger. Local update for immediate UI feedback.
+  const current = getCreditsBalanceSync();
+  setCreditsBalance(current - amount);
+}
+
+/** Terugboeken als verzending faalt na een directe (optimistische) aftrek. */
+export function refundChatCredit(amount: number) {
+  if (typeof window === "undefined") return;
+  const n = Math.floor(amount);
+  if (n <= 0) return;
+  setCreditsBalance(getCreditsBalanceSync() + n);
 }
 
 export function creditsCostForBatchSize(batchLength: number): number {

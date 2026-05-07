@@ -12,6 +12,8 @@ export interface Profile {
   /** xAI TTS: nl | ru | uk | pl | ro | bg, etc. */
   voiceLanguage: string;
   photo: string;
+  /** Optioneel: extra foto-URL’s (bijv. uit Supabase) voor feed/galerij. */
+  photoGallery?: string[];
   photosCount: number;
   videoCount?: number;
   isOnline: boolean;

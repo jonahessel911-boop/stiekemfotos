@@ -5,32 +5,14 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CreditsPricingOffers } from '@/components/CreditsPricingOffers';
 import {
+  addCredits,
   getCreditsBalance,
   getCreditPurchaseHistory,
-  CREDITS_PER_MESSAGE,
   INITIAL_FREE_CREDITS,
   type CreditPurchaseRecord,
 } from '@/lib/credits-client';
-import type { UserMessageCreditLine } from '@/lib/types/credit-usage';
-import { ArrowDownRight, ArrowUpRight, Wallet } from 'lucide-react';
+import { ArrowUpRight, Wallet } from 'lucide-react';
 
-type MergedTx =
-  | {
-      key: string;
-      kind: 'spend';
-      at: string;
-      credits: number;
-      title: string;
-      conversationId: string;
-    }
-  | {
-      key: string;
-      kind: 'purchase';
-      at: string;
-      credits: number;
-      title: string;
-      detail: string;
-    };
 
 function formatWhen(iso: string) {
   try {
@@ -48,25 +30,12 @@ function formatWhen(iso: string) {
 
 export default function CreditsPage() {
   const [balance, setBalance] = useState(INITIAL_FREE_CREDITS);
-  const [spendLines, setSpendLines] = useState<UserMessageCreditLine[]>([]);
-  const [totalSpentServer, setTotalSpentServer] = useState(0);
   const [purchases, setPurchases] = useState<CreditPurchaseRecord[]>([]);
+  const [claimingFreeCredits, setClaimingFreeCredits] = useState(false);
 
   const refresh = useCallback(async () => {
     setBalance(getCreditsBalance());
     setPurchases(getCreditPurchaseHistory());
-    try {
-      const r = await fetch('/api/credits/usage');
-      const d = (await r.json()) as {
-        messages?: UserMessageCreditLine[];
-        totalSpent?: number;
-      };
-      setSpendLines(Array.isArray(d.messages) ? d.messages : []);
-      setTotalSpentServer(typeof d.totalSpent === 'number' ? d.totalSpent : 0);
-    } catch {
-      setSpendLines([]);
-      setTotalSpentServer(0);
-    }
   }, []);
 
   useEffect(() => {
@@ -76,32 +45,11 @@ export default function CreditsPage() {
     return () => window.removeEventListener('dm-credits-updated', onUp);
   }, [refresh]);
 
-  const totalPurchased = useMemo(
-    () => purchases.reduce((s, p) => s + p.credits, 0),
-    [purchases]
-  );
-
-  const transactions = useMemo(() => {
-    const spend: MergedTx[] = spendLines.map((m) => ({
-      key: `s-${m.messageId}`,
-      kind: 'spend' as const,
-      at: m.createdAt,
-      credits: m.credits,
-      title: `Bericht naar ${m.profileName}`,
-      conversationId: m.conversationId,
-    }));
-    const buy: MergedTx[] = purchases.map((p) => ({
-      key: `p-${p.id}`,
-      kind: 'purchase' as const,
-      at: p.at,
-      credits: p.credits,
-      title: 'Credits gekocht',
-      detail: p.priceLabel,
-    }));
-    return [...spend, ...buy].sort(
-      (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()
-    );
-  }, [spendLines, purchases]);
+  const claimFreeCredits = useCallback(() => {
+    setClaimingFreeCredits(true);
+    addCredits(100, 'Test: 100 free credits');
+    void refresh().finally(() => setClaimingFreeCredits(false));
+  }, [refresh]);
 
   return (
     <div className="min-h-screen bg-[var(--surface)] pb-28 md:pb-10">
@@ -114,98 +62,53 @@ export default function CreditsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Credits</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Overzicht van je saldo, verbruik per bericht ({CREDITS_PER_MESSAGE} credits) en
-              aankopen.
+              Overzicht van je saldo. Ieder bericht kost 10 credits.
             </p>
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-3 gap-3 mb-8">
-          <div className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-4 shadow-sm">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Huidig saldo</p>
-            <p className="text-2xl font-bold text-primary mt-1 tabular-nums">
-              {balance.toLocaleString('nl-NL')}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">credits</p>
+        <div className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-8 shadow-sm text-center mb-8">
+          <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-6">
+            <Wallet className="h-8 w-8 text-primary" />
           </div>
-          <div className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-4 shadow-sm">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Verbruikt (chat)
-            </p>
-            <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
-              {totalSpentServer.toLocaleString('nl-NL')}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {spendLines.length} bericht{spendLines.length === 1 ? '' : 'en'}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-4 shadow-sm">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gekocht</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1 tabular-nums">
-              {totalPurchased.toLocaleString('nl-NL')}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {purchases.length} aankoop{purchases.length === 1 ? '' : 'en'}
-            </p>
-          </div>
+          <p className="text-sm font-medium text-gray-500 mb-1">HUIDIG SALDO</p>
+          <p className="text-6xl font-bold text-primary tabular-nums tracking-tighter">
+            {balance}
+          </p>
+          <p className="text-sm text-gray-500 mt-1">credits over</p>
+          <p className="text-xs text-gray-400 mt-6">
+            Iedere verstuurde bericht kost 10 credits
+          </p>
         </div>
 
         <section className="rounded-2xl border border-gray-200/80 bg-white shadow-sm overflow-hidden mb-10">
           <div className="px-4 py-3 border-b border-gray-100 bg-[var(--surface-card)]">
-            <h2 className="font-semibold text-gray-900">Transacties</h2>
+            <h2 className="font-semibold text-gray-900">Aankopen</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Per verstuurd bericht en per creditaankoop (nieuwste eerst).
+              Je aankoopgeschiedenis (nieuwste eerst)
             </p>
           </div>
-          {transactions.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-gray-500">
-              Nog geen transacties. Stuur een bericht in{' '}
-              <Link href="/berichten" className="text-primary font-semibold underline">
-                Berichten
-              </Link>{' '}
-              of koop credits hieronder.
+          {purchases.length === 0 ? (
+            <p className="px-4 py-16 text-center text-sm text-gray-500">
+              Nog geen aankopen.<br />
+              Koop credits hieronder om te chatten.
             </p>
           ) : (
             <ul className="divide-y divide-gray-100 max-h-[min(420px,50vh)] overflow-y-auto">
-              {transactions.map((tx) => (
-                <li key={tx.key} className="px-4 py-3 flex gap-3 items-start">
-                  <div
-                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                      tx.kind === 'purchase'
-                        ? 'bg-emerald-500/12 text-emerald-700'
-                        : 'bg-gray-100 text-gray-600'
-                    }`}
-                  >
-                    {tx.kind === 'purchase' ? (
-                      <ArrowUpRight className="h-4 w-4" />
-                    ) : (
-                      <ArrowDownRight className="h-4 w-4" />
-                    )}
+              {purchases.map((p) => (
+                <li key={p.id} className="px-4 py-4 flex gap-3 items-start">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-700">
+                    <ArrowUpRight className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
-                      <span className="font-medium text-gray-900 text-sm">{tx.title}</span>
-                      <span
-                        className={`text-sm font-bold tabular-nums shrink-0 ${
-                          tx.kind === 'purchase' ? 'text-emerald-600' : 'text-gray-800'
-                        }`}
-                      >
-                        {tx.kind === 'purchase' ? '+' : '−'}
-                        {tx.credits.toLocaleString('nl-NL')}
+                    <div className="flex items-baseline justify-between">
+                      <span className="font-medium text-gray-900">Credits gekocht</span>
+                      <span className="text-emerald-600 font-bold tabular-nums">
+                        +{p.credits}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{formatWhen(tx.at)}</p>
-                    {tx.kind === 'purchase' ? (
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">{tx.detail}</p>
-                    ) : null}
-                    {tx.kind === 'spend' ? (
-                      <Link
-                        href={`/berichten?chat=${encodeURIComponent(tx.conversationId)}`}
-                        className="text-xs text-primary font-medium mt-1 inline-block hover:underline"
-                      >
-                        Open gesprek
-                      </Link>
-                    ) : null}
+                    <p className="text-xs text-gray-500 mt-0.5">{formatWhen(p.at)}</p>
+                    <p className="text-xs text-gray-600 mt-1">{p.priceLabel}</p>
                   </div>
                 </li>
               ))}
@@ -215,9 +118,23 @@ export default function CreditsPage() {
 
         <section className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-5 md:p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900 mb-1">Credits bijkopen</h2>
-          <p className="text-sm text-gray-600 mb-5">
-            Zelfde prijzen als in de app — je eerste {INITIAL_FREE_CREDITS} credits waren gratis.
+          <p className="text-sm text-gray-600 mb-6">
+            Koop credits om te blijven chatten. Ieder bericht kost 10 credits.
           </p>
+          <div className="mb-5 rounded-xl border border-dashed border-primary/35 bg-primary/[0.05] p-4">
+            <p className="text-sm font-semibold text-gray-900">Testmodus</p>
+            <p className="mt-1 text-xs text-gray-600">
+              Voor development kun je gratis 100 credits toevoegen.
+            </p>
+            <button
+              type="button"
+              onClick={claimFreeCredits}
+              disabled={claimingFreeCredits}
+              className="mt-3 inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {claimingFreeCredits ? 'Bezig…' : '100 free credits'}
+            </button>
+          </div>
           <CreditsPricingOffers showIntro={false} onAfterPurchase={() => void refresh()} />
         </section>
       </main>

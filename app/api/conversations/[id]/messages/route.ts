@@ -1,5 +1,16 @@
 import { NextResponse } from "next/server";
-import { appendUserMessagesAndReply, type UserMessagePayload } from "@/lib/server/conversations";
+import { cookies } from "next/headers";
+import {
+  appendUserMessagesAndReply,
+  recordOwnerPolledConversation,
+  type UserMessagePayload,
+} from "@/lib/server/conversations";
+import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
+import { isUserEmailVerified, touchUserSeen } from "@/lib/server/users";
+import { isXaiConfigErrorMessage } from "@/lib/xai-env";
+
+/** Ruimte voor tot 120s typ-pauze + Grok/TTS (Vercel: pas aan naar plan-limiet). */
+export const maxDuration = 240;
 
 export async function POST(
   req: Request,
@@ -7,6 +18,16 @@ export async function POST(
 ) {
   const { id } = await context.params;
   try {
+    const jar = await cookies();
+    const userId = parseSessionValue(jar.get(SESSION_COOKIE_NAME)?.value);
+    if (!userId) {
+      return NextResponse.json({ error: "Log in om te chatten." }, { status: 401 });
+    }
+    if (!(await isUserEmailVerified(userId))) {
+      return NextResponse.json({ error: "Verifieer eerst je e-mail." }, { status: 403 });
+    }
+    await touchUserSeen(userId);
+    await recordOwnerPolledConversation(id, userId);
     const body = (await req.json()) as {
       content?: string;
       noCredits?: boolean;
@@ -23,6 +44,7 @@ export async function POST(
         text: it.text?.trim() ?? "",
         imageBase64: it.imageBase64?.trim(),
         imageMime: it.imageMime,
+        replyToId: it.replyToId,
       }));
     } else {
       const text = body.content?.trim() ?? "";
@@ -36,15 +58,17 @@ export async function POST(
 
     const result = await appendUserMessagesAndReply(id, items, {
       noCredits: body.noCredits === true,
+      requesterUserId: userId,
     });
 
     return NextResponse.json({
       ...result,
-      userMessage: result.userMessages[0],
+      userMessage: result.userMessages[0] ?? null,
+      creditWall: result.creditWall === true,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Fout";
-    const status = msg.includes("XAI_API_KEY") ? 503 : 400;
+    const status = isXaiConfigErrorMessage(msg) ? 503 : 400;
     return NextResponse.json({ error: msg }, { status });
   }
 }

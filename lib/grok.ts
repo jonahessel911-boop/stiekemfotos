@@ -1,4 +1,8 @@
+import { requireXaiApiKey } from "@/lib/xai-env";
+
 const XAI_API = "https://api.x.ai/v1/chat/completions";
+
+const CHAT_FETCH_MS = 120_000;
 
 /** OpenAI-compatibel (aanbevolen voor /v1/chat/completions). */
 export type GrokContentPartOpenAI =
@@ -124,10 +128,7 @@ export async function completeChat(
   messages: GrokMessage[],
   opts?: { hasImage?: boolean }
 ): Promise<string> {
-  const key = process.env.XAI_API_KEY?.trim();
-  if (!key) {
-    throw new Error("XAI_API_KEY ontbreekt. Voeg deze toe aan .env.local en herstart `npm run dev`.");
-  }
+  const key = requireXaiApiKey();
 
   const hasImage = opts?.hasImage === true;
   const model = hasImage
@@ -141,24 +142,37 @@ export async function completeChat(
   const payloadBase = {
     model,
     temperature: 0.88,
-    max_tokens: 600,
+    /** Korte chat-replies (conversie); prompt vraagt 1–2 zinnen — cap helpt tegen laptekst. */
+    max_tokens: 260,
   };
 
   let lastStatus = 0;
   let lastText = "";
 
   for (const body of tryBodies) {
-    const res = await fetch(XAI_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        ...payloadBase,
-        messages: body,
-      }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(XAI_API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          ...payloadBase,
+          messages: body,
+        }),
+        signal: AbortSignal.timeout(CHAT_FETCH_MS),
+      });
+    } catch (e) {
+      const name = e instanceof Error ? e.name : "";
+      if (name === "TimeoutError" || name === "AbortError") {
+        throw new Error(
+          `Grok-antwoord duurde langer dan ${CHAT_FETCH_MS / 1000}s. Probeer opnieuw of controleer api.x.ai.`
+        );
+      }
+      throw e;
+    }
 
     if (res.ok) {
       const data = (await res.json()) as {

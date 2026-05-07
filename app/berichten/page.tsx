@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -20,20 +21,19 @@ import {
   Play,
   Pause,
   ImagePlus,
+  MoreVertical,
   X,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ConversationSummary, Conversation, ChatMessage } from '@/lib/types/chat';
 import {
-  triggersAssistantVoiceReply,
-  triggersTrustProofVoiceRequest,
-} from '@/lib/flirt-triggers';
-import { intimacyTierFromCount } from '@/lib/intimacy-tier';
-import {
   getCreditsBalance,
+  addCredits,
   spendChatCredit,
+  refundChatCredit,
   creditsCostForBatchSize,
   CREDITS_PER_MESSAGE,
   INITIAL_FREE_CREDITS,
@@ -54,6 +54,16 @@ import {
   lastAssistantMessageAt,
   syntheticLastSeenMinutes,
 } from '@/lib/peer-presence';
+import { sortChatMessagesChronologically } from '@/lib/chat-message-order';
+import {
+  PROFILE_PENDING_LOCK_KEY,
+  PROFILE_PENDING_SEND_KEY,
+  type ProfilePendingSend,
+} from '@/lib/profile-pending-send';
+
+function summaryActivityMs(c: ConversationSummary): number {
+  return new Date(c.updatedAt || 0).getTime();
+}
 
 function formatMessageTime(iso: string): string {
   try {
@@ -66,6 +76,55 @@ function formatMessageTime(iso: string): string {
   }
 }
 
+/** Keep typing indicator snappy so replies feel immediate. */
+function typingIndicatorDelayMs(approxServerMessageCount: number): number {
+  if (approxServerMessageCount <= 0) return 250 + Math.floor(Math.random() * 450);
+  return 350 + Math.floor(Math.random() * 850); // 0.35s - 1.2s
+}
+
+function isEmailVerificationError(message: string | null): boolean {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return (
+    lower.includes('verifieer je e-mail') ||
+    lower.includes('verifieer eerst je e-mail')
+  );
+}
+
+/** Robust deduplication: match by ID first, then by content + time proximity for optimistic vs server messages. */
+function deduplicateMessages(messages: ChatMessage[]): ChatMessage[] {
+  const byId = new Map<string, ChatMessage>();
+  const signatureToId = new Map<string, string>();
+  const now = Date.now();
+
+  for (const msg of messages) {
+    const contentKey = (msg.content || '').trim().toLowerCase();
+    const msgTime = Date.parse(msg.createdAt);
+    const timeKey = Math.floor((Number.isFinite(msgTime) ? msgTime : now) / 3000); // 3s bucket
+    const signature = `${msg.role}:${contentKey}:${timeKey}`;
+
+    const existingIdForSignature = signatureToId.get(signature);
+    if (existingIdForSignature) {
+      const existing = byId.get(existingIdForSignature);
+      if (existing) {
+        // Prefer server message (non-local ID) over optimistic/local one.
+        if (!msg.id.startsWith('local-') && existing.id.startsWith('local-')) {
+          byId.delete(existing.id);
+          byId.set(msg.id, msg);
+          signatureToId.set(signature, msg.id);
+        }
+        continue;
+      }
+    }
+
+    if (byId.has(msg.id)) continue;
+    byId.set(msg.id, msg);
+    if (contentKey) signatureToId.set(signature, msg.id);
+  }
+
+  return Array.from(byId.values());
+}
+
 function MessageTimestamp({
   iso,
   align,
@@ -73,19 +132,75 @@ function MessageTimestamp({
 }: {
   iso: string;
   align: 'left' | 'right';
-  variant: 'incoming' | 'outgoing';
+  /** incoming = grijs links; outgoing-meta = onder roze bubble op chat-achtergrond (leesbaar grijs) */
+  variant: 'incoming' | 'outgoing-meta';
 }) {
   const t = formatMessageTime(iso);
   if (!t) return null;
   return (
     <p
-      className={`mt-1 text-[11px] tabular-nums px-0.5 ${
+      className={`mt-1 text-[11px] font-medium tabular-nums px-0.5 ${
         align === 'right' ? 'text-right' : 'text-left'
-      } ${variant === 'outgoing' ? 'text-white/55' : 'text-gray-400'}`}
+      } ${variant === 'outgoing-meta' ? 'text-gray-600' : 'text-gray-500'}`}
     >
       {t}
     </p>
   );
+}
+
+function snippetForReply(m: ChatMessage | undefined): string {
+  if (!m) return '';
+  if (m.gift) return `${m.gift.emoji ?? '🎁'} ${m.gift.credits} credits`;
+  if (m.imageFile) return (m.content ?? '').trim() ? `📷 ${(m.content ?? '').trim()}` : '📷 foto';
+  const t = (m.content ?? '').trim();
+  return t.length > 110 ? `${t.slice(0, 110)}…` : t;
+}
+
+type LiveNotification = {
+  id: string;
+  profileName: string;
+  avatar: string;
+  text: string;
+};
+
+const CHAT_GIFT_OPTIONS = [
+  { id: 'mini', credits: 75, priceLabel: '€5,99', featured: false },
+  { id: 'starter', credits: 125, priceLabel: '€9,99', featured: false },
+  { id: 'best', credits: 250, priceLabel: '€13,99', featured: true },
+] as const;
+
+/**
+ * Mock spraakbericht + toast alleen bij credits op, max. één keer per chat,
+ * totaal max. 2 verschillende chats (daarna alleen prijsmodal).
+ */
+const MAX_CREDIT_WALL_VOICE_CHATS = 2;
+const CREDIT_WALL_VOICE_CHAT_IDS_LS = 'dm_credit_wall_voice_chat_ids_v1';
+
+function readCreditWallVoiceChatIds(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CREDIT_WALL_VOICE_CHAT_IDS_LS);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string' && x.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function canShowCreditWallVoiceInChat(convId: string): boolean {
+  const ids = readCreditWallVoiceChatIds();
+  if (ids.length >= MAX_CREDIT_WALL_VOICE_CHATS) return false;
+  if (ids.includes(convId)) return false;
+  return true;
+}
+
+function recordCreditWallVoiceChat(convId: string): void {
+  if (typeof window === 'undefined') return;
+  const ids = readCreditWallVoiceChatIds();
+  if (ids.includes(convId)) return;
+  const next = [...ids, convId].slice(0, MAX_CREDIT_WALL_VOICE_CHATS);
+  localStorage.setItem(CREDIT_WALL_VOICE_CHAT_IDS_LS, JSON.stringify(next));
 }
 
 function BerichtenInner() {
@@ -99,53 +214,212 @@ function BerichtenInner() {
   const [input, setInput] = useState('');
   const [loadingList, setLoadingList] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [sending, setSending] = useState(false);
+  /** Per gesprek: parallel versturen naar andere chats blijft mogelijk. */
+  const [inflightSends, setInflightSends] = useState(() => new Set<string>());
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [typingVisibleAtByConv, setTypingVisibleAtByConv] = useState<Record<string, number>>({});
+  const [sendStartedAtByConv, setSendStartedAtByConv] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
+  const visibleError = isEmailVerificationError(error) ? null : error;
   const [query, setQuery] = useState('');
   /** Lokaal: meerdere bubbles vóór één server-roundtrip (debounce). */
   const [optimisticBatch, setOptimisticBatch] = useState<ChatMessage[]>([]);
+  const [optimisticConversationId, setOptimisticConversationId] = useState<string | null>(
+    null
+  );
   const [optimisticImageById, setOptimisticImageById] = useState<Record<string, string>>({});
+  /** Gesprek waar de huidige debounce-batch naartoe gaat (kan afwijken van selectedId tijdens zeldzame races). */
+  const outgoingConversationIdRef = useRef<string | null>(null);
   const outgoingAccumRef = useRef<
     Array<{
       text: string;
       image?: { base64: string; mime: string; previewUrl: string };
+      replyToId?: string;
     }>
   >([]);
   const batchFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const BATCH_MS = 640;
   const [pendingImage, setPendingImage] = useState<{
     base64: string;
     mime: string;
     previewUrl: string;
   } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
-  /** Server gaat spraak-antwoord maken — toon mic-indicator i.p.v. alleen typ-stippen. */
-  const [expectVoiceReply, setExpectVoiceReply] = useState(false);
+  const [showGiftPanel, setShowGiftPanel] = useState(false);
+  const [giftNote, setGiftNote] = useState('ik vind je leuk');
   const [creditsBalance, setCreditsBalance] = useState(INITIAL_FREE_CREDITS);
+  const [hasCreditPurchase, setHasCreditPurchase] = useState(false);
   const { openPricing } = useCreditsPricing();
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
   /** Welk gesprek de huidige niet-zachte fetch laadt (voorkomt vastlopende loading bij snel wisselen). */
   const loadingConversationIdRef = useRef<string | null>(null);
+  /** Cache per conversation id voor instant openen zonder verkeerde mix. */
+  const conversationCacheRef = useRef<Record<string, Conversation>>({});
   /** Tot deze tijd (epoch ms) tonen we “Online” na jouw bericht / haar antwoord. */
   const [peerOnlineUntil, setPeerOnlineUntil] = useState<number | null>(null);
   const [arrivalToast, setArrivalToast] = useState<string | null>(null);
+  /** Bij credits-wall tonen we na 2s een systeemhint in de achtergrond. */
+  const [creditWallVoiceHintAtByConv, setCreditWallVoiceHintAtByConv] = useState<
+    Record<string, string>
+  >({});
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
+  const [uiNow, setUiNow] = useState(() => Date.now());
   const onlineDelayTimerRef = useRef<number | null>(null);
   const arrivalToastTimerRef = useRef<number | null>(null);
   const conversationProfileNameRef = useRef<string>('Ze');
+  const listRef = useRef<ConversationSummary[]>([]);
+  const messagesLenByConvRef = useRef<Record<string, number>>({});
+  const optimisticConversationIdRef = useRef<string | null>(null);
+  const creditWallHintTimerByConvRef = useRef<Record<string, number>>({});
+  /** Synchronous guard to block rapid double-send before React state updates land. */
+  const sendGuardByConvRef = useRef<Set<string>>(new Set());
+  const [openedGiftByMessageId, setOpenedGiftByMessageId] = useState<Record<string, boolean>>({});
+  const [giftClosedAnimationUrl, setGiftClosedAnimationUrl] = useState<string | null>(null);
+  const [giftOpenAnimationUrl, setGiftOpenAnimationUrl] = useState<string | null>(null);
+  const [giftOpenPlayedByMessageId, setGiftOpenPlayedByMessageId] = useState<
+    Record<string, boolean>
+  >({});
+  const [replyToId, setReplyToId] = useState<string | null>(null);
+  const swipeStartRef = useRef<{ messageId: string; x: number; y: number } | null>(null);
+  const [swipeOffsetByMessageId, setSwipeOffsetByMessageId] = useState<Record<string, number>>({});
+  const [liveNotifications, setLiveNotifications] = useState<LiveNotification[]>([]);
+
+  const handleAddDebugCredits = useCallback(() => {
+    addCredits(1000, 'Debug +1000');
+  }, []);
+
+  const openGiftMessage = useCallback((messageId: string) => {
+    setOpenedGiftByMessageId((prev) => (prev[messageId] ? prev : { ...prev, [messageId]: true }));
+  }, []);
+
+  const handleReplySwipeStart = useCallback(
+    (messageId: string, e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      swipeStartRef.current = { messageId, x: e.clientX, y: e.clientY };
+      setSwipeOffsetByMessageId((prev) => ({ ...prev, [messageId]: 0 }));
+    },
+    []
+  );
+
+  const handleReplySwipeMove = useCallback(
+    (messageId: string, e: React.PointerEvent<HTMLDivElement>) => {
+      const s = swipeStartRef.current;
+      if (!s || s.messageId !== messageId) return;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      // Keep vertical scrolling natural; only react on mostly-horizontal swipes.
+      if (Math.abs(dy) > Math.max(14, Math.abs(dx))) return;
+      const clamped = Math.max(-82, Math.min(82, dx));
+      setSwipeOffsetByMessageId((prev) => ({ ...prev, [messageId]: clamped }));
+    },
+    []
+  );
+
+  const handleReplySwipeEnd = useCallback((messageId: string) => {
+    const s = swipeStartRef.current;
+    const offset = swipeOffsetByMessageId[messageId] ?? 0;
+    if (s?.messageId === messageId && Math.abs(offset) >= 62) {
+      setReplyToId(messageId);
+    }
+    swipeStartRef.current = null;
+    setSwipeOffsetByMessageId((prev) => {
+      if (!(messageId in prev)) return prev;
+      const { [messageId]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, [swipeOffsetByMessageId]);
+
+  const pushLiveNotification = useCallback((profileName: string, avatar: string, text: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const n: LiveNotification = { id, profileName, avatar, text };
+    setLiveNotifications((prev) => [...prev.slice(-3), n]);
+    window.setTimeout(() => {
+      setLiveNotifications((prev) => prev.filter((x) => x.id !== id));
+    }, 4200);
+  }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const [r1, r2] = await Promise.all([
+          fetch('/api/animations/gift_closed'),
+          fetch('/api/animations/gift_open'),
+        ]);
+        const d1 = (await r1.json()) as { url?: string | null };
+        const d2 = (await r2.json()) as { url?: string | null };
+        if (!cancel) {
+          setGiftClosedAnimationUrl(d1.url ?? null);
+          setGiftOpenAnimationUrl(d2.url ?? null);
+        }
+      } catch {
+        if (!cancel) {
+          setGiftClosedAnimationUrl(null);
+          setGiftOpenAnimationUrl(null);
+        }
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    // Light background "activity" nudges on desktop.
+    const id = window.setInterval(() => {
+      const pool = listRef.current;
+      if (pool.length === 0) return;
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (!pick) return;
+      const msgs = [
+        `${pick.profileName} is online`,
+        `${pick.profileName} bekijkt je profiel`,
+      ];
+      pushLiveNotification(
+        pick.profileName,
+        pick.previewAvatar,
+        msgs[Math.floor(Math.random() * msgs.length)] ?? `${pick.profileName} is online`
+      );
+    }, 95_000);
+    return () => window.clearInterval(id);
+  }, [pushLiveNotification]);
+
+  const applyOptimisticListPreview = useCallback(
+    (convId: string, messageText: string, createdAtIso: string) => {
+      const preview = messageText.trim() || '📷';
+      const hhmm = formatMessageTime(createdAtIso);
+      setList((prev) => {
+        const next = prev.map((c) =>
+          c.id === convId
+            ? {
+                ...c,
+                lastMessage: preview,
+                lastMessageFromAssistant: false,
+                timestamp: hhmm || c.timestamp,
+                updatedAt: createdAtIso,
+              }
+            : c
+        );
+        listRef.current = next;
+        return next;
+      });
+    },
+    []
+  );
 
   const fetchList = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoadingList(true);
     try {
-      const res = await fetch('/api/conversations');
+      const res = await fetch('/api/conversations', { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Laden mislukt');
       setList(data.conversations);
+      listRef.current = data.conversations as ConversationSummary[];
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Fout bij laden inbox');
     } finally {
@@ -161,11 +435,37 @@ function BerichtenInner() {
     }
     setError(null);
     try {
-      const res = await fetch(`/api/conversations/${id}`);
+      const res = await fetch(`/api/conversations/${id}`, { credentials: 'include' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gesprek niet gevonden');
       if (selectedIdRef.current !== id) return;
-      setConversation(data.conversation);
+      const incoming = data.conversation as Conversation | undefined;
+      if (!incoming) {
+        setConversation(null);
+        return;
+      }
+      conversationCacheRef.current[id] = incoming;
+      /** Zacht verversen: GET kan net achterlopen op POST; behoud berichten die de server nog niet teruggeeft. */
+      if (soft) {
+        setConversation((prev) => {
+          if (!prev || prev.id !== id) return incoming;
+          const incomingIds = new Set(incoming.messages.map((m) => m.id));
+          const carryOver = prev.messages.filter((m) => !incomingIds.has(m.id));
+          if (carryOver.length === 0) return incoming;
+
+          const merged = [...incoming.messages, ...carryOver];
+          return {
+            ...incoming,
+            messages: sortChatMessagesChronologically(deduplicateMessages(merged)),
+            updatedAt:
+              new Date(incoming.updatedAt).getTime() >= new Date(prev.updatedAt).getTime()
+                ? incoming.updatedAt
+                : prev.updatedAt,
+          };
+        });
+      } else {
+        setConversation(incoming);
+      }
     } catch (e) {
       if (selectedIdRef.current !== id) return;
       setError(e instanceof Error ? e.message : 'Fout');
@@ -178,11 +478,52 @@ function BerichtenInner() {
   }, []);
 
   useEffect(() => {
-    const sync = () => setCreditsBalance(getCreditsBalance());
+    const sync = () => {
+      setCreditsBalance(getCreditsBalance());
+      const sid = selectedIdRef.current;
+      if (sid) {
+        void fetchConversation(sid, { soft: true });
+      }
+      void fetchList({ silent: true });
+    };
     sync();
     window.addEventListener('dm-credits-updated', sync);
     return () => window.removeEventListener('dm-credits-updated', sync);
+  }, [fetchConversation, fetchList]);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me', { credentials: 'include' });
+        const d = (await r.json()) as { user?: { hasCreditPurchase?: boolean } | null };
+        if (!cancel) setHasCreditPurchase(Boolean(d.user?.hasCreditPurchase));
+      } catch {
+        if (!cancel) setHasCreditPurchase(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
   }, []);
+
+  useEffect(() => {
+    const onPurchased = () => {
+      setHasCreditPurchase(true);
+      const sid = selectedIdRef.current;
+      if (sid) {
+        void fetchConversation(sid, { soft: true });
+        setCreditWallVoiceHintAtByConv((prev) => {
+          if (!(sid in prev)) return prev;
+          const { [sid]: _, ...rest } = prev;
+          return rest;
+        });
+      }
+      void fetchList({ silent: true });
+    };
+    window.addEventListener('dm-credits-purchased', onPurchased);
+    return () => window.removeEventListener('dm-credits-purchased', onPurchased);
+  }, [fetchConversation, fetchList]);
 
   useEffect(() => {
     fetchList();
@@ -190,6 +531,14 @@ function BerichtenInner() {
 
   useEffect(() => {
     const id = window.setInterval(() => setPresenceNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Reduced from 1s to 5s to prevent constant full-component re-renders while page is open.
+  // This was a major source of lag on tab switching and chat navigation. For ultra-smooth live timers,
+  // consider extracting OnlineStatus / TypingIndicator into isolated components with their own RAF/interval.
+  useEffect(() => {
+    const id = window.setInterval(() => setUiNow(Date.now()), 5000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -207,12 +556,25 @@ function BerichtenInner() {
   }, [selectedId]);
 
   useEffect(() => {
+    setReplyToId(null);
+  }, [selectedId]);
+
+  useEffect(() => {
     if (chatParam) setSelectedId(chatParam);
   }, [chatParam]);
 
   useEffect(() => {
     if (selectedId) {
-      fetchConversation(selectedId);
+      const cached = conversationCacheRef.current[selectedId];
+      if (cached) {
+        setConversation(cached);
+        setLoadingMessages(false);
+        loadingConversationIdRef.current = null;
+        void fetchConversation(selectedId, { soft: true });
+      } else {
+        setConversation(null);
+        fetchConversation(selectedId);
+      }
     } else {
       setConversation(null);
       setLoadingMessages(false);
@@ -220,37 +582,99 @@ function BerichtenInner() {
     }
   }, [selectedId, fetchConversation]);
 
-  useEffect(() => {
-    if (conversation?.profileName) {
-      conversationProfileNameRef.current = conversation.profileName;
-    }
-  }, [conversation?.profileName]);
+  const conversationForUi =
+    selectedId && conversation?.id === selectedId
+      ? conversation
+      : selectedId
+        ? (conversationCacheRef.current[selectedId] ?? null)
+        : null;
 
-  const lastServerMsgId =
-    conversation && conversation.messages.length > 0
-      ? conversation.messages[conversation.messages.length - 1]!.id
-      : '';
-  const lastOptimisticId =
-    optimisticBatch.length > 0
-      ? optimisticBatch[optimisticBatch.length - 1]!.id
-      : '';
+  useEffect(() => {
+    if (conversationForUi?.profileName) {
+      conversationProfileNameRef.current = conversationForUi.profileName;
+    }
+  }, [conversationForUi?.profileName]);
+
+  const displayMessages = useMemo(() => {
+    if (!conversationForUi) return [];
+    const hintIso = creditWallVoiceHintAtByConv[conversationForUi.id];
+    const hintMessage: ChatMessage[] = hintIso
+      ? [
+          {
+            id: `credit-wall-voice-hint-${conversationForUi.id}-${hintIso}`,
+            role: 'assistant',
+            content: '',
+            createdAt: hintIso,
+            voice: { language: 'nl' },
+          },
+        ]
+      : [];
+    const merged = [
+      ...conversationForUi.messages,
+      ...(optimisticConversationId === selectedId ? optimisticBatch : []),
+      ...hintMessage,
+    ];
+    const deduped = deduplicateMessages(merged);
+    return sortChatMessagesChronologically(deduped);
+  }, [
+    conversationForUi,
+    optimisticConversationId,
+    selectedId,
+    optimisticBatch,
+    creditWallVoiceHintAtByConv,
+  ]);
+
+  const activeConversation =
+    conversationForUi;
+
+  const lastChronologicalMsgId =
+    displayMessages.length > 0 ? displayMessages[displayMessages.length - 1]!.id : '';
+
+  const scrollChatToBottom = useCallback((force = true) => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const run = () => {
+      const threshold = 120;
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (force || dist < threshold) {
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+    run();
+    requestAnimationFrame(run);
+    window.setTimeout(run, 50);
+    window.setTimeout(run, 200);
+  }, []);
 
   useLayoutEffect(() => {
     if (!selectedId || loadingMessages) return;
-    const el = chatScrollRef.current;
-    if (!el) return;
-    /** Alleen deze lijst scrollen — geen scrollIntoView (die schuift ook het hele document). */
-    el.scrollTop = el.scrollHeight;
+    scrollChatToBottom(true);
   }, [
     selectedId,
     loadingMessages,
-    conversation?.messages.length,
-    lastServerMsgId,
-    lastOptimisticId,
-    optimisticBatch.length,
-    sending,
-    expectVoiceReply,
+    displayMessages.length,
+    lastChronologicalMsgId,
+    inflightSends.size,
+    scrollChatToBottom,
   ]);
+
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el || !selectedId) return;
+    const ro = new ResizeObserver(() => {
+      const threshold = 120;
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (dist < threshold) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    const inner = el.firstElementChild;
+    if (inner) ro.observe(inner);
+    return () => ro.disconnect();
+  }, [selectedId, conversation?.id]);
+
+  useEffect(() => {
+    optimisticConversationIdRef.current = optimisticConversationId;
+  }, [optimisticConversationId]);
 
   useEffect(() => {
     outgoingAccumRef.current = [];
@@ -258,14 +682,51 @@ function BerichtenInner() {
       clearTimeout(batchFlushTimerRef.current);
       batchFlushTimerRef.current = null;
     }
+    outgoingConversationIdRef.current = null;
+    if (
+      optimisticConversationId != null &&
+      inflightSends.has(optimisticConversationId)
+    ) {
+      return;
+    }
     setOptimisticBatch([]);
     setOptimisticImageById({});
+    setOptimisticConversationId(null);
+    setShowGiftPanel(false);
+  }, [selectedId, optimisticConversationId, inflightSends]);
+
+  useEffect(() => {
+    listRef.current = list;
+  }, [list]);
+
+  useEffect(() => {
+    setAttachMenuOpen(false);
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!attachMenuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (attachMenuRef.current?.contains(e.target as Node)) return;
+      setAttachMenuOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [attachMenuOpen]);
+
+  useEffect(() => {
+    if (conversationForUi?.id) {
+      messagesLenByConvRef.current[conversationForUi.id] = conversationForUi.messages.length;
+    }
+  }, [conversationForUi?.id, conversationForUi?.messages.length]);
 
   useEffect(() => {
     return () => {
       if (audioRef.current) audioRef.current.pause();
       if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      for (const id of Object.values(creditWallHintTimerByConvRef.current)) {
+        window.clearTimeout(id);
+      }
+      creditWallHintTimerByConvRef.current = {};
     };
   }, []);
 
@@ -283,7 +744,14 @@ function BerichtenInner() {
 
   const toggleVoiceMessage = useCallback(
     async (m: ChatMessage) => {
-      if (!m.voice) return;
+      if (!m.voice || !selectedId) return;
+      if (m.id.startsWith('credit-wall-voice-hint-')) {
+        setError(
+          `Om deze voice van ${activeConversation?.profileName ?? 'haar'} te luisteren heb je credits nodig. Tijdelijke aanbieding actief.`
+        );
+        openPricing();
+        return;
+      }
       if (playingVoiceId === m.id) {
         stopVoicePlayback();
         return;
@@ -291,13 +759,10 @@ function BerichtenInner() {
       stopVoicePlayback();
       setPlayingVoiceId(m.id);
       try {
-        const speak = m.voice.ttsText ?? m.content;
-        const res = await fetch('/api/voice/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: speak, language: m.voice.language }),
+        const res = await fetch(`/api/conversations/${selectedId}/voice/${m.id}`, {
+          credentials: 'include',
         });
-        if (!res.ok) throw new Error('TTS mislukt');
+        if (!res.ok) throw new Error('Voice niet gevonden');
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         audioUrlRef.current = url;
@@ -309,10 +774,43 @@ function BerichtenInner() {
         stopVoicePlayback();
       }
     },
-    [playingVoiceId, stopVoicePlayback]
+    [playingVoiceId, selectedId, stopVoicePlayback, activeConversation?.profileName, openPricing]
   );
 
-  const filteredList = list.filter((c) => {
+  // Deduplicate by profileId — meest recente thread (updatedAt), niet op "HH:mm" string
+  const dedupedList = useMemo(() => {
+    const byProfile = new Map<string, ConversationSummary>();
+    for (const chat of list) {
+      const existing = byProfile.get(chat.profileId);
+      const t = summaryActivityMs(chat);
+      const exT = existing ? summaryActivityMs(existing) : -1;
+      if (!existing || t > exT) {
+        byProfile.set(chat.profileId, chat);
+      }
+    }
+    return Array.from(byProfile.values());
+  }, [list]);
+
+  /** Zelfde profiel, verkeerde conversation-id (oude duplicate) → spring naar canonieke thread */
+  useEffect(() => {
+    if (!selectedId || list.length === 0 || loadingList) return;
+    const row = list.find((c) => c.id === selectedId);
+    if (!row) {
+      setSelectedId(null);
+      setConversation(null);
+      router.replace('/berichten', { scroll: false });
+      return;
+    }
+    const same = list.filter((c) => c.profileId === row.profileId);
+    if (same.length < 2) return;
+    const best = [...same].sort((a, b) => summaryActivityMs(b) - summaryActivityMs(a))[0]!;
+    if (best.id !== selectedId) {
+      setSelectedId(best.id);
+      router.replace(`/berichten?chat=${encodeURIComponent(best.id)}`, { scroll: false });
+    }
+  }, [list, selectedId, router, loadingList]);
+
+  const filteredList = dedupedList.filter((c) => {
     const q = query.toLowerCase();
     return (
       (c.profileName ?? '').toLowerCase().includes(q) ||
@@ -320,24 +818,65 @@ function BerichtenInner() {
     );
   });
 
-  const totalUnread = list.reduce((a, c) => a + c.unread, 0);
+  const totalUnread = dedupedList.reduce((a, c) => a + (c.unread || 0), 0);
 
-  const lastAssistantIso = conversation
-    ? lastAssistantMessageAt(conversation.messages)
+  const lastAssistantIso = conversationForUi
+    ? lastAssistantMessageAt(conversationForUi.messages)
     : null;
-  const assistantMsgCount = conversation
-    ? conversation.messages.filter((m) => m.role === 'assistant').length
+  const assistantMsgCount = conversationForUi
+    ? conversationForUi.messages.filter((m) => m.role === 'assistant').length
     : 0;
   const lastOnlineSubtitle =
-    conversation && assistantMsgCount === 0
-      ? `${syntheticLastSeenMinutes(conversation.id)} minuten geleden`
+    conversationForUi && assistantMsgCount === 0
+      ? `${syntheticLastSeenMinutes(conversationForUi.id)} minuten geleden`
       : lastAssistantIso
         ? formatLastOnlineAgo(lastAssistantIso, presenceNow)
         : '—';
+  const sendingHere = Boolean(selectedId && inflightSends.has(selectedId));
+  const sendStartedAtHere = selectedId ? sendStartedAtByConv[selectedId] ?? uiNow : uiNow;
+  const typingVisibleAtHere = selectedId ? typingVisibleAtByConv[selectedId] ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+  const pendingIndicatorVisible = sendingHere && uiNow >= typingVisibleAtHere && typingVisibleAtHere !== Number.MAX_SAFE_INTEGER;
+  const onlineWaitOffset =
+    selectedId?.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) ?? 0;
+  const waitingOnlineCycleMs = 45_000;
+  const waitingOnlineOnMs = 28_000;
+  const waitingElapsed = Math.max(0, uiNow - sendStartedAtHere);
+  const waitingPhaseOnline =
+    ((waitingElapsed + onlineWaitOffset) % waitingOnlineCycleMs) < waitingOnlineOnMs;
+  const optimisticHere = Boolean(
+    optimisticConversationId === selectedId && optimisticBatch.length > 0
+  );
   const isPeerOnlineNow =
-    sending ||
-    optimisticBatch.length > 0 ||
+    (sendingHere ? waitingPhaseOnline : false) ||
+    optimisticHere ||
     (peerOnlineUntil !== null && Date.now() < peerOnlineUntil);
+
+  const triggerNoCreditsFlow = useCallback((convId: string) => {
+    openPricing();
+    if (hasCreditPurchase) return;
+    if (!canShowCreditWallVoiceInChat(convId)) return;
+    recordCreditWallVoiceChat(convId);
+    const pname =
+      listRef.current.find((c) => c.id === convId)?.profileName ??
+      conversationProfileNameRef.current;
+    setArrivalToast(`${pname} heeft een spraakbericht gestuurd`);
+    if (arrivalToastTimerRef.current) {
+      window.clearTimeout(arrivalToastTimerRef.current);
+    }
+    arrivalToastTimerRef.current = window.setTimeout(() => {
+      arrivalToastTimerRef.current = null;
+      setArrivalToast(null);
+    }, 5200);
+    const prevTimer = creditWallHintTimerByConvRef.current[convId];
+    if (prevTimer) window.clearTimeout(prevTimer);
+    creditWallHintTimerByConvRef.current[convId] = window.setTimeout(() => {
+      setCreditWallVoiceHintAtByConv((prev) => ({
+        ...prev,
+        [convId]: new Date().toISOString(),
+      }));
+      delete creditWallHintTimerByConvRef.current[convId];
+    }, 2000);
+  }, [openPricing, hasCreditPurchase]);
 
   const clearBatchTimer = useCallback(() => {
     if (batchFlushTimerRef.current) {
@@ -346,97 +885,280 @@ function BerichtenInner() {
     }
   }, []);
 
-  const flushOutgoingBatch = useCallback(async () => {
+  const clearOptimisticForConversation = useCallback((convId: string) => {
+    if (optimisticConversationIdRef.current !== convId) return;
+    optimisticConversationIdRef.current = null;
+    setOptimisticConversationId(null);
+    setOptimisticBatch([]);
+    setOptimisticImageById({});
+  }, []);
+
+  const flushOutgoingBatch = useCallback(async (
+    sidOverride?: string,
+    batchOverride?: Array<{
+      text: string;
+      image?: { base64: string; mime: string; previewUrl: string };
+      replyToId?: string;
+    }>,
+    sendOpts?: { noCredits?: boolean }
+  ): Promise<boolean> => {
     clearBatchTimer();
-    const batch = outgoingAccumRef.current;
-    if (batch.length === 0) return;
-    const sid = selectedIdRef.current;
-    if (!sid) return;
-
-    const cost = creditsCostForBatchSize(batch.length);
-    const balance = getCreditsBalance();
-    if (balance < cost) {
-      outgoingAccumRef.current = [];
-      setOptimisticBatch([]);
-      setOptimisticImageById({});
-      openPricing();
-      return;
-    }
-
-    outgoingAccumRef.current = [];
-
-    setSending(true);
-    setError(null);
-
-    const items = batch.map((b) => ({
-      text: b.text,
-      imageBase64: b.image?.base64,
-      imageMime: b.image?.mime,
-    }));
-
-    const tier = intimacyTierFromCount(conversation?.messages.length ?? 0);
-    const anyImg = items.some((i) => i.imageBase64);
-    const joinedText = items.map((i) => i.text).join('\n');
-    const trustVoice =
-      items.some((it) => triggersTrustProofVoiceRequest(it.text || '')) ||
-      triggersTrustProofVoiceRequest(joinedText);
-    const flirtyVoice =
-      items.some((it) =>
-        triggersAssistantVoiceReply(it.text || 'foto', {
-          intimacyTier: tier,
-          hasImage: Boolean(it.imageBase64),
-        })
-      ) ||
-      triggersAssistantVoiceReply(joinedText, {
-        intimacyTier: tier,
-        hasImage: anyImg,
-      });
-    setExpectVoiceReply(trustVoice || flirtyVoice);
+    const batch = batchOverride ?? outgoingAccumRef.current;
+    if (batch.length === 0) return false;
+    const sid = sidOverride ?? outgoingConversationIdRef.current ?? selectedIdRef.current;
+    if (!sid) return false;
+    if (sendGuardByConvRef.current.has(sid)) return false;
+    sendGuardByConvRef.current.add(sid);
 
     try {
-      const res = await fetch(`/api/conversations/${sid}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Versturen mislukt');
-      spendChatCredit(cost);
-      setCreditsBalance(getCreditsBalance());
-      setOptimisticBatch([]);
-      setOptimisticImageById({});
-      await fetchConversation(sid, { soft: true });
-      await fetchList({ silent: true });
-
-      const pname = conversationProfileNameRef.current;
-      setArrivalToast(`${pname} heeft je een berichtje gestuurd`);
-      if (arrivalToastTimerRef.current) {
-        window.clearTimeout(arrivalToastTimerRef.current);
+      const noCredits = sendOpts?.noCredits === true;
+      const cost = noCredits ? 0 : creditsCostForBatchSize(batch.length);
+      const balance = getCreditsBalance();
+      if (!noCredits && balance < cost) {
+        void fetch(`/api/conversations/${sid}/credit-runout`, {
+          method: 'POST',
+          credentials: 'include',
+        }).catch(() => {
+          /* best effort: plan cadeau alleen als gesprek al twee kanten had */
+        });
+        if (!batchOverride) {
+          outgoingAccumRef.current = [];
+          outgoingConversationIdRef.current = null;
+        }
+        clearOptimisticForConversation(sid);
+        triggerNoCreditsFlow(sid);
+        return false;
       }
-      arrivalToastTimerRef.current = window.setTimeout(() => {
-        arrivalToastTimerRef.current = null;
-        setArrivalToast(null);
-      }, 4800);
-      setPeerOnlineUntil((prev) => {
-        const extra = 40_000 + Math.floor(Math.random() * 110_000);
-        const until = Date.now() + extra;
-        return Math.max(prev ?? 0, until);
-      });
-    } catch (e) {
-      setOptimisticBatch([]);
-      setOptimisticImageById({});
-      setError(e instanceof Error ? e.message : 'Fout bij versturen');
+
+      if (!batchOverride) {
+        outgoingAccumRef.current = [];
+      }
+
+      setInflightSends((prev) => new Set(prev).add(sid));
+      setSendStartedAtByConv((prev) => ({ ...prev, [sid]: Date.now() }));
+      setTypingVisibleAtByConv((prev) => ({
+        ...prev,
+        [sid]: Date.now() + typingIndicatorDelayMs(messagesLenByConvRef.current[sid] ?? 0),
+      }));
+      setError(null);
+
+      const items = batch.map((b) => ({
+        text: b.text,
+        imageBase64: b.image?.base64,
+        imageMime: b.image?.mime,
+        replyToId: b.replyToId,
+      }));
+
+      const anyImg = items.some((i) => i.imageBase64);
+
+      /** Direct aftrekken bij verzenden; API kan minuten duren (typ-pauze + AI). */
+      const prepaid = !noCredits && cost > 0;
+      if (prepaid) {
+        spendChatCredit(cost);
+        setCreditsBalance(getCreditsBalance());
+        if (getCreditsBalance() < CREDITS_PER_MESSAGE) {
+          void fetch(`/api/conversations/${sid}/credit-runout`, {
+            method: 'POST',
+            credentials: 'include',
+          }).catch(() => {});
+        }
+      }
+
+      try {
+        const res = await fetch(`/api/conversations/${sid}/messages`, {
+          method: 'POST',
+          credentials: 'include',
+          keepalive: !anyImg,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            noCredits ? { items, noCredits: true } : { items }
+          ),
+        });
+        const data = (await res.json()) as {
+          error?: string;
+          creditWall?: boolean;
+          userMessages?: ChatMessage[];
+          assistantMessage?: ChatMessage | null;
+        };
+        if (!res.ok) throw new Error(data.error || 'Versturen mislukt');
+      const profileMeta =
+        listRef.current.find((c) => c.id === sid) ??
+        (conversationForUi && conversationForUi.id === sid
+          ? {
+              id: sid,
+              profileName: conversationForUi.profileName,
+              previewAvatar: conversationForUi.previewAvatar,
+            }
+          : null);
+      if (profileMeta) {
+        pushLiveNotification(profileMeta.profileName, profileMeta.previewAvatar, `${profileMeta.profileName} typt…`);
+      }
+        if (data.creditWall) {
+          if (prepaid) refundChatCredit(cost);
+          triggerNoCreditsFlow(sid);
+        }
+        /** Meteen serverberichten tonen vóór optimistic wordt gewist (geen “gat” in de UI). */
+        const u = data.userMessages ?? [];
+        const a = data.assistantMessage;
+        if (u.length > 0 || a) {
+          setConversation((c) => {
+            if (!c || c.id !== sid) return c;
+            const add = [...u, ...(a ? [a] : [])];
+            const existingIds = new Set(c.messages.map((m) => m.id));
+            const newOnly = add.filter((m) => !existingIds.has(m.id));
+            if (newOnly.length === 0) return c;
+            return {
+              ...c,
+              messages: sortChatMessagesChronologically([...c.messages, ...newOnly]),
+              updatedAt: newOnly[newOnly.length - 1]?.createdAt ?? c.updatedAt,
+            };
+          });
+        }
+      if (a && profileMeta) {
+        pushLiveNotification(
+          profileMeta.profileName,
+          profileMeta.previewAvatar,
+          `${profileMeta.profileName} leest je bericht`
+        );
+      }
+        clearOptimisticForConversation(sid);
+        if (!batchOverride) {
+          outgoingConversationIdRef.current = null;
+        }
+        await fetchConversation(sid, { soft: true });
+        await fetchList({ silent: true });
+
+        if (!data.creditWall) {
+          const pname =
+            listRef.current.find((c) => c.id === sid)?.profileName ??
+            conversationProfileNameRef.current;
+          const activeSameChat = selectedIdRef.current === sid;
+          if (!activeSameChat) {
+            setArrivalToast(`${pname} heeft je een berichtje gestuurd`);
+            if (arrivalToastTimerRef.current) {
+              window.clearTimeout(arrivalToastTimerRef.current);
+            }
+            arrivalToastTimerRef.current = window.setTimeout(() => {
+              arrivalToastTimerRef.current = null;
+              setArrivalToast(null);
+            }, 4800);
+          }
+          setPeerOnlineUntil((prev) => {
+            const extra = 40_000 + Math.floor(Math.random() * 110_000);
+            const until = Date.now() + extra;
+            return Math.max(prev ?? 0, until);
+          });
+        }
+
+        // Clear loading/typing state as soon as server accepted the message
+        // (user message is now persisted immediately on server)
+        setInflightSends((prev) => {
+          const next = new Set(prev);
+          next.delete(sid);
+          return next;
+        });
+        setTypingVisibleAtByConv((prev) => {
+          const { [sid]: _, ...rest } = prev;
+          return rest;
+        });
+        setSendStartedAtByConv((prev) => {
+          const { [sid]: _, ...rest } = prev;
+          return rest;
+        });
+        if (!batchOverride) {
+          outgoingConversationIdRef.current = null;
+        }
+        return true;
+      } catch (e) {
+        if (prepaid) refundChatCredit(cost);
+        clearOptimisticForConversation(sid);
+        if (!batchOverride) {
+          outgoingConversationIdRef.current = null;
+        }
+        setError(e instanceof Error ? e.message : 'Fout bij versturen');
+        return false;
+      } finally {
+        // Final safety cleanup (inflightSends already cleared on success path)
+        setTypingVisibleAtByConv((prev) => {
+          const { [sid]: _, ...rest } = prev;
+          return rest;
+        });
+        setSendStartedAtByConv((prev) => {
+          const { [sid]: _, ...rest } = prev;
+          return rest;
+        });
+        if (!batchOverride) {
+          outgoingConversationIdRef.current = null;
+        }
+      }
     } finally {
-      setExpectVoiceReply(false);
-      setSending(false);
+      sendGuardByConvRef.current.delete(sid);
     }
   }, [
     clearBatchTimer,
-    conversation?.messages.length,
+    clearOptimisticForConversation,
     fetchConversation,
     fetchList,
-    openPricing,
+    triggerNoCreditsFlow,
   ]);
+
+  /** Eerste bericht van profielpagina: chat opent meteen; POST gebeurt hier (niet blokkeren op AI). */
+  useEffect(() => {
+    if (!chatParam || typeof window === 'undefined') return;
+
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(PROFILE_PENDING_SEND_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+
+    let pending: ProfilePendingSend;
+    try {
+      pending = JSON.parse(raw) as ProfilePendingSend;
+    } catch {
+      try {
+        sessionStorage.removeItem(PROFILE_PENDING_SEND_KEY);
+      } catch {
+        /* */
+      }
+      return;
+    }
+
+    if (pending.conversationId !== chatParam) return;
+
+    try {
+      if (sessionStorage.getItem(PROFILE_PENDING_LOCK_KEY) === chatParam) return;
+      sessionStorage.setItem(PROFILE_PENDING_LOCK_KEY, chatParam);
+    } catch {
+      return;
+    }
+
+    void (async () => {
+      try {
+        const ok = await flushOutgoingBatch(
+          pending.conversationId,
+          [{ text: pending.text }],
+          { noCredits: pending.noCredits === true }
+        );
+        if (ok) {
+          try {
+            sessionStorage.removeItem(PROFILE_PENDING_SEND_KEY);
+          } catch {
+            /* */
+          }
+        }
+      } finally {
+        try {
+          const l = sessionStorage.getItem(PROFILE_PENDING_LOCK_KEY);
+          if (l === chatParam) sessionStorage.removeItem(PROFILE_PENDING_LOCK_KEY);
+        } catch {
+          /* */
+        }
+      }
+    })();
+  }, [chatParam, flushOutgoingBatch]);
 
   const handlePickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -466,7 +1188,7 @@ function BerichtenInner() {
   };
 
   const handleSend = () => {
-    if (!selectedId || sending) return;
+    if (!selectedId || inflightSends.has(selectedId) || sendGuardByConvRef.current.has(selectedId)) return;
     const trimmed = input.trim();
     if (!trimmed && !pendingImage) return;
 
@@ -476,17 +1198,9 @@ function BerichtenInner() {
       );
       return;
     }
-    if (outgoingAccumRef.current.length >= MAX_OUTGOING_BATCH_SIZE) {
-      setError(
-        `Je kunt maximaal ${MAX_OUTGOING_BATCH_SIZE} berichten tegelijk versturen. Wacht tot de vorige zijn verzonden.`
-      );
-      return;
-    }
-
-    const nextBatchLen = outgoingAccumRef.current.length + 1;
-    const sendCost = creditsCostForBatchSize(nextBatchLen);
+    const sendCost = creditsCostForBatchSize(1);
     if (getCreditsBalance() < sendCost) {
-      openPricing();
+      triggerNoCreditsFlow(selectedId);
       return;
     }
 
@@ -495,18 +1209,20 @@ function BerichtenInner() {
     setInput('');
     setPendingImage(null);
 
-    outgoingAccumRef.current.push({
-      text: trimmed,
-      image: sentImage ?? undefined,
-    });
+    outgoingConversationIdRef.current = selectedId;
 
+    const createdAtIso = new Date().toISOString();
     const om: ChatMessage = {
       id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       role: 'user',
       content: trimmed || '📷',
-      createdAt: new Date().toISOString(),
+      createdAt: createdAtIso,
       readByPeer: false,
+      replyToId: replyToId ?? undefined,
     };
+    applyOptimisticListPreview(selectedId, trimmed || '📷', createdAtIso);
+    optimisticConversationIdRef.current = selectedId;
+    setOptimisticConversationId(selectedId);
     setOptimisticBatch((prev) => [...prev, om]);
     if (sentImage) {
       setOptimisticImageById((prev) => ({ ...prev, [om.id]: sentImage.previewUrl }));
@@ -529,11 +1245,109 @@ function BerichtenInner() {
       bumpPeerOnline();
     }
 
-    if (sentImage) {
-      void flushOutgoingBatch();
-    } else {
-      clearBatchTimer();
-      batchFlushTimerRef.current = setTimeout(() => void flushOutgoingBatch(), BATCH_MS);
+    clearBatchTimer();
+    void flushOutgoingBatch(selectedId, [
+      {
+        text: trimmed,
+        image: sentImage ?? undefined,
+        replyToId: replyToId ?? undefined,
+      },
+    ]);
+    setReplyToId(null);
+  };
+
+  const handleSendGift = async (giftCredits: number, packageLabel: string) => {
+    if (!selectedId || inflightSends.has(selectedId) || sendGuardByConvRef.current.has(selectedId)) return;
+    if (getCreditsBalance() < giftCredits) {
+      void fetch(`/api/conversations/${selectedId}/credit-runout`, {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(() => {});
+      triggerNoCreditsFlow(selectedId);
+      return;
+    }
+    const cleanNote = giftNote.trim();
+    applyOptimisticListPreview(
+      selectedId,
+      cleanNote || `🎁 ${giftCredits} credits gestuurd`,
+      new Date().toISOString()
+    );
+    setSendStartedAtByConv((prev) => ({ ...prev, [selectedId]: Date.now() }));
+    setTypingVisibleAtByConv((prev) => ({
+      ...prev,
+      [selectedId]:
+        Date.now() +
+        typingIndicatorDelayMs(messagesLenByConvRef.current[selectedId] ?? 0),
+    }));
+    setInflightSends((prev) => new Set(prev).add(selectedId));
+    setError(null);
+    const nowIso = new Date().toISOString();
+    const optimisticGiftMessage: ChatMessage = {
+      id: `tmp-gift-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      role: 'user',
+      content: cleanNote || `cadeautje voor ${activeConversation?.profileName ?? 'jou'}`,
+      createdAt: nowIso,
+      readByPeer: false,
+      gift: {
+        credits: giftCredits,
+        direction: 'to_peer',
+        emoji: '🎉',
+        packageLabel: packageLabel.trim() || `${giftCredits} credits`,
+        note: cleanNote || undefined,
+      },
+    };
+    optimisticConversationIdRef.current = selectedId;
+    setOptimisticConversationId(selectedId);
+    setOptimisticBatch((prev) => [...prev, optimisticGiftMessage]);
+    spendChatCredit(giftCredits);
+    setCreditsBalance(getCreditsBalance());
+    if (getCreditsBalance() < CREDITS_PER_MESSAGE) {
+      void fetch(`/api/conversations/${selectedId}/credit-runout`, {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(() => {});
+    }
+    try {
+      const res = await fetch(`/api/conversations/${selectedId}/gift`, {
+        method: 'POST',
+        credentials: 'include',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          credits: giftCredits,
+          packageLabel,
+          note: cleanNote || `cadeautje voor ${activeConversation?.profileName ?? 'jou'}`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gift sturen mislukt');
+      setShowGiftPanel(false);
+      try {
+        await fetchConversation(selectedId, { soft: true });
+        await fetchList({ silent: true });
+      } catch {
+        /* Cadeau staat al op de server; geen terugbetaling. */
+      }
+    } catch (e) {
+      refundChatCredit(giftCredits);
+      setCreditsBalance(getCreditsBalance());
+      setError(e instanceof Error ? e.message : 'Gift sturen mislukt');
+    } finally {
+      // Clear loading state immediately on gift (user message persisted on server)
+      setInflightSends((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedId);
+        return next;
+      });
+      setTypingVisibleAtByConv((prev) => {
+        const { [selectedId]: _, ...rest } = prev;
+        return rest;
+      });
+      setSendStartedAtByConv((prev) => {
+        const { [selectedId]: _, ...rest } = prev;
+        return rest;
+      });
+      sendGuardByConvRef.current.delete(selectedId);
     }
   };
 
@@ -549,22 +1363,33 @@ function BerichtenInner() {
   };
 
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--surface)] pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:h-auto md:min-h-screen md:overflow-visible md:pb-0 lg:h-dvh lg:overflow-hidden">
+    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-[var(--surface)]">
       <Navbar />
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-12 sm:pt-14 md:pt-20 md:overflow-visible lg:min-h-0 lg:overflow-hidden">
-        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden lg:flex-row lg:overflow-hidden xl:px-2">
-        {/* Inbox list */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-12 sm:pt-14 md:pt-20">
+        <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col overflow-hidden px-2 lg:flex-row lg:items-stretch xl:px-4">
+        {/* Inbox list - fully responsive, full height on mobile */}
         <div
-          className={`flex w-full flex-shrink-0 flex-col border-b border-gray-200/80 bg-[var(--surface-card)] lg:w-[340px] lg:min-h-0 lg:border-b-0 lg:border-r lg:max-h-full ${
-            selectedId ? 'hidden lg:flex' : 'flex max-h-[42vh] min-h-0 lg:max-h-none'
+          className={`flex w-full flex-shrink-0 flex-col border-b border-gray-200/80 bg-[var(--surface-card)] lg:w-[360px] lg:min-h-0 lg:max-h-none lg:border-b-0 lg:border-r lg:overflow-hidden xl:w-[390px] ${
+            selectedId 
+              ? 'hidden lg:flex' 
+              : 'flex flex-1 min-h-0 lg:flex-none lg:h-auto'
           }`}
         >
           <div className="p-4 md:p-6 border-b border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-2xl text-gray-900">Berichten</h2>
-              <div className="bg-primary text-white text-xs font-semibold px-2.5 py-1 rounded-full min-w-[28px] text-center">
-                {totalUnread || list.length}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddDebugCredits}
+                  className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary hover:bg-primary/15"
+                >
+                  credits +1000
+                </button>
+                <div className="bg-primary text-white text-xs font-semibold px-2.5 py-1 rounded-full min-w-[28px] text-center">
+                  {list.length > 0 ? totalUnread || list.length : totalUnread}
+                </div>
               </div>
             </div>
             <div className="relative">
@@ -574,19 +1399,18 @@ function BerichtenInner() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Zoek in berichten..."
-                className="w-full bg-gray-100 border-0 rounded-2xl pl-11 pr-4 py-3 text-sm focus:ring-2 focus:ring-primary/30"
+                className="w-full rounded-2xl border-0 bg-gray-100 py-3 pl-11 pr-4 text-base focus:ring-2 focus:ring-primary/30 md:text-sm"
               />
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto lg:min-h-0">
-            {loadingList && (
-              <p className="p-6 text-gray-500 text-sm">Laden…</p>
-            )}
-            {!loadingList &&
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {filteredList.length === 0 ? (
+              <p className="p-6 text-gray-500 text-sm">Nog geen berichten</p>
+            ) : (
               filteredList.map((chat) => (
                 <button
-                  key={chat.id}
+                  key={chat.profileId} // Use profileId as stable key (1 cell per profile)
                   type="button"
                   onClick={() => selectChat(chat.id)}
                   className={`w-full flex gap-3 px-4 md:px-6 py-4 text-left border-b border-gray-100 hover:bg-gray-50 transition-colors ${
@@ -612,7 +1436,13 @@ function BerichtenInner() {
                         {chat.timestamp}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600 line-clamp-2 mt-0.5">
+                    <p
+                      className={`line-clamp-2 mt-0.5 text-sm ${
+                        chat.lastMessageFromAssistant
+                          ? 'font-bold text-gray-900'
+                          : 'font-normal text-gray-600'
+                      }`}
+                    >
                       {chat.lastMessage}
                     </p>
                   </div>
@@ -622,30 +1452,31 @@ function BerichtenInner() {
                     </span>
                   )}
                 </button>
-              ))}
+              ))
+            )}
           </div>
         </div>
 
-        {/* Chat / empty */}
+        {/* Chat / empty - full height when open on mobile */}
         <div
-          className={`flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--surface-card)] ${
-            !selectedId ? 'flex' : 'flex lg:flex'
-          } ${selectedId ? '' : 'hidden lg:flex'}`}
+          className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--surface-card)] ${
+            selectedId ? 'flex' : 'hidden lg:flex'
+          }`}
         >
-          {error && (
+          {visibleError && (
             <div className="mx-4 mt-4 shrink-0 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
+              {visibleError}
             </div>
           )}
 
           {selectedId && loadingMessages && (
             <div className="flex-1 flex items-center justify-center text-gray-500">
-              Gesprek laden…
+              Laden…
             </div>
           )}
 
-          {selectedId && !loadingMessages && conversation && (
-            <>
+          {selectedId && !loadingMessages && activeConversation && (
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {arrivalToast && (
                 <div
                   role="status"
@@ -665,7 +1496,7 @@ function BerichtenInner() {
                 </button>
                 <div className="relative shrink-0">
                   <img
-                    src={conversation.previewAvatar}
+                    src={activeConversation.previewAvatar}
                     alt=""
                     className="h-11 w-11 rounded-2xl object-cover ring-2 ring-white shadow-sm"
                   />
@@ -675,7 +1506,7 @@ function BerichtenInner() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate font-semibold text-[16px] text-gray-900">
-                    {conversation.profileName}
+                    {activeConversation.profileName}
                   </h2>
                   <p className="mt-0.5 truncate text-[12px] text-gray-500">
                     {isPeerOnlineNow ? (
@@ -692,18 +1523,28 @@ function BerichtenInner() {
 
               <div
                 ref={chatScrollRef}
-                className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 space-y-4"
+                className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 [-webkit-overflow-scrolling:touch] md:px-4"
               >
-                {conversation.messages.length === 0 && (
+                <div className="flex min-h-full flex-col gap-3 py-3 md:gap-4 md:py-4">
+                {(displayMessages.length > 0 || pendingIndicatorVisible) && <div className="mt-auto" />}
+                {displayMessages.length === 0 && (
                   <p className="text-center text-gray-500 text-sm">
                     Stuur een bericht — het profiel antwoordt via AI (Grok).
                   </p>
                 )}
-                {[...conversation.messages, ...optimisticBatch].map((m: ChatMessage) => (
+                {displayMessages.map((m: ChatMessage) => (
                     <div
                       key={m.id}
                       className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                      onPointerDown={(e) => handleReplySwipeStart(m.id, e)}
+                      onPointerMove={(e) => handleReplySwipeMove(m.id, e)}
+                      onPointerUp={() => handleReplySwipeEnd(m.id)}
+                      onPointerCancel={() => handleReplySwipeEnd(m.id)}
                     >
+                      <div
+                        className="transition-transform duration-150"
+                        style={{ transform: `translateX(${swipeOffsetByMessageId[m.id] ?? 0}px)` }}
+                      >
                       {m.role === 'assistant' && m.voice ? (
                         <div className="flex max-w-[88%] flex-col items-start space-y-2">
                           {m.voice.ttsText && (
@@ -733,6 +1574,11 @@ function BerichtenInner() {
                               ))}
                             </span>
                             <Mic className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                            {!m.voice?.ttsText ? (
+                              <span className="shrink-0 text-[11px] font-semibold text-gray-500">
+                                0:05
+                              </span>
+                            ) : null}
                           </button>
                           <MessageTimestamp
                             iso={m.createdAt}
@@ -742,6 +1588,9 @@ function BerichtenInner() {
                         </div>
                       ) : m.role === 'user' ? (
                         (() => {
+                          const replied = m.replyToId
+                            ? displayMessages.find((x) => x.id === m.replyToId)
+                            : undefined;
                           const optPreview = optimisticImageById[m.id];
                           const showImg =
                             Boolean(m.imageFile && selectedId) || Boolean(optPreview);
@@ -780,35 +1629,252 @@ function BerichtenInner() {
                               )}
                               {textBody ? (
                                 <div className="rounded-2xl rounded-br-sm bg-primary px-4 py-3 text-[15px] leading-snug text-white">
+                                  {replied ? (
+                                    <div className="mb-2 rounded-xl bg-white/10 px-2.5 py-2 text-[12px] leading-snug">
+                                      <div className="text-[10px] font-bold uppercase tracking-wider text-white/80">
+                                        reply
+                                      </div>
+                                      <div className="mt-1 line-clamp-2 text-white/90">
+                                        {snippetForReply(replied)}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {m.gift ? (
+                                    openedGiftByMessageId[m.id] ? (
+                                      giftOpenAnimationUrl && !giftOpenPlayedByMessageId[m.id] ? (
+                                        <div className="gift-reveal-pop mb-2 overflow-hidden rounded-xl border border-white/25 bg-black/15">
+                                          <video
+                                            src={giftOpenAnimationUrl}
+                                            className="h-28 w-full object-cover"
+                                            muted
+                                            playsInline
+                                            autoPlay
+                                            onEnded={() =>
+                                              setGiftOpenPlayedByMessageId((prev) => ({
+                                                ...prev,
+                                                [m.id]: true,
+                                              }))
+                                            }
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="gift-reveal-pop mb-2 rounded-xl border border-white/25 bg-white/10 px-2.5 py-2 text-[12px] text-white">
+                                          <p className="font-semibold">
+                                            {m.gift.emoji ?? '🎁'} cadeau geopend
+                                          </p>
+                                          <p>{m.gift.packageLabel ?? `${m.gift.credits} credits`}</p>
+                                          <p>{m.gift.credits} credits</p>
+                                        </div>
+                                      )
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setGiftOpenPlayedByMessageId((prev) => {
+                                            const { [m.id]: _old, ...rest } = prev;
+                                            return rest;
+                                          });
+                                          openGiftMessage(m.id);
+                                        }}
+                                        className="gift-box-closed mb-2 w-full overflow-hidden rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-left text-[12px] font-semibold text-white"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[15px]">🎁</span>
+                                          <span>tik om cadeau te openen</span>
+                                        </div>
+                                        {giftClosedAnimationUrl ? (
+                                          <div className="mt-2 overflow-hidden rounded-lg border border-white/20 bg-black/10">
+                                            <video
+                                              src={giftClosedAnimationUrl}
+                                              className="h-24 w-full object-cover"
+                                              muted
+                                              playsInline
+                                              autoPlay
+                                              loop
+                                            />
+                                          </div>
+                                        ) : null}
+                                      </button>
+                                    )
+                                  ) : null}
                                   <p className="whitespace-pre-wrap">{textBody}</p>
-                                  <div className="mt-1.5 flex justify-end">
+                                  <div className="mt-2 flex items-center justify-end gap-2">
+                                    <span
+                                      className="select-none text-[11px] font-medium tabular-nums text-white/95"
+                                      title={m.createdAt}
+                                    >
+                                      {formatMessageTime(m.createdAt)}
+                                    </span>
                                     {m.readByPeer === false ? (
                                       <Check
-                                        className="h-4 w-4 text-white/55"
+                                        className="h-4 w-4 shrink-0 text-white/90"
                                         strokeWidth={2.5}
                                         aria-label="Verzonden"
                                       />
                                     ) : (
                                       <CheckCheck
-                                        className="h-4 w-4 text-red-100"
+                                        className="h-4 w-4 shrink-0 text-red-100"
                                         strokeWidth={2.5}
                                         aria-label="Gelezen"
                                       />
                                     )}
                                   </div>
                                 </div>
+                              ) : m.gift ? (
+                                <div className="rounded-2xl rounded-br-sm bg-primary px-4 py-3 text-[15px] leading-snug text-white">
+                                  {replied ? (
+                                    <div className="mb-2 rounded-xl bg-white/10 px-2.5 py-2 text-[12px] leading-snug">
+                                      <div className="text-[10px] font-bold uppercase tracking-wider text-white/80">
+                                        reply
+                                      </div>
+                                      <div className="mt-1 line-clamp-2 text-white/90">
+                                        {snippetForReply(replied)}
+                                      </div>
+                                    </div>
+                                  ) : null}
+                                  {openedGiftByMessageId[m.id] ? (
+                                    giftOpenAnimationUrl && !giftOpenPlayedByMessageId[m.id] ? (
+                                      <div className="gift-reveal-pop mb-2 overflow-hidden rounded-xl border border-white/25 bg-black/15">
+                                        <video
+                                          src={giftOpenAnimationUrl}
+                                          className="h-28 w-full object-cover"
+                                          muted
+                                          playsInline
+                                          autoPlay
+                                          onEnded={() =>
+                                            setGiftOpenPlayedByMessageId((prev) => ({
+                                              ...prev,
+                                              [m.id]: true,
+                                            }))
+                                          }
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="gift-reveal-pop mb-2 rounded-xl border border-white/25 bg-white/10 px-2.5 py-2 text-[12px] text-white">
+                                        <p className="font-semibold">{m.gift.emoji ?? '🎁'} cadeau geopend</p>
+                                        <p>{m.gift.packageLabel ?? `${m.gift.credits} credits`}</p>
+                                        <p>{m.gift.credits} credits</p>
+                                      </div>
+                                    )
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setGiftOpenPlayedByMessageId((prev) => {
+                                          const { [m.id]: _old, ...rest } = prev;
+                                          return rest;
+                                        });
+                                        openGiftMessage(m.id);
+                                      }}
+                                      className="gift-box-closed mb-2 w-full overflow-hidden rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-left text-[12px] font-semibold text-white"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[15px]">🎁</span>
+                                        <span>tik om cadeau te openen</span>
+                                      </div>
+                                      {giftClosedAnimationUrl ? (
+                                        <div className="mt-2 overflow-hidden rounded-lg border border-white/20 bg-black/10">
+                                          <video
+                                            src={giftClosedAnimationUrl}
+                                            className="h-24 w-full object-cover"
+                                            muted
+                                            playsInline
+                                            autoPlay
+                                            loop
+                                          />
+                                        </div>
+                                      ) : null}
+                                    </button>
+                                  )}
+                                  <p className="mt-2 text-right text-[11px] font-medium tabular-nums text-white/95">
+                                    {formatMessageTime(m.createdAt)}
+                                  </p>
+                                </div>
                               ) : null}
-                              <MessageTimestamp
-                                iso={m.createdAt}
-                                align="right"
-                                variant="outgoing"
-                              />
+                              {!textBody && !m.gift && (
+                                <MessageTimestamp
+                                  iso={m.createdAt}
+                                  align="right"
+                                  variant="outgoing-meta"
+                                />
+                              )}
                             </div>
                           );
                         })()
                       ) : (
-                        <div className="flex max-w-[85%] flex-col items-start">
+                        (() => {
+                          const replied = m.replyToId
+                            ? displayMessages.find((x) => x.id === m.replyToId)
+                            : undefined;
+                          return (
+                            <div className="flex max-w-[85%] flex-col items-start">
                           <div className="rounded-2xl rounded-bl-sm border border-gray-200/60 bg-[var(--surface-card)] px-4 py-3 text-[15px] leading-snug text-gray-900 shadow-md shadow-black/10">
+                            {replied ? (
+                              <div className="mb-2 rounded-xl border border-gray-200/60 bg-white px-2.5 py-2 text-[12px] leading-snug text-gray-700">
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                                  reply
+                                </div>
+                                <div className="mt-1 line-clamp-2">{snippetForReply(replied)}</div>
+                              </div>
+                            ) : null}
+                            {m.gift ? (
+                              openedGiftByMessageId[m.id] ? (
+                                giftOpenAnimationUrl && !giftOpenPlayedByMessageId[m.id] ? (
+                                  <div className="gift-reveal-pop mb-2 overflow-hidden rounded-xl border border-primary/20 bg-black/5">
+                                    <video
+                                      src={giftOpenAnimationUrl}
+                                      className="h-28 w-full object-cover"
+                                      muted
+                                      playsInline
+                                      autoPlay
+                                      onEnded={() =>
+                                        setGiftOpenPlayedByMessageId((prev) => ({
+                                          ...prev,
+                                          [m.id]: true,
+                                        }))
+                                      }
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="gift-reveal-pop mb-2 rounded-xl border border-primary/20 bg-primary/10 px-2.5 py-2 text-[12px] text-primary">
+                                    <p className="font-semibold">
+                                      {m.gift.emoji ?? '🎁'} cadeau geopend
+                                    </p>
+                                    <p>{m.gift.packageLabel ?? `${m.gift.credits} credits`}</p>
+                                    <p>{m.gift.credits} credits</p>
+                                  </div>
+                                )
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGiftOpenPlayedByMessageId((prev) => {
+                                      const { [m.id]: _old, ...rest } = prev;
+                                      return rest;
+                                    });
+                                    openGiftMessage(m.id);
+                                  }}
+                                  className="gift-box-closed mb-2 w-full overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-r from-primary/15 to-pink-500/15 px-3 py-2 text-left text-[12px] font-semibold text-primary"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[15px]">🎁</span>
+                                    <span>tik om cadeau te openen</span>
+                                  </div>
+                                  {giftClosedAnimationUrl ? (
+                                    <div className="mt-2 overflow-hidden rounded-lg border border-primary/15 bg-black/5">
+                                      <video
+                                        src={giftClosedAnimationUrl}
+                                        className="h-24 w-full object-cover"
+                                        muted
+                                        playsInline
+                                        autoPlay
+                                        loop
+                                      />
+                                    </div>
+                                  ) : null}
+                                </button>
+                              )
+                            ) : null}
                             <p className="whitespace-pre-wrap">{m.content}</p>
                           </div>
                           <MessageTimestamp
@@ -816,32 +1882,28 @@ function BerichtenInner() {
                             align="left"
                             variant="incoming"
                           />
+                          {/* Realistic read receipt for assistant messages */}
+                          {m.role === "assistant" && m.readAt && (
+                            <div className="flex items-center gap-1 mt-0.5 pl-3">
+                              <span className="text-[10px] text-emerald-500 font-medium">✓✓</span>
+                              <span className="text-[9px] text-gray-400">
+                                gelezen {new Date(m.readAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          )}
                         </div>
+                          );
+                        })()
                       )}
+                      </div>
                     </div>
                   )
                 )}
-                {sending && expectVoiceReply && (
-                  <div className="flex justify-start">
-                    <div className="flex max-w-[92%] items-center gap-3 rounded-2xl rounded-bl-sm bg-gray-100 px-4 py-3 text-[14px] text-gray-700 shadow-md shadow-black/10">
-                      <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-                        <Mic className="relative z-10 h-5 w-5 voice-mic-breathe" aria-hidden />
-                        <span
-                          className="absolute inset-0 rounded-full border-2 border-primary/30 voice-mic-ring"
-                          aria-hidden
-                        />
-                      </span>
-                      <p className="leading-snug">
-                        <span className="font-semibold text-gray-900">{conversation.profileName}</span>
-                        <span className="text-gray-600"> spreekt een spraakbericht in…</span>
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {sending && !expectVoiceReply && (
+                {/* Typing indicator — ONLY shown when user is sending a message (pendingIndicatorVisible) */}
+                {pendingIndicatorVisible && (
                   <div className="flex justify-start">
                     <div className="rounded-2xl rounded-bl-sm border border-gray-200/50 bg-gray-100 px-4 py-3 text-gray-600 shadow-md shadow-black/10">
-                      <span className="sr-only">{conversation.profileName} typt…</span>
+                      <span className="sr-only">Aan het typen…</span>
                       <span className="flex items-center gap-1">
                         {[0, 1, 2].map((i) => (
                           <span
@@ -854,9 +1916,10 @@ function BerichtenInner() {
                     </div>
                   </div>
                 )}
+                </div>
               </div>
 
-              <div className="shrink-0 border-t border-gray-200/70 bg-[var(--surface-card)] p-4 pb-safe">
+              <div className="shrink-0 border-t border-gray-200/70 bg-[var(--surface-card)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px)+4.25rem)] md:p-4 md:pb-4">
                 <input
                   ref={imageInputRef}
                   type="file"
@@ -881,36 +1944,165 @@ function BerichtenInner() {
                     </button>
                   </div>
                 )}
-                <div className="flex gap-2 max-w-3xl mx-auto items-stretch sm:items-center">
-                  <button
-                    type="button"
-                    disabled={sending}
-                    onClick={() => imageInputRef.current?.click()}
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-primary shadow-sm hover:bg-primary/5 disabled:opacity-50"
-                    title="Foto (JPG/PNG)"
-                    aria-label="Foto toevoegen"
-                  >
-                    <ImagePlus className="h-5 w-5" />
-                  </button>
-                  <input
-                    type="text"
+                {showGiftPanel && activeConversation && (
+                  <div className="mx-auto mb-3 max-w-3xl rounded-2xl border border-primary/30 bg-primary/[0.06] p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-gray-900">
+                        🎁 Cadeau sturen aan {activeConversation.profileName}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowGiftPanel(false)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                        aria-label="Sluit cadeaupaneel"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Sluit
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {CHAT_GIFT_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() =>
+                            void handleSendGift(
+                              opt.credits,
+                              `${opt.priceLabel} voor ${opt.credits} credits voor ${activeConversation.profileName}`
+                            )
+                          }
+                          className={`rounded-xl border px-3 py-2 text-left ${
+                            opt.featured
+                              ? 'border-primary bg-white shadow-sm'
+                              : 'border-gray-200 bg-white'
+                          }`}
+                        >
+                          <p className="text-xs text-gray-500">{opt.priceLabel}</p>
+                          <p className="font-semibold text-gray-900">{opt.credits} credits</p>
+                          <p className="text-[11px] text-gray-600">
+                            voor {activeConversation.profileName}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      value={giftNote}
+                      onChange={(e) => setGiftNote(e.target.value)}
+                      placeholder="Berichtje bij je cadeau..."
+                      className="mt-2 min-h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-base md:min-h-0 md:text-sm"
+                    />
+                  </div>
+                )}
+                <div className="mx-auto w-full max-w-3xl space-y-3">
+                  {replyToId && (
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                          reply
+                        </div>
+                        <div className="mt-1 truncate text-gray-700">
+                          {snippetForReply(displayMessages.find((x) => x.id === replyToId))}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReplyToId(null)}
+                        className="shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                      >
+                        annuleer
+                      </button>
+                    </div>
+                  )}
+                  <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Typ je bericht…"
-                    className="flex-1 min-w-0 rounded-2xl border border-gray-200 px-4 py-3 text-[15px] focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder="Typ je bericht… (Shift+Enter voor nieuwe regel)"
+                    rows={4}
+                    disabled={sendingHere}
+                    className="min-h-[6.5rem] w-full resize-y rounded-2xl border border-gray-200 px-4 py-4 text-lg leading-relaxed text-gray-900 shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 md:min-h-[5.75rem] md:text-[17px]"
                   />
-                  <Button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={sending || (!input.trim() && !pendingImage)}
-                    className="rounded-2xl px-6"
-                  >
-                    {sending ? '…' : 'Verstuur'}
-                  </Button>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="relative shrink-0" ref={attachMenuRef}>
+                      <button
+                        type="button"
+                        disabled={sendingHere}
+                        onClick={() => setAttachMenuOpen((v) => !v)}
+                        className="flex h-14 min-h-[56px] w-14 items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+                        aria-expanded={attachMenuOpen}
+                        aria-haspopup="true"
+                        aria-label="Meer opties"
+                      >
+                        <MoreVertical className="h-7 w-7" />
+                      </button>
+                      {attachMenuOpen ? (
+                        <div
+                          className="absolute bottom-full left-0 z-30 mb-2 w-60 overflow-hidden rounded-2xl border border-gray-200 bg-white py-1 shadow-lg"
+                          role="menu"
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={sendingHere}
+                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => {
+                              imageInputRef.current?.click();
+                              setAttachMenuOpen(false);
+                            }}
+                          >
+                            <ImagePlus className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                            Foto toevoegen
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={sendingHere}
+                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => {
+                              setShowGiftPanel((v) => !v);
+                              setAttachMenuOpen(false);
+                            }}
+                          >
+                            <Sparkles className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                            Cadeau sturen
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={sendingHere || (!input.trim() && !pendingImage)}
+                      className="flex h-14 min-h-[56px] min-w-[7.75rem] shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary px-8 text-base font-semibold text-white shadow-sm transition-all active:scale-[0.97] hover:bg-primary/90 sm:min-w-[8.5rem]"
+                    >
+                      Verstuur
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </>
+            </div>
+          )}
+
+          {selectedId && !loadingMessages && !activeConversation && (
+            <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+              <p className="text-lg font-semibold text-gray-900">Gesprek niet gevonden</p>
+              <p className="mt-2 max-w-sm text-sm text-gray-600">
+                Dit gesprek bestaat niet meer of is niet beschikbaar. Kies een gesprek uit je inbox.
+              </p>
+              <Button
+                type="button"
+                onClick={backToList}
+                className="mt-5 rounded-2xl bg-primary px-6 py-2.5 text-white hover:bg-primary/90"
+              >
+                Terug naar berichten
+              </Button>
+            </div>
           )}
 
           {!selectedId && !loadingList && list.length === 0 && <EmptyState />}
@@ -926,6 +2118,25 @@ function BerichtenInner() {
 
         <CreditsSidebar balance={creditsBalance} onBuyCredits={openPricing} />
         </div>
+      </div>
+      {/* Desktop live notifications (right-bottom) */}
+      <div className="pointer-events-none fixed bottom-6 right-6 z-[90] hidden w-[320px] max-w-[92vw] flex-col gap-3 md:flex">
+        {liveNotifications.map((n) => (
+          <div
+            key={n.id}
+            className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-gray-200/80 bg-white px-3 py-3 shadow-lg"
+          >
+            <img
+              src={n.avatar}
+              alt=""
+              className="h-11 w-11 shrink-0 rounded-xl object-cover ring-2 ring-white shadow-sm"
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-gray-900">{n.profileName}</p>
+              <p className="truncate text-xs text-gray-600">{n.text}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1011,7 +2222,7 @@ function CreditsSidebar({
   onBuyCredits: () => void;
 }) {
   return (
-    <div className="hidden xl:block w-[300px] border-l border-gray-200/80 bg-[var(--surface-card)] p-6 flex-shrink-0">
+    <div className="hidden xl:flex xl:min-h-0 xl:max-h-full xl:w-[300px] xl:flex-shrink-0 xl:flex-col xl:overflow-y-auto xl:border-l xl:border-gray-200/80 xl:bg-[var(--surface-card)] xl:p-6">
       <div className="bg-gradient-to-br from-primary to-primary-deep text-white rounded-3xl p-6 shadow-xl">
         <div className="flex justify-between items-start mb-6">
           <div>

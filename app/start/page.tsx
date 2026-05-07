@@ -4,11 +4,23 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { CircularLoader } from '@/components/CircularLoader';
-import { setStoredUser, getStoredUser, type StoredUser } from '@/lib/onboarding-client';
-import { markShowWelcomeModal } from '@/lib/welcome-modal-client';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Check } from 'lucide-react';
+import { setStoredUser } from '@/lib/onboarding-client';
 
-type Step = 'splash' | 'q1' | 'q2' | 'q3' | 'loading' | 'congrats' | 'akkoord';
+type Step =
+  | 'splash'
+  | 'q1'
+  | 'q2'
+  | 'q3'
+  | 'q4'
+  | 'zoekLeeftijd'
+  | 'zoekEigenschappen'
+  | 'loadingMatches'
+  | 'signupForm'
+  | 'akkoord';
+
+/** Vier ja/nee-vragen + leeftijdscategorie + eigenschappen */
+const ONBOARDING_VRAAG_TOTAAL = 6;
 
 const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   { id: 'q1', tekst: 'Ben je ouder dan 27?' },
@@ -20,20 +32,57 @@ const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   {
     id: 'q3',
     tekst:
+      'Op het platform heb je alleen toegang tot vrouwen die interesse hebben in persoonlijk & fysiek contact. Ben je daar oké mee?',
+  },
+  {
+    id: 'q4',
+    tekst:
       'Kun je omgaan met vrouwen die pit hebben? De meeste zijn Oost-Europees.',
   },
 ];
+
+const LEEFTIJD_CATEGORIEEN = [
+  { id: '18-24', label: '18–24 jaar' },
+  { id: '25-34', label: '25–34 jaar' },
+  { id: '35-44', label: '35–44 jaar' },
+  { id: '45-54', label: '45–54 jaar' },
+  { id: '55plus', label: '55 jaar en ouder' },
+] as const;
+
+const EIGENSCHAP_OPTIES = [
+  { id: 'goede-rondingen', label: 'Goede rondingen' },
+  { id: 'gezellig', label: 'Gezellig' },
+  { id: 'gevoelig', label: 'Gevoelig' },
+  { id: 'discreet', label: 'Discreet' },
+  { id: 'speels', label: 'Speels' },
+  { id: 'sexy', label: 'Sexy' },
+  { id: 'sexueel-actief', label: 'Sexueel actief' },
+  { id: 'onduigend', label: 'Onduigend' },
+] as const;
 
 type Answers = {
   q1: boolean | null;
   q2: boolean | null;
   q3: boolean | null;
+  q4: boolean | null;
 };
+
+function randomMatchCount(): number {
+  return Math.floor(11 + Math.random() * (50 - 11 + 1));
+}
 
 export default function StartPage() {
   const [step, setStep] = useState<Step>('splash');
-  const [answers, setAnswers] = useState<Answers>({ q1: null, q2: null, q3: null });
+  const [answers, setAnswers] = useState<Answers>({
+    q1: null,
+    q2: null,
+    q3: null,
+    q4: null,
+  });
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [zoekLeeftijdIds, setZoekLeeftijdIds] = useState<Set<string>>(() => new Set());
+  const [eigenschapIds, setEigenschapIds] = useState<Set<string>>(() => new Set());
+  const [matchCount, setMatchCount] = useState<number | null>(null);
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
   const [leeftijd, setLeeftijd] = useState('');
@@ -56,7 +105,6 @@ export default function StartPage() {
       } catch {
         /* ignore */
       }
-      if (!cancel && getStoredUser()) window.location.replace('/nieuwsfeed');
     })();
     return () => {
       cancel = true;
@@ -64,33 +112,86 @@ export default function StartPage() {
   }, []);
 
   useEffect(() => {
-    if (step !== 'loading') return;
+    if (step !== 'loadingMatches') return;
     setLoadingProgress(0);
     const start = Date.now();
-    const duration = 3200;
+    const duration = 3800;
     const tick = () => {
       const elapsed = Date.now() - start;
       const p = Math.min(100, Math.round((elapsed / duration) * 100));
       setLoadingProgress(p);
       if (elapsed < duration) requestAnimationFrame(tick);
-      else setStep('congrats');
+      else {
+        const base = randomMatchCount();
+        const preferenceBonus = Math.min(
+          6,
+          Math.max(0, zoekLeeftijdIds.size - 1) + Math.max(0, eigenschapIds.size - 1)
+        );
+        setMatchCount(Math.min(50, base + preferenceBonus));
+        setStep('signupForm');
+      }
     };
     requestAnimationFrame(tick);
   }, [step]);
 
   const qIndex =
-    step === 'q1' ? 0 : step === 'q2' ? 1 : step === 'q3' ? 2 : -1;
+    step === 'q1'
+      ? 0
+      : step === 'q2'
+        ? 1
+        : step === 'q3'
+          ? 2
+          : step === 'q4'
+            ? 3
+            : -1;
 
   const answerJaNee = (ja: boolean) => {
-    const keys: (keyof Answers)[] = ['q1', 'q2', 'q3'];
+    const keys: (keyof Answers)[] = ['q1', 'q2', 'q3', 'q4'];
     const current = keys[qIndex];
     if (!current) return;
     setAnswers((a) => ({ ...a, [current]: ja }));
-    if (qIndex < 2) {
+    if (qIndex < keys.length - 1) {
       setStep(keys[qIndex + 1] as Step);
     } else {
-      setStep('loading');
+      setStep('zoekLeeftijd');
     }
+  };
+
+  const toggleEigenschap = (id: string) => {
+    setEigenschapIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleLeeftijdCategorie = (id: string) => {
+    setZoekLeeftijdIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setError(null);
+  };
+
+  const handleZoekLeeftijdNext = () => {
+    setError(null);
+    if (zoekLeeftijdIds.size === 0) {
+      setError('Kies minimaal één leeftijdscategorie.');
+      return;
+    }
+    setStep('zoekEigenschappen');
+  };
+
+  const handleEigenschappenNext = () => {
+    setError(null);
+    if (eigenschapIds.size === 0) {
+      setError('Kies minimaal één eigenschap.');
+      return;
+    }
+    setStep('loadingMatches');
   };
 
   const handleGaDoor = (e: React.FormEvent) => {
@@ -123,6 +224,13 @@ export default function StartPage() {
       return;
     }
     const age = parseInt(leeftijd, 10);
+    const leeftijdLabels = LEEFTIJD_CATEGORIEEN.filter((c) => zoekLeeftijdIds.has(c.id)).map(
+      (c) => c.label
+    );
+    const categorieLabel = leeftijdLabels.length ? leeftijdLabels.join(', ') : '';
+    const eigenschappenLabels = EIGENSCHAP_OPTIES.filter((o) => eigenschapIds.has(o.id)).map(
+      (o) => o.label
+    );
     setSubmitting(true);
     try {
       const res = await fetch('/api/onboarding/signup', {
@@ -136,20 +244,34 @@ export default function StartPage() {
           wachtwoord,
           discreetAkkoord: discreetVink,
           voorwaardenAkkoord: voorwaardenVink,
+          zoekLeeftijdCategorie: categorieLabel || undefined,
+          zoekEigenschappen: eigenschappenLabels.length ? eigenschappenLabels : undefined,
+          geschatteMatches: matchCount ?? undefined,
         }),
       });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(data.error || 'Opslaan mislukt');
-      const user: StoredUser = {
-        naam: naam.trim(),
-        email: email.trim().toLowerCase(),
-        leeftijd: age,
-        discreetAkkoord: discreetVink,
-        voorwaardenAkkoord: voorwaardenVink,
-        completedAt: new Date().toISOString(),
+      const data = (await res.json()) as {
+        error?: string;
+        user?: {
+          id: string;
+          naam: string;
+          email: string;
+          leeftijd: number;
+          createdAt: string;
+        };
+        needsEmailVerification?: boolean;
       };
-      setStoredUser(user);
-      markShowWelcomeModal();
+      if (!res.ok) throw new Error(data.error || 'Opslaan mislukt');
+      if (data.user) {
+        setStoredUser({
+          id: data.user.id,
+          naam: data.user.naam,
+          email: data.user.email,
+          leeftijd: data.user.leeftijd,
+          discreetAkkoord: true,
+          voorwaardenAkkoord: true,
+          completedAt: data.user.createdAt,
+        });
+      }
       window.location.assign('/nieuwsfeed');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Opslaan mislukt. Probeer opnieuw.');
@@ -159,7 +281,11 @@ export default function StartPage() {
   };
 
   const showVraagVoettekst =
-    step === 'q1' || step === 'q2' || step === 'q3';
+    step === 'q1' || step === 'q2' || step === 'q3' || step === 'q4';
+
+  const zoekLeeftijdSamenvatting = LEEFTIJD_CATEGORIEEN.filter((c) => zoekLeeftijdIds.has(c.id))
+    .map((c) => c.label)
+    .join(', ');
 
   return (
     <div className="min-h-screen bg-[var(--onboarding-bg)] flex flex-col">
@@ -193,13 +319,13 @@ export default function StartPage() {
           </div>
         )}
 
-        {(step === 'q1' || step === 'q2' || step === 'q3') && (
+        {(step === 'q1' || step === 'q2' || step === 'q3' || step === 'q4') && (
           <div className="w-full space-y-8">
             <div className="flex justify-center">
               <Logo variant="hero" className="scale-90" />
             </div>
             <p className="text-center text-sm font-semibold text-gray-600">
-              Vraag {qIndex + 1} van {VRAGEN.length}
+              Vraag {qIndex + 1} van {ONBOARDING_VRAAG_TOTAAL}
             </p>
             <h2 className="text-center text-xl md:text-2xl font-semibold text-gray-900 leading-snug px-1">
               {VRAGEN[qIndex]?.tekst}
@@ -231,27 +357,183 @@ export default function StartPage() {
           </div>
         )}
 
-        {step === 'loading' && (
+        {step === 'zoekLeeftijd' && (
+          <div className="w-full space-y-6 max-w-md mx-auto">
+            <div className="flex justify-center">
+              <Logo variant="hero" className="scale-90" />
+            </div>
+            <p className="text-center text-sm font-semibold text-gray-600">
+              Vraag 5 van {ONBOARDING_VRAAG_TOTAAL}
+            </p>
+            <div>
+              <h2 className="text-center text-xl md:text-2xl font-semibold text-gray-900 leading-snug">
+                In welke leeftijdscategorie zoek je vrouwen?
+              </h2>
+              <p className="text-center text-sm text-gray-600 mt-2">
+                Meerdere antwoorden mogelijk — hoe meer je selecteert, hoe breder je zoekprofiel.
+              </p>
+            </div>
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 rounded-2xl px-4 py-2 border-2 border-red-100">
+                {error}
+              </p>
+            )}
+            <div className="space-y-2">
+              {LEEFTIJD_CATEGORIEEN.map((c) => {
+                const on = zoekLeeftijdIds.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
+                    onClick={() => toggleLeeftijdCategorie(c.id)}
+                    className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-all ${
+                      on
+                        ? 'border-primary bg-primary/10'
+                        : 'border-gray-300 bg-[var(--surface-card)] hover:bg-gray-50'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
+                        on ? 'border-primary bg-primary text-white' : 'border-gray-400 bg-white'
+                      }`}
+                    >
+                      {on && <Check className="h-4 w-4" strokeWidth={3} />}
+                    </span>
+                    <span className="font-medium text-gray-900">{c.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setStep('q4')}
+                className="flex-1 py-4 rounded-full border-2 border-gray-300 bg-white font-semibold text-gray-800"
+              >
+                Terug
+              </button>
+              <button
+                type="button"
+                onClick={handleZoekLeeftijdNext}
+                className="flex-1 py-4 rounded-full bg-primary text-white font-semibold shadow-md"
+              >
+                Volgende
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'zoekEigenschappen' && (
+          <div className="w-full space-y-6 max-w-md mx-auto">
+            <div className="flex justify-center">
+              <Logo variant="hero" className="scale-90" />
+            </div>
+            <p className="text-center text-sm font-semibold text-gray-600">
+              Vraag 6 van {ONBOARDING_VRAAG_TOTAAL}
+            </p>
+            <div>
+              <h2 className="text-center text-xl md:text-2xl font-semibold text-gray-900 leading-snug">
+                Waarin moeten deze vrouwen voldoen?
+              </h2>
+              <p className="text-center text-sm text-gray-600 mt-2">
+                Meerdere antwoorden mogelijk.
+              </p>
+            </div>
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 rounded-2xl px-4 py-2 border-2 border-red-100">
+                {error}
+              </p>
+            )}
+            <div className="space-y-2">
+              {EIGENSCHAP_OPTIES.map((opt) => {
+                const on = eigenschapIds.has(opt.id);
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
+                    onClick={() => toggleEigenschap(opt.id)}
+                    className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-all ${
+                      on
+                        ? 'border-primary bg-primary/10'
+                        : 'border-gray-300 bg-[var(--surface-card)] hover:bg-gray-50'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
+                        on ? 'border-primary bg-primary text-white' : 'border-gray-400 bg-white'
+                      }`}
+                    >
+                      {on && <Check className="h-4 w-4" strokeWidth={3} />}
+                    </span>
+                    <span className="font-medium text-gray-900">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setStep('zoekLeeftijd')}
+                className="flex-1 py-4 rounded-full border-2 border-gray-300 bg-white font-semibold text-gray-800"
+              >
+                Terug
+              </button>
+              <button
+                type="button"
+                onClick={handleEigenschappenNext}
+                className="flex-1 py-4 rounded-full bg-primary text-white font-semibold shadow-md"
+              >
+                Zoeken
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'loadingMatches' && (
           <div className="w-full text-center space-y-10">
             <div className="flex justify-center">
               <Logo variant="hero" className="scale-90" />
             </div>
             <CircularLoader progress={loadingProgress} />
-            <p className="text-lg font-medium text-gray-800 px-2">
-              We kijken of je in aanmerking komt voor de vrouwen…
+            <p className="text-lg font-medium text-gray-800 px-2 leading-relaxed">
+              We zijn vrouwen aan het zoeken die bij je wensen passen…..
             </p>
+            {zoekLeeftijdSamenvatting ? (
+              <p className="text-sm text-gray-600 px-2">
+                Leeftijd: {zoekLeeftijdSamenvatting} · {eigenschapIds.size}{' '}
+                {eigenschapIds.size === 1 ? 'wens' : 'wensen'} geselecteerd
+              </p>
+            ) : null}
           </div>
         )}
 
-        {step === 'congrats' && (
+        {step === 'signupForm' && (
           <div className="w-full space-y-6 max-w-md mx-auto px-1">
             <div className="flex justify-center">
               <Logo variant="hero" className="scale-90" />
             </div>
-            <p className="text-center text-lg text-gray-800 leading-relaxed">
-              Je komt in aanmerking om <span className="font-semibold">discrete meisjes</span> gratis
-              te proberen.
-            </p>
+            {matchCount != null ? (
+              <>
+                <p className="text-center text-lg md:text-xl text-gray-900 leading-relaxed font-medium px-2">
+                  We hebben{' '}
+                  <span className="text-primary font-bold tabular-nums text-2xl md:text-3xl">
+                    {matchCount}
+                  </span>{' '}
+                  vrouwen gevonden die bij je wensen passen.
+                </p>
+                <p className="text-center text-sm text-gray-600">
+                  Maak hieronder gratis een account om verder te gaan.
+                </p>
+              </>
+            ) : (
+              <p className="text-center text-sm text-gray-600">
+                Vul je gegevens in om een account aan te maken.
+              </p>
+            )}
             <form onSubmit={handleGaDoor} className="space-y-4 text-left">
               {error && (
                 <p className="text-sm text-red-600 bg-red-50 rounded-2xl px-4 py-2 border-2 border-red-100">
@@ -311,7 +593,7 @@ export default function StartPage() {
                 type="submit"
                 className="w-full flex items-center justify-center gap-3 py-5 px-8 rounded-full bg-primary text-white font-semibold text-lg shadow-lg shadow-primary/30 hover:bg-primary-hover transition-all"
               >
-                Ga door
+                Bekijk vrouwen
                 <ArrowRight className="w-5 h-5" />
               </button>
             </form>
