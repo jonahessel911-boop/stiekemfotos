@@ -106,6 +106,7 @@ export function ProfileInlineChat({
   const [optimisticOutgoing, setOptimisticOutgoing] = useState<ChatMessage[]>([]);
   const longPressTimer = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { openPricing } = useCreditsPricing();
 
   const sortedServerMessages = useMemo(
@@ -207,6 +208,20 @@ export function ProfileInlineChat({
     if (inner) ro.observe(inner);
     return () => ro.disconnect();
   }, [conversationId, conversation?.id]);
+
+  useEffect(() => {
+    const onAskPhoto = (evt: Event) => {
+      const custom = evt as CustomEvent<{ conversationId?: string; text?: string }>;
+      const targetConversationId = custom.detail?.conversationId ?? "";
+      if (!conversationId || targetConversationId !== conversationId) return;
+      const proposal = (custom.detail?.text || "kan je een nieuwe foto voor me maken schat?").trim();
+      if (!proposal) return;
+      setInput(proposal);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    };
+    window.addEventListener("dm-request-photo", onAskPhoto as EventListener);
+    return () => window.removeEventListener("dm-request-photo", onAskPhoto as EventListener);
+  }, [conversationId]);
 
   // Profile chat is "send-only": na versturen redirect naar volledige inbox.
 
@@ -400,6 +415,7 @@ export function ProfileInlineChat({
           ) : null}
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 sm:flex-row sm:items-stretch">
             <input
+              ref={inputRef}
               type="text"
               enterKeyHint="send"
               autoComplete="off"

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { parseAdminCookieValue, ADMIN_SESSION_COOKIE_NAME } from "@/lib/server/adminAuth";
 import { getDbProfileById } from "@/lib/server/profilesDb";
-import { generateRealisticImage, buildNudePrompt } from "@/lib/server/imageGen";
+import { generateRealisticImageDetailed, buildNudePrompt } from "@/lib/server/imageGen";
 
 export async function POST(req: Request) {
   const jar = await cookies();
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     const testConvId = "admin-test";
     const testMsgId = `test-${Date.now()}`;
 
-    const filename = await generateRealisticImage(
+    const generated = await generateRealisticImageDetailed(
       {
         prompt,
         width: 1024,
@@ -37,9 +37,17 @@ export async function POST(req: Request) {
       testConvId,
       testMsgId
     );
+    const filename = generated.filename;
 
     if (!filename) {
-      return NextResponse.json({ error: "Image generation failed", prompt }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "Image generation failed",
+          detail: generated.errorDetail ?? null,
+          prompt,
+        },
+        { status: 500 }
+      );
     }
 
     // Return the local file URL

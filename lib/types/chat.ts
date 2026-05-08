@@ -12,7 +12,13 @@ export interface ChatMessage {
    * Zonder `ttsText`: alleen speler, tekst verborgen (normale voice-reply).
    * Met `ttsText`: `content` zichtbaar (bijv. prijzen), audio gebruikt `ttsText`.
    */
-  voice?: { language: string; ttsText?: string };
+  voice?: {
+    language: string;
+    ttsText?: string;
+    transcript?: string;
+    mimeType?: string;
+    durationMs?: number;
+  };
   /**
    * User: `false` = nog niet gelezen door contact; `true` of ontbreekt = gelezen.
    * Oude berichten zonder veld worden als gelezen getoond.
@@ -24,6 +30,23 @@ export interface ChatMessage {
   readAt?: string;
   /** User: bestandsnaam in data/conv-images/{conversationId}/ (jpg/png). */
   imageFile?: string;
+  /**
+   * Assistant-foto's worden vergrendeld verstuurd. Pas na betaling van
+   * `credits` mag de gebruiker de foto bekijken.
+   */
+  photoLock?: {
+    credits: number;
+    unlockedAt?: string;
+  };
+  /**
+   * Assistant locked-photo generation payload.
+   * Photo gets generated on unlock using this prompt.
+   */
+  photoGeneration?: {
+    prompt: string;
+    width?: number;
+    height?: number;
+  };
   /** Gift-badge die in de chat zichtbaar is. */
   gift?: {
     credits: number;
@@ -83,7 +106,25 @@ export interface Conversation {
    */
   ownerLastPollAt?: string;
   /** Voice flow: na herhaalde inspreekvraag eerst verduidelijking vragen in chat. */
-  pendingVoiceRequestClarification?: boolean;
+  /** Delayed tease after locked photo if still not unlocked. */
+  pendingLockedPhotoNudgeAt?: string;
+  pendingLockedPhotoMessageId?: string;
+  pendingLockedPhotoNudgeText?: string;
+  /** Queue: send locked photo bubble after realistic delay (40-120s). */
+  pendingLockedPhotoDeliveryAt?: string;
+  pendingLockedPhotoDelivery?: {
+    messageId: string;
+    prompt: string;
+    width?: number;
+    height?: number;
+    teaseText?: string;
+    delayedNudgeText?: string;
+  };
+  /** Assistant asked user what kind of photo he wants; wait for concrete visual details. */
+  pendingPhotoPreferenceRequest?: boolean;
+  /** First generated assistant photo in this conversation; used as identity reference for future images. */
+  firstGeneratedPhotoMessageId?: string;
+  firstGeneratedPhotoFile?: string;
 
   /** === ULTRA-REALISM ENGINE FIELDS (Project Echo) === */
   realismState?: {

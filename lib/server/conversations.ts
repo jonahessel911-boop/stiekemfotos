@@ -8,10 +8,9 @@ import {
   MAX_OUTGOING_BATCH_SIZE,
   MAX_USER_MESSAGE_CHARS,
 } from "@/lib/chat-send-limits";
-import { CREDITS_PER_MESSAGE } from "@/lib/credits-client";
+import { CREDITS_PER_MESSAGE, CREDITS_PER_PHOTO_UNLOCK } from "@/lib/credits-client";
 import type { UserMessageCreditLine } from "@/lib/types/credit-usage";
 import { readAiSettings } from "@/lib/server/aiSettings";
-import { triggersTrustProofVoiceRequest } from "@/lib/flirt-triggers";
 import { randomTypingDelayMs, replyTypingDelayMsForConversation, sleep } from "@/lib/chat-typing-delay";
 import {
   type ConversationState,
@@ -20,8 +19,6 @@ import {
   getRealisticReplyDelay,
   shouldReplyNow,
   simulateTypingBehavior,
-  shouldSendSpontaneousMessage,
-  generateSpontaneousMessage,
 } from "@/lib/chat-realism";
 import {
   generateConversationSummary,
@@ -29,9 +26,7 @@ import {
   injectMemoryIntoSystemPrompt,
 } from "@/lib/conversation-memory";
 import { buildFreeChatPrompt } from "@/lib/prompts/freeChat";
-import { saveConversationImage, saveConversationVoice } from "@/lib/server/convImageStore";
-import { xaiTextToSpeech } from "@/lib/xai-voice-server";
-import { textForExpressiveTts } from "@/lib/tts-nudge";
+import { saveConversationImage, saveConversationVoiceInput } from "@/lib/server/convImageStore";
 import {
   findUserById,
   canSendInboxNotificationEmail,
@@ -39,7 +34,7 @@ import {
   updateUserPersonalFacts,
   type UserRecord,
 } from "@/lib/server/users";
-import { generateRealisticImage, buildNudePrompt } from "@/lib/server/imageGen";
+import { buildNudePrompt, generateRealisticImage } from "@/lib/server/imageGen";
 import { sendGiftReceivedEmail, sendOfflineNewMessageEmail } from "@/lib/server/email";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { upsertAppUserToSupabaseUsers } from "@/lib/server/supabaseUserSync";
@@ -303,19 +298,6 @@ const AUTO_GIFT_LINES = [
   "jij bent verfrissend tussen alle luie types hier",
   "jij hebt iets meer inzet dan de rest, dat merk ik meteen",
 ] as const;
-const POST_PURCHASE_LOW_CREDITS_LINES = [
-  "shit.. mijn credits zijn bijna op.. zit beetje krap bij kas jammer dit haha",
-  "oh nee.. credits bijna op, ik wil nog zoveel met je praten 😩",
-  "haha mijn saldo is bijna leeg.. blijf je nog even chatten met me?",
-  "krap bij kas.. credits bijna op, mag ik nog een paar berichtjes van je?",
-  "pff mijn credits raken op.. wil je nog even blijven praten schat?",
-  "bijna geen credits meer.. dit was net zo leuk met jou haha",
-  "shit mijn tegoed is bijna op.. je bent echt leuk om mee te praten",
-  "credits bijna op.. blijf alsjeblieft nog even, ik vind je leuk",
-  "oh jee.. saldo bijna leeg, mag ik nog één berichtje sturen? 🥺",
-] as const;
-const POST_PURCHASE_FIXED_VOICE_TEXT =
-  "Hee ben je daar nog haha ik heb zin in contact... vertel me wat je met me wilt doen schat";
 const GIFT_THANKS_LINES = [
   "ahh lief van je cadeau haha, zullen we doorgaan?",
   "dankje voor je cadeau, dat is wel cute van je",
@@ -323,15 +305,11 @@ const GIFT_THANKS_LINES = [
   "aww dankje, nu heb ik extra zin om verder te praten",
   "lief hoor, dankje voor je cadeau ;)",
 ] as const;
-const VOICE_CLARIFY_LINES = [
-  "haha oke, wat wil je precies dat ik inspreek dan? ;)",
-  "zeg dan even wat ik letterlijk moet inspreken 😏",
-  "wat wil je dat ik inspreek? zet het even in de chat",
-] as const;
-const VOICE_API_FAIL_LINES = [
-  "ben nu bij familie haha, straks misschien wel",
-  "zit nu even tussen familie, gaat nu niet echt",
-  "ben nu even druk met familie haha, later misschien",
+const TRUST_DOUBT_PLAYFUL_LINES = [
+  "haha nep? wat bedoel je precies schat 😘",
+  "ohh dus ik ben nep? daarom zit ik hier foto's te maken waar jij om vraagt 😂",
+  "hahaha nep nog wel, je maakt me aan het lachen 😏",
+  "fake? jij bent streng hoor haha, wat wil je dat ik doe dan? 😉",
 ] as const;
 const CREDITS_EXHAUSTED_NUDGE_LINES = [
   "heey waar ben je gebleven dan? ;)",
@@ -339,6 +317,18 @@ const CREDITS_EXHAUSTED_NUDGE_LINES = [
   "ik wacht nog op je bericht hoor haha",
   "ben je me vergeten of wat is dit ;)",
 ] as const;
+const LOCKED_PHOTO_TEASE_LINES = [
+  "speciaal voor jou gemaakt haha... vond het best spannend 🙈",
+  "ik heb net iets leuks voor je gemaakt schatje... ben benieuwd wat je voelt",
+  "hihi deze heb ik met rode wangetjes gemaakt... alleen voor jou",
+  "ik ben er stiekem een beetje verlegen van... heb iets speciaals gestuurd",
+] as const;
+const LOCKED_PHOTO_DELAYED_NUDGE_FALLBACK = "heb je hem gezien schatje? ik ben echt geil 😘";
+type PhotoEngagementStyle =
+  | "voice_reaction"
+  | "choose_next_photo"
+  | "daring_prompt"
+  | "natural_tease";
 
 const NO_REPLY_REMINDER_LINES = [
   "ben je er nog? 🥺",
@@ -365,17 +355,18 @@ async function resolveProfileById(profileId: string): Promise<Profile | null> {
 }
 
 function openerForProfile(profileId: string): string {
+  /**
+   * Korte intro + uitnodiging om foto's te kopen.
+   * AI introduceert zichzelf, vraagt waar hij van houdt zodat ze er een
+   * persoonlijke foto van kan maken. Wisselende toon = realistisch.
+   */
   const OPENERS = [
-    "hey, zullen we even appen?",
-    "hee jij lijkt me gezellig, hoe is je avond?",
-    "hoi, waar kom je vandaan eigenlijk?",
-    "hey, waar ben je vandaag mee bezig?",
-    "hee, vertel eens wat jij hier zoekt",
-    "hoi, ik werd nieuwsgierig van je profiel",
-    "hey, heb je zin in een kort praatje?",
-    "hee, wat voor type contact zoek je hier?",
-    "hoi, ben je vaker online in de avond?",
-    "hey, wat trok je aan op dit platform?",
+    "hee schat, ben hier nieuw — verdien even bij met foto's. waar val jij op? maak ik er eentje voor je 😘",
+    "hoi, ik ben hier om wat bij te verdienen met foto's. zeg maar wat je geil vindt, dan maak ik er eentje speciaal voor jou",
+    "hey, ik stuur graag exclusieve foto's naar mannen die ik leuk vind. waar word jij wild van?",
+    "hoii, ik maak custom foto's voor mijn favoriete mannen hier. vertel eens wat jij wilt zien?",
+    "hey jij — vertel maar wat je opwindt, dan maak ik er een lekkere foto van voor je",
+    "hoi schat, ik verdien wat bij met intieme foto's. waar heb jij zin in vandaag?",
   ] as const;
   const seed =
     profileId.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0) + Date.now();
@@ -384,6 +375,9 @@ function openerForProfile(profileId: string): string {
 }
 
 function grokHistoryLine(m: ChatMessage): string {
+  if (m.role === "user" && m.voice?.transcript) {
+    return m.voice.transcript;
+  }
   if (m.role === "user" && m.imageFile) {
     const t = (m.content ?? "").trim();
     return t ? `[Foto gestuurd] ${t}` : "[Foto gestuurd]";
@@ -562,6 +556,13 @@ function hasActiveChatMessages(c: Conversation): boolean {
 
 function inboxPreviewLastLine(last: ChatMessage | undefined): string {
   if (!last) return "";
+  if (last.role === "assistant" && (last.imageFile || last.photoLock)) {
+    if (last.photoLock && !last.photoLock.unlockedAt) {
+      return "🔒 Foto · ontgrendel om te bekijken";
+    }
+    const t = (last.content ?? "").trim();
+    return t ? `📷 ${t}` : "📷 Foto";
+  }
   if (last.role === "user" && last.imageFile) {
     const t = (last.content ?? "").trim();
     return t ? `📷 ${t}` : "📷 Foto";
@@ -640,6 +641,39 @@ export async function getConversation(
     return null;
   }
   return c;
+}
+
+export type ProfilePortfolioItem = {
+  conversationId: string;
+  messageId: string;
+  createdAt: string;
+};
+
+export async function listProfilePortfolioItems(
+  profileId: string,
+  ownerUserId: string,
+  days = 30
+): Promise<ProfilePortfolioItem[]> {
+  if (!profileId.trim() || !ownerUserId.trim()) return [];
+  const cutoffMs = Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000;
+  const list = await loadList();
+  const out: ProfilePortfolioItem[] = [];
+  for (const c of list) {
+    if (c.ownerUserId !== ownerUserId) continue;
+    if (c.profileId !== profileId) continue;
+    for (const m of c.messages) {
+      if (m.role !== "assistant" || !m.imageFile) continue;
+      const ts = new Date(m.createdAt).getTime();
+      if (!Number.isFinite(ts) || ts < cutoffMs) continue;
+      out.push({
+        conversationId: c.id,
+        messageId: m.id,
+        createdAt: m.createdAt,
+      });
+    }
+  }
+  out.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return out.slice(0, 80);
 }
 
 /** Startinbox: max 5 profielen; 2-5 starten met openingsbericht binnen de eerste 5 min. */
@@ -742,11 +776,46 @@ export async function findOrCreateConversation(
   return conv;
 }
 
+export async function appendAssistantOutboundForOwner(params: {
+  ownerUserId: string;
+  profileId: string;
+  content: string;
+  replyToId?: string;
+}): Promise<{ conversationId: string; message: ChatMessage }> {
+  const ownerUserId = params.ownerUserId?.trim();
+  const profileId = params.profileId?.trim();
+  const content = params.content?.trim();
+  if (!ownerUserId) throw new Error("Log in om te chatten.");
+  if (!profileId) throw new Error("profileId ontbreekt.");
+  if (!content) throw new Error("Bericht is leeg.");
+
+  const conversation = await findOrCreateConversation(profileId, ownerUserId);
+  const message: ChatMessage = {
+    id: randomUUID(),
+    role: "assistant",
+    content,
+    createdAt: new Date().toISOString(),
+    replyToId: params.replyToId?.trim() || undefined,
+  };
+
+  await updateConversationAtomic(conversation.id, (latestConv) => {
+    latestConv.messages = [...latestConv.messages, message];
+    latestConv.updatedAt = message.createdAt;
+    scheduleNoReplyReminderAfterAssistant(latestConv, message.id);
+  });
+  void maybeSendOfflineAssistantEmail(conversation.id, message);
+  return { conversationId: conversation.id, message };
+}
+
 export type UserMessagePayload = {
+  clientMessageId?: string;
   text: string;
   imageBase64?: string;
   imageMime?: string;
   replyToId?: string;
+  voiceAudioBase64?: string;
+  voiceMime?: string;
+  voiceDurationMs?: number;
 };
 
 function normalizeImageMime(mime: string | undefined): string {
@@ -760,6 +829,10 @@ function stripDataUrlBase64(input: string): string {
   return input.replace(/^data:image\/\w+;base64,/i, "").trim();
 }
 
+function stripDataUrlAudioBase64(input: string): string {
+  return input.replace(/^data:audio\/[\w.+-]+;base64,/i, "").trim();
+}
+
 /**
  * Inbox-automatisering in één keer (1× loadList + hoogstens 1× saveList).
  * Eerder: 4 aparte passes elk met eigen load/save → merkbaar traag op Supabase app_blobs.
@@ -768,6 +841,8 @@ async function flushInboxAutomationsForOwner(ownerUserId: string): Promise<void>
   const list = await loadList();
   let changed = dedupeDuplicateOwnerConversationsInPlace(list, ownerUserId);
   changed = applyPendingInitialAssistantMessages(list, ownerUserId) || changed;
+  changed = applyPendingLockedPhotoDeliveries(list, ownerUserId) || changed;
+  changed = applyPendingLockedPhotoNudges(list, ownerUserId) || changed;
   changed = applyNoReplyFollowups(list, ownerUserId) || changed;
   const user = await findUserById(ownerUserId);
   if (user) {
@@ -775,6 +850,324 @@ async function flushInboxAutomationsForOwner(ownerUserId: string): Promise<void>
     changed = applyCreditsExhaustedNudgeForUser(list, ownerUserId, user) || changed;
   }
   if (changed) await saveList(list);
+}
+
+function applyPendingLockedPhotoDeliveries(list: Conversation[], ownerUserId: string): boolean {
+  const now = Date.now();
+  const due = list
+    .filter(
+      (c) =>
+        c.ownerUserId === ownerUserId &&
+        c.pendingLockedPhotoDeliveryAt &&
+        c.pendingLockedPhotoDelivery &&
+        now >= new Date(c.pendingLockedPhotoDeliveryAt).getTime()
+    )
+    .sort((a, b) => {
+      const ta = new Date(a.pendingLockedPhotoDeliveryAt!).getTime();
+      const tb = new Date(b.pendingLockedPhotoDeliveryAt!).getTime();
+      if (ta !== tb) return ta - tb;
+      return a.id.localeCompare(b.id);
+    });
+
+  const conv = due[0];
+  const queued = conv?.pendingLockedPhotoDelivery;
+  if (!conv || !queued) return false;
+
+  const lockedPhotoMessage: ChatMessage = {
+    id: queued.messageId,
+    role: "assistant",
+    content: "",
+    createdAt: new Date().toISOString(),
+    photoLock: { credits: CREDITS_PER_PHOTO_UNLOCK },
+    photoGeneration: {
+      prompt: queued.prompt,
+      width: queued.width ?? 1024,
+      height: queued.height ?? 1024,
+    },
+  };
+  const messagesToAdd: ChatMessage[] = [lockedPhotoMessage];
+  if (queued.teaseText?.trim()) {
+    messagesToAdd.push({
+      id: randomUUID(),
+      role: "assistant",
+      content: queued.teaseText.trim(),
+      createdAt: new Date(Date.now() + 1100).toISOString(),
+      replyToId: queued.messageId,
+    });
+  }
+
+  conv.messages = [...conv.messages, ...messagesToAdd];
+  conv.updatedAt = messagesToAdd[messagesToAdd.length - 1]!.createdAt;
+  conv.pendingLockedPhotoDeliveryAt = undefined;
+  conv.pendingLockedPhotoDelivery = undefined;
+  conv.pendingLockedPhotoMessageId = queued.messageId;
+  conv.pendingLockedPhotoNudgeAt = new Date(
+    new Date(lockedPhotoMessage.createdAt).getTime() + 60 * 1000
+  ).toISOString();
+  conv.pendingLockedPhotoNudgeText = queued.delayedNudgeText ?? LOCKED_PHOTO_DELAYED_NUDGE_FALLBACK;
+  scheduleNoReplyReminderAfterAssistant(conv, messagesToAdd[messagesToAdd.length - 1]!.id);
+  void maybeSendOfflineAssistantEmail(conv.id, lockedPhotoMessage);
+  return true;
+}
+
+function applyPendingLockedPhotoNudges(list: Conversation[], ownerUserId: string): boolean {
+  const now = Date.now();
+  const due = list
+    .filter(
+      (c) =>
+        c.ownerUserId === ownerUserId &&
+        c.pendingLockedPhotoNudgeAt &&
+        c.pendingLockedPhotoMessageId &&
+        now >= new Date(c.pendingLockedPhotoNudgeAt).getTime()
+    )
+    .sort((a, b) => {
+      const ta = new Date(a.pendingLockedPhotoNudgeAt!).getTime();
+      const tb = new Date(b.pendingLockedPhotoNudgeAt!).getTime();
+      if (ta !== tb) return ta - tb;
+      return a.id.localeCompare(b.id);
+    });
+
+  const conv = due[0];
+  if (!conv) return false;
+
+  const target = conv.messages.find((m) => m.id === conv.pendingLockedPhotoMessageId);
+  if (!target || !target.photoLock || target.photoLock.unlockedAt) {
+    conv.pendingLockedPhotoNudgeAt = undefined;
+    conv.pendingLockedPhotoMessageId = undefined;
+    conv.pendingLockedPhotoNudgeText = undefined;
+    return true;
+  }
+
+  const msg: ChatMessage = {
+    id: randomUUID(),
+    role: "assistant",
+    content: (conv.pendingLockedPhotoNudgeText || LOCKED_PHOTO_DELAYED_NUDGE_FALLBACK).trim(),
+    createdAt: new Date().toISOString(),
+    replyToId: target.id,
+  };
+  conv.messages = [...conv.messages, msg];
+  conv.updatedAt = msg.createdAt;
+  conv.pendingLockedPhotoNudgeAt = undefined;
+  conv.pendingLockedPhotoMessageId = undefined;
+  conv.pendingLockedPhotoNudgeText = undefined;
+  scheduleNoReplyReminderAfterAssistant(conv, msg.id);
+  void maybeSendOfflineAssistantEmail(conv.id, msg);
+  return true;
+}
+
+function cleanTeaseLine(text: string, fallback: string): string {
+  const clean = text
+    .replace(/\s+/g, " ")
+    .replace(/\bontgrendel(en)?\b/gi, "")
+    .replace(/\bunlock(ed)?\b/gi, "")
+    .trim();
+  if (!clean) return fallback;
+  return clean.slice(0, 160);
+}
+
+async function generateLockedPhotoTeaseText(
+  profileName: string,
+  lastUserText: string,
+  lastAssistantText: string,
+  style: PhotoEngagementStyle
+): Promise<string> {
+  try {
+    const ai = await completeChat([
+      {
+        role: "system",
+        content:
+          "Schrijf exact 1 korte Nederlandse chatzin (max 18 woorden), natuurlijk, flirterig en menselijk. Geen verwijzing naar betalen/credits/unlock/ontgrendelen. Geen marketingtoon. Vraag hooguit 1 ding.",
+      },
+      {
+        role: "user",
+        content: [
+          `Context: zij heet ${profileName}.`,
+          `Laatste user-bericht: "${(lastUserText || "").slice(0, 220)}"`,
+          `Haar laatste antwoord: "${(lastAssistantText || "").slice(0, 220)}"`,
+          "Doel: ze heeft net een spannende foto speciaal voor hem gemaakt en wil een natuurlijke reactie uitlokken.",
+          `Stijl: ${styleInstructionForPhotoEngagement(style)}`,
+          "Belangrijk: zij stuurt zelf GEEN voice; ze vraagt alleen of hij iets inspreekt.",
+          "Schrijf 1 bericht alsof ze net iets spannends heeft gestuurd, in losse chatstijl.",
+        ].join("\n"),
+      },
+    ]);
+    return cleanTeaseLine(ai, randomLockedPhotoTeaseLine());
+  } catch {
+    return randomLockedPhotoTeaseLine();
+  }
+}
+
+async function generateLockedPhotoDelayedNudgeText(
+  profileName: string,
+  lastUserText: string,
+  style: PhotoEngagementStyle
+): Promise<string> {
+  try {
+    const ai = await completeChat([
+      {
+        role: "system",
+        content:
+          "Je schrijft 1 korte Nederlandse chatzin (max 14 woorden), speels/flirterig en natuurlijk. Geen prijs/credits/unlock/ontgrendelen noemen. Vraag hooguit 1 ding.",
+      },
+      {
+        role: "user",
+        content: [
+          `Schrijf een korte tease alsof ${profileName} na 1 minuut vraagt of hij de foto al zag.`,
+          `Laatste user-bericht was: "${(lastUserText || "").slice(0, 220)}"`,
+          `Stijl: ${styleInstructionForPhotoEngagement(style)}`,
+          "Belangrijk: zij stuurt zelf GEEN voice; ze vraagt alleen of hij iets inspreekt.",
+          "Klink niet nep of commercieel; gewoon natuurlijk app-taal.",
+        ].join("\n"),
+      },
+    ]);
+    return cleanTeaseLine(ai, LOCKED_PHOTO_DELAYED_NUDGE_FALLBACK);
+  } catch {
+    return LOCKED_PHOTO_DELAYED_NUDGE_FALLBACK;
+  }
+}
+
+async function generatePhotoPreferenceQuestion(
+  profileName: string,
+  lastUserText: string
+): Promise<string> {
+  try {
+    const ai = await completeChat([
+      {
+        role: "system",
+        content:
+          "Schrijf exact 1 korte Nederlandse chatzin (max 18 woorden), speels en natuurlijk. Doel: doorvragen naar zijn voorkeur voor een spannende foto. Geen verwijzing naar betalen/credits/unlock.",
+      },
+      {
+        role: "user",
+        content: `Hij vraagt vaag om een foto of 'iets': "${lastUserText.slice(0, 220)}". Reageer als ${profileName} en vraag concreet wat hij geil vindt (bijv pose/outfit/hoek).`,
+      },
+    ]);
+    const clean = ai.replace(/\s+/g, " ").trim();
+    if (!clean) return "hihi wat vind je precies geil dan? pose, outfit of close-up? 😘";
+    return clean.slice(0, 180);
+  } catch {
+    return "hihi wat vind je precies geil dan? pose, outfit of close-up? 😘";
+  }
+}
+
+async function generatePersonalizedImagePrompt(
+  profile: Profile,
+  conv: Conversation,
+  userText: string,
+  assistantText: string
+): Promise<string> {
+  const BASE_AMATEUR_PROMPT = [
+    "mirror selfie with direct camera flash",
+    "attractive adult blonde woman",
+    "messy bedroom background",
+    "realistic amateur smartphone photo",
+    "candid late night vibe",
+    "unmade bed",
+    "clothes scattered on floor",
+    "dim warm lighting",
+    "strong flash reflection in mirror",
+    "grainy low quality image",
+    "blurry edges",
+    "imperfect focus",
+    "casual oversized t-shirt",
+    "natural pose",
+    "unedited instagram story aesthetic",
+    "realistic skin texture",
+    "messy hair",
+    "raw photo",
+    "accidental composition",
+    "cheap phone camera quality",
+    "overexposed flash",
+    "authentic bedroom atmosphere",
+    "slightly dirty mirror",
+    "realistic shadows",
+    "documentary photography style",
+  ].join(", ");
+
+  const intentSource = `${userText}\n${assistantText}\n${conv.messages
+    .slice(-8)
+    .map((m) => `${m.role}:${m.content ?? ""}`)
+    .join("\n")}`.toLowerCase();
+  const explicitIntentBits: string[] = [];
+  if (/\b(naakt|nude|topless|zonder bh|zonder top)\b/i.test(intentSource)) {
+    explicitIntentBits.push("fully nude or topless look as requested");
+  }
+  if (/\b(tieten|borsten|boobs|tits|tepels)\b/i.test(intentSource)) {
+    explicitIntentBits.push("clear visible adult breasts, breast-focused framing");
+  }
+  if (/\b(close-?up|dichtbij)\b/i.test(intentSource)) {
+    explicitIntentBits.push("close-up framing");
+  }
+  if (/\b(lingerie|string|bh)\b/i.test(intentSource)) {
+    explicitIntentBits.push("lingerie styling matching request");
+  }
+
+  try {
+    const recent = conv.messages.slice(-10).map((m) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: (m.content ?? "").slice(0, 180),
+    }));
+
+    const wishesSummary = await completeChat([
+      {
+        role: "system",
+        content:
+          "Summarize the user's visual photo wishes into one compact English line (max 170 chars). Keep only visual details (pose, angle, outfit, room, lighting, explicit body focus if requested). Do not sanitize requested visual nudity/topless/breast focus. No app/payment text.",
+      },
+      {
+        role: "user",
+        content: `User wishes: "${userText.slice(0, 450)}"\nAssistant context: "${assistantText.slice(0, 220)}"\nReturn only one line.`,
+      },
+    ]);
+
+    const ai = await completeChat([
+      {
+        role: "system",
+        content:
+          "Write one final English text-to-image prompt under 480 chars. Style must stay raw amateur low-quality smartphone mirror selfie, not polished studio. Follow requested explicit visual details (e.g. nude/topless/breasts) when user asked for them.",
+      },
+      {
+        role: "user",
+        content: [
+          "## Base style prompt (must dominate style)",
+          BASE_AMATEUR_PROMPT,
+          "",
+          "## Profile identity (must match this woman)",
+          `same woman identity as profile ${profile.name}, adult age ${profile.age}, heritage ${profile.heritage || "european"}`,
+          "",
+          "## User wishes (summarized)",
+          wishesSummary.slice(0, 170),
+          "",
+          "## Explicit intent bits (must include when present)",
+          explicitIntentBits.length > 0
+            ? explicitIntentBits.join(", ")
+            : "none",
+          "",
+          "## Chat context",
+          assistantText.slice(0, 220),
+          "",
+          "## Continuity",
+          conv.firstGeneratedPhotoFile
+            ? `keep visual identity continuity with previous generated photo file reference: ${conv.firstGeneratedPhotoFile}`
+            : "no previous generated photo reference yet; define stable identity cues for future consistency",
+          "",
+          "## Recent messages",
+          JSON.stringify(recent),
+          "",
+          "## Output",
+          "Only the final prompt text. No markdown, no explanation.",
+        ].join("\n"),
+      },
+    ]);
+    const clean = ai.replace(/\s+/g, " ").trim();
+    if (clean.length >= 24) return clean.slice(0, 420);
+  } catch {
+    // fallback below
+  }
+  return `${BASE_AMATEUR_PROMPT}, same woman identity as ${profile.name}, adult age ${profile.age}, ${buildNudePrompt(profile.name, profile.heritage, userText)}`.slice(
+    0,
+    420
+  );
 }
 
 function applyPendingInitialAssistantMessages(list: Conversation[], ownerUserId: string): boolean {
@@ -938,6 +1331,10 @@ function applyCreditsExhaustedNudgeForUser(
   ownerUserId: string,
   user: UserRecord
 ): boolean {
+  // Op het foto-platform is chatten gratis, dus deze "credits op"-nudge
+  // hoort niet meer thuis. We laten de functie wel staan zodat oude
+  // velden (creditsExhaustedNudgeSentAt) blijven werken.
+  if (CREDITS_PER_MESSAGE <= 0) return false;
   if (user.firstCreditPurchaseAt) return false;
   const mine = list.filter((c) => c.ownerUserId === ownerUserId);
   if (mine.length === 0) return false;
@@ -945,7 +1342,7 @@ function applyCreditsExhaustedNudgeForUser(
     (acc, c) => acc + c.messages.filter((m) => m.role === "user").length,
     0
   );
-  const freeMessagesBudget = Math.max(1, Math.floor(FREE_START_CREDITS / CREDITS_PER_MESSAGE));
+  const freeMessagesBudget = Math.max(1, Math.floor(FREE_START_CREDITS / Math.max(1, CREDITS_PER_MESSAGE)));
   if (userMessageCount < freeMessagesBudget) return false;
   const target = [...mine]
     .filter((c) => !c.creditsExhaustedNudgeSentAt)
@@ -977,29 +1374,14 @@ function randomAutoGiftLine(): string {
   return AUTO_GIFT_LINES[i] ?? AUTO_GIFT_LINES[0]!;
 }
 
-function randomPostPurchaseNudgeCount(): number {
-  return 1 + Math.floor(Math.random() * 5);
-}
-
 function randomGiftThanksLine(): string {
   const i = Math.floor(Math.random() * GIFT_THANKS_LINES.length);
   return GIFT_THANKS_LINES[i] ?? GIFT_THANKS_LINES[0]!;
 }
 
-function randomVoiceClarifyLine(): string {
-  const i = Math.floor(Math.random() * VOICE_CLARIFY_LINES.length);
-  return VOICE_CLARIFY_LINES[i] ?? VOICE_CLARIFY_LINES[0]!;
-}
-
-function randomVoiceApiFailLine(): string {
-  const i = Math.floor(Math.random() * VOICE_API_FAIL_LINES.length);
-  return VOICE_API_FAIL_LINES[i] ?? VOICE_API_FAIL_LINES[0]!;
-}
-
-function sanitizeVoiceScript(text: string): string {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (!cleaned) return "hahaha pech ga ik lekker niet doen";
-  return cleaned.slice(0, 180);
+function randomTrustDoubtPlayfulLine(): string {
+  const i = Math.floor(Math.random() * TRUST_DOUBT_PLAYFUL_LINES.length);
+  return TRUST_DOUBT_PLAYFUL_LINES[i] ?? TRUST_DOUBT_PLAYFUL_LINES[0]!;
 }
 
 function randomInitialAssistantDelayMs(): number {
@@ -1012,9 +1394,108 @@ function randomCreditsExhaustedLine(): string {
   return CREDITS_EXHAUSTED_NUDGE_LINES[i] ?? CREDITS_EXHAUSTED_NUDGE_LINES[0]!;
 }
 
-function randomPostPurchaseLowCreditsLine(): string {
-  const i = Math.floor(Math.random() * POST_PURCHASE_LOW_CREDITS_LINES.length);
-  return POST_PURCHASE_LOW_CREDITS_LINES[i] ?? POST_PURCHASE_LOW_CREDITS_LINES[0]!;
+function randomLockedPhotoTeaseLine(): string {
+  const i = Math.floor(Math.random() * LOCKED_PHOTO_TEASE_LINES.length);
+  return LOCKED_PHOTO_TEASE_LINES[i] ?? LOCKED_PHOTO_TEASE_LINES[0]!;
+}
+
+function randomPhotoEngagementStyle(): PhotoEngagementStyle {
+  const r = Math.random();
+  if (r < 0.38) return "voice_reaction";
+  if (r < 0.66) return "choose_next_photo";
+  if (r < 0.84) return "daring_prompt";
+  return "natural_tease";
+}
+
+function randomLockedPhotoDeliveryDelayMs(): number {
+  const min = 40 * 1000;
+  const max = 120 * 1000;
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function styleInstructionForPhotoEngagement(style: PhotoEngagementStyle): string {
+  switch (style) {
+    case "voice_reaction":
+      return "Vraag hem om kort iets in te spreken (voice memo) omdat jij zijn stem geil vindt. Zeg dit speels, niet dwingend.";
+    case "choose_next_photo":
+      return "Laat hem kiezen wat hij als volgende foto wil zien met 2 concrete opties.";
+    case "daring_prompt":
+      return "Vraag hem om stout te reageren in tekst zodat jij nog geiler materiaal maakt.";
+    default:
+      return "Lok een natuurlijke reactie uit met een korte speelse tease.";
+  }
+}
+
+function hasActiveLockedPhotoPipeline(conv: Conversation): boolean {
+  if (conv.pendingLockedPhotoDeliveryAt || conv.pendingLockedPhotoDelivery) return true;
+  if (!conv.pendingLockedPhotoMessageId) return false;
+  const locked = conv.messages.find((m) => m.id === conv.pendingLockedPhotoMessageId);
+  if (!locked?.photoLock) return false;
+  return !locked.photoLock.unlockedAt;
+}
+
+function enforcePendingPhotoReply(replyText: string): string {
+  const text = (replyText || "").replace(/\s+/g, " ").trim();
+  const badPattern =
+    /\b(wat wil je nu zien|wil je nu zien|zal ik.*(maken|sturen)|ik maak (nog )?een|ik ga (nog )?een maken|wacht even,? ik maak|ik schiet de foto)\b/i;
+  if (!text || badPattern.test(text)) {
+    return "ik ben de vorige foto nog voor je aan het regelen schat, nog heel even geduld.";
+  }
+  return text;
+}
+
+function containsPhotoPreferenceQuestion(text: string): boolean {
+  const t = (text || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!t.includes("?")) return false;
+  if (/\b(wil je|wat wil je|welke|of wil je|zal ik)\b.*\?/i.test(t)) return true;
+  if (/\b(of)\b.*\?/i.test(t) && /\b(close-?up|hele lichaam|dichtbij|hoek|pose)\b/i.test(t)) {
+    return true;
+  }
+  return (
+    /\b(wat wil je|welke|pose|andere hoek|dichtbij)\b/i.test(t) ||
+    /\b(of wil je\b.*\bzien\?)/i.test(t) ||
+    /\b(close-?up|hele lichaam)\b.*\?/i.test(t) ||
+    /\b(wil je)\b.*\b(zien|hebben)\b.*\?/i.test(t)
+  );
+}
+
+function containsPhotoPromise(text: string): boolean {
+  return /\b(ik ga .*maken|ik maak .*voor je|ik schiet .*voor je|komt eraan|geef me .*minuut|wacht( heel)? even,? ik .*foto)\b/i.test(
+    text || ""
+  );
+}
+
+function removePhotoPromiseLines(text: string): string {
+  const lines = (text || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const kept = lines.filter(
+    (l) =>
+      !/\b(ik ga .*maken|ik maak .*voor je|ik schiet .*voor je|komt eraan|geef me .*minuut|wacht( heel)? even,? ik .*foto)\b/i.test(
+        l
+      )
+  );
+  if (kept.length > 0) return kept.join("\n\n");
+  return "zeg me precies wat je wilt zien schat, dan maak ik die daarna voor je.";
+}
+
+function hasAnyQuestion(text: string): boolean {
+  return (text || "").includes("?");
+}
+
+function sparsifyEmojis(text: string): string {
+  const emojiRegex = /\p{Extended_Pictographic}/gu;
+  let seen = false;
+  return (text || "")
+    .replace(emojiRegex, (m) => {
+      if (seen) return "";
+      seen = true;
+      return m;
+    })
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /** Gebruiker heeft dit gesprek recent gepolld of berichten gestuurd → geen offline-mail. */
@@ -1153,6 +1634,7 @@ export async function appendUserMessagesAndReply(
   }
   const profile = await resolveProfileById(conv.profileId);
   if (!profile) throw new Error("Profiel ontbreekt");
+  const activePhotoPipeline = hasActiveLockedPhotoPipeline(conv);
 
   // === PROJECT ECHO: Realism Engine Initialization ===
   let realismState = conv.realismState;
@@ -1204,13 +1686,15 @@ export async function appendUserMessagesAndReply(
 
   const userMessages: ChatMessage[] = [];
   const imageSlots: { buffer: Buffer; mime: string }[] = [];
+  const existingIds = new Set(conv.messages.map((m) => m.id));
 
   for (const payload of payloads) {
     const textTrim = payload.text?.trim() ?? "";
     const b64Raw = payload.imageBase64?.trim();
+    const voiceB64Raw = payload.voiceAudioBase64?.trim();
     const imageMime = normalizeImageMime(payload.imageMime);
 
-    if (!textTrim && !b64Raw) {
+    if (!textTrim && !b64Raw && !voiceB64Raw) {
       throw new Error("Bericht is leeg");
     }
     if (textTrim.length > MAX_USER_MESSAGE_CHARS) {
@@ -1219,8 +1703,13 @@ export async function appendUserMessagesAndReply(
       );
     }
 
+    const preferredId = payload.clientMessageId?.trim();
+    const chosenId =
+      preferredId && /^[a-z0-9_-]{8,80}$/i.test(preferredId) && !existingIds.has(preferredId)
+        ? preferredId
+        : randomUUID();
     const userMessage: ChatMessage = {
-      id: randomUUID(),
+      id: chosenId,
       role: "user",
       content: textTrim || "📷",
       createdAt: new Date().toISOString(),
@@ -1246,11 +1735,32 @@ export async function appendUserMessagesAndReply(
       userMessage.imageFile = filename;
       imageSlots.push({ buffer: imageBuffer, mime: imageMime });
     }
+    if (voiceB64Raw) {
+      const vb64 = stripDataUrlAudioBase64(voiceB64Raw);
+      const voiceBuffer = Buffer.from(vb64, "base64");
+      if (voiceBuffer.length < 128) {
+        throw new Error("Ongeldig spraakbericht.");
+      }
+      const voiceMime = (payload.voiceMime || "audio/webm").toLowerCase();
+      await saveConversationVoiceInput(conversationId, userMessage.id, voiceBuffer, voiceMime);
+      userMessage.content = "🎤 Spraakbericht";
+      userMessage.voice = {
+        language: "nl",
+        transcript: textTrim || undefined,
+        mimeType: voiceMime,
+        durationMs:
+          typeof payload.voiceDurationMs === "number" && Number.isFinite(payload.voiceDurationMs)
+            ? Math.max(0, Math.floor(payload.voiceDurationMs))
+            : undefined,
+      };
+    }
 
+    existingIds.add(userMessage.id);
     userMessages.push(userMessage);
   }
 
   const joinedUserText = payloads.map((p) => p.text).join("\n");
+  const hasVoiceInput = payloads.some((p) => Boolean(p.voiceAudioBase64?.trim()));
   if (conv.ownerUserId) {
     const extractedPatch = extractPersonalFactsFromText(joinedUserText);
     if (Object.keys(extractedPatch).length > 0) {
@@ -1259,12 +1769,7 @@ export async function appendUserMessagesAndReply(
       });
     }
   }
-  const wantTrustProofVoice =
-    payloads.some((p) => triggersTrustProofVoiceRequest(p.text || "")) ||
-    triggersTrustProofVoiceRequest(joinedUserText);
-  const hadVoiceRequestBefore = conv.messages.some(
-    (m) => m.role === "user" && triggersTrustProofVoiceRequest(m.content || "")
-  );
+  void hasVoiceInput;
 
   // Update realism state with new user messages — make it less eager overall
   if (realismState) {
@@ -1275,82 +1780,56 @@ export async function appendUserMessagesAndReply(
     realismState = createInitialConversationState();
   }
 
-  /**
-   * PROJECT ECHO: Speciale voice flows gaan altijd door.
-   * Alle andere gevallen gaan door de nieuwe realism engine.
-   */
-  if (wantTrustProofVoice && hadVoiceRequestBefore && !conv.pendingVoiceRequestClarification) {
-    const messagesForDelay = [...conv.messages, ...userMessages];
-  await updateConversationAtomic(conversationId, (latestConv) => {
-    latestConv.messages = [...latestConv.messages, ...userMessages];
-    latestConv.updatedAt = userMessages[userMessages.length - 1]!.createdAt;
-  });
-  if (conv.ownerUserId) {
-    await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
-  }
-  await sleep(replyTypingDelayMsForConversation(messagesForDelay));
-  const assistantMessage: ChatMessage = {
-      id: randomUUID(),
-      role: "assistant",
-      content: randomVoiceClarifyLine(),
-      createdAt: new Date().toISOString(),
-    };
-    await updateConversationAtomic(conversationId, (latestConv) => {
-      markPendingUserMessagesAsReadByPeer(latestConv);
-      latestConv.messages = [...latestConv.messages, assistantMessage];
-      latestConv.updatedAt = assistantMessage.createdAt;
-      latestConv.pendingVoiceRequestClarification = true;
-      scheduleNoReplyReminderAfterAssistant(latestConv, assistantMessage.id);
-    });
-    void maybeSendOfflineAssistantEmail(conversationId, assistantMessage);
-    return {
-      userMessages,
-      assistantMessage,
-    };
-  }
+  const promptMessages = [...conv.messages, ...userMessages];
+  // No longer using strict intimacy tiers - AI decides tone and escalation herself
 
-  /**
-   * Na verduidelijkingsvraag: 50/50 kans.
-   * - Of voice met speelse weigering.
-   * - Of voice met gevraagde tekst.
-   * Bij TTS/API-fout: gewone chat-excuusregel.
-   */
-  if (conv.pendingVoiceRequestClarification) {
-    const messagesForDelay = [...conv.messages, ...userMessages];
+  const lastUserTextLower = joinedUserText.toLowerCase();
+  const asksForPhotoButVague =
+    /(wat kan je voor me maken|wat kun je voor me maken|kan je iets maken|kun je iets maken|maak iets voor me|stuur iets leuks|wat kan je sturen|iets spannends voor me)/i.test(
+      lastUserTextLower
+    );
+  const askedForPreferenceEarlier = conv.pendingPhotoPreferenceRequest === true;
+  const hasConcreteVisualPreferenceNow =
+    /lingerie|string|kleur|groen|zwart|rood|standje|positie|knie[eë]n|doggy|missionaris|bovenop|close|close-up|hele lichaam|kont|borsten|boobs|tits|tieten|tepels|kut|nat maken|pijp|neuken|selfie|hoek|camera|jurkje|setje|zonder|met bh|zonder bh|billen|achterkant|vooraanzicht/i.test(
+      lastUserTextLower
+    );
+
+  // Vage fotovraag => eerst doorvragen naar voorkeur, nog geen foto sturen.
+  if ((asksForPhotoButVague || askedForPreferenceEarlier) && !hasConcreteVisualPreferenceNow) {
     await updateConversationAtomic(conversationId, (latestConv) => {
       latestConv.messages = [...latestConv.messages, ...userMessages];
       latestConv.updatedAt = userMessages[userMessages.length - 1]!.createdAt;
+      latestConv.realismState = realismState;
+      latestConv.pendingPhotoPreferenceRequest = true;
     });
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
     }
-    await sleep(replyTypingDelayMsForConversation(messagesForDelay));
-    const shouldRefuseInVoice = Math.random() < 0.5;
-    const textOut = shouldRefuseInVoice
-      ? "hahaha pech ga ik lekker niet doen 😜"
-      : `okee: ${sanitizeVoiceScript(joinedUserText)} 😉`;
-    const assistantMessage: ChatMessage = {
+    await sleep(Math.min(3000, getRealisticReplyDelay(realismState)));
+    const askMsg: ChatMessage = {
       id: randomUUID(),
       role: "assistant",
-      content: textOut,
+      content: await generatePhotoPreferenceQuestion(profile.name, joinedUserText),
       createdAt: new Date().toISOString(),
     };
     await updateConversationAtomic(conversationId, (latestConv) => {
       markPendingUserMessagesAsReadByPeer(latestConv);
-      latestConv.messages = [...latestConv.messages, assistantMessage];
-      latestConv.updatedAt = assistantMessage.createdAt;
-      latestConv.pendingVoiceRequestClarification = false;
-      scheduleNoReplyReminderAfterAssistant(latestConv, assistantMessage.id);
+      latestConv.messages = [...latestConv.messages, askMsg];
+      latestConv.updatedAt = askMsg.createdAt;
+      latestConv.realismState = {
+        ...realismState,
+        lastReplyAt: askMsg.createdAt,
+        messagesSinceLastReply: 0,
+      };
+      latestConv.pendingPhotoPreferenceRequest = true;
+      scheduleNoReplyReminderAfterAssistant(latestConv, askMsg.id);
     });
-    void maybeSendOfflineAssistantEmail(conversationId, assistantMessage);
+    void maybeSendOfflineAssistantEmail(conversationId, askMsg);
     return {
       userMessages,
-      assistantMessage,
+      assistantMessage: askMsg,
     };
   }
-
-  const promptMessages = [...conv.messages, ...userMessages];
-  // No longer using strict intimacy tiers - AI decides tone and escalation herself
 
   // === PROJECT ECHO: Ultra-realistic reply decision ===
   if (!shouldReplyNow(realismState)) {
@@ -1358,45 +1837,11 @@ export async function appendUserMessagesAndReply(
       latestConv.messages = [...latestConv.messages, ...userMessages];
       latestConv.updatedAt = userMessages[userMessages.length - 1]!.createdAt;
       latestConv.realismState = realismState;
-
-      // Plan a natural no-reply reminder if none exists
-      if (!latestConv.pendingNoReplyAfterAssistantId) {
-        scheduleNoReplyReminderAfterAssistant(latestConv, userMessages[userMessages.length - 1]!.id);
-      }
     });
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
     }
-
-    // Check if we should send a spontaneous message instead
-    if (shouldSendSpontaneousMessage(realismState)) {
-      const spontaneousText = generateSpontaneousMessage(conv.profileName, realismState.mood);
-      const spontaneousMsg: ChatMessage = {
-        id: randomUUID(),
-        role: "assistant",
-        content: spontaneousText,
-        createdAt: new Date().toISOString(),
-      };
-
-      await updateConversationAtomic(conversationId, (latestConv) => {
-        latestConv.messages = [...latestConv.messages, spontaneousMsg];
-        latestConv.updatedAt = spontaneousMsg.createdAt;
-        latestConv.realismState = {
-          ...realismState!,
-          lastSpontaneousMessageAt: spontaneousMsg.createdAt,
-          lastReplyAt: spontaneousMsg.createdAt,
-          messagesSinceLastReply: 0,
-        };
-      });
-
-      void maybeSendOfflineAssistantEmail(conversationId, spontaneousMsg);
-      return {
-        userMessages,
-        assistantMessage: spontaneousMsg,
-      };
-    }
-
-    // No reply and no spontaneous message — user will see their messages + possible reminder later
+    // No direct reply here: avoid immediate extra follow-up bubbles.
     return {
       userMessages,
       assistantMessage: null,
@@ -1464,8 +1909,17 @@ export async function appendUserMessagesAndReply(
     systemPrompt = `Je bent ${profile.name}, een ${profile.age}-jarige vrouw uit ${profile.location}. Antwoord kort, natuurlijk en in character.`;
   }
 
+  const pendingPhotoInstruction = activePhotoPipeline
+    ? "FOTO-QUEUE REGEL: er staat al één foto in de wachtrij of als locked bericht. Beloof nu GEEN nieuwe foto en zeg niet opnieuw dat je er nu één gaat maken. Reageer wel normaal op zijn wensen, maar zeg kort dat hij deze eerst even moet bekijken/wachten."
+    : "";
+  const emojiStyleInstruction =
+    "STIJLREGEL EMOJI: gebruik emoji spaarzaam. In de meeste antwoorden geen emoji; maximaal 1 emoji als het echt past.";
+
   const messages: GrokMessage[] = [
-    { role: "system", content: `${systemPrompt}\n\n${voiceInstruction}` },
+    {
+      role: "system",
+      content: `${systemPrompt}\n\n${voiceInstruction}\n\n${emojiStyleInstruction}${pendingPhotoInstruction ? `\n\n${pendingPhotoInstruction}` : ""}`,
+    },
     ...history,
     lastUserMsg,
   ];
@@ -1483,45 +1937,52 @@ export async function appendUserMessagesAndReply(
   const realisticDelay = getRealisticReplyDelay(realismState);
   await sleep(realisticDelay);
 
-  const replyText = await completeChat(messages, { hasImage: imageSlots.length > 0 });
+  let replyText = await completeChat(messages, { hasImage: imageSlots.length > 0 });
+  replyText = sparsifyEmojis(replyText);
+  if (activePhotoPipeline) {
+    replyText = enforcePendingPhotoReply(replyText);
+  }
 
-  // === IMAGE GENERATION: if user asked for a picture (especially nude) ===
-  let generatedImageFile: string | null = null;
+  // === FOTO STUREN: detecteer of de gebruiker een foto wil zien ===
   const lastUserText = joinedUserText.toLowerCase();
 
   const userWantsPicture =
-    lastUserText.includes("foto") ||
-    lastUserText.includes("picture") ||
-    lastUserText.includes("selfie") ||
-    lastUserText.includes("naakt") ||
-    lastUserText.includes("naked") ||
-    lastUserText.includes("nude") ||
+    /foto|picture|pic|selfie|kiekje|plaatje|naakt|naked|nude|stuur|sturen|laat zien|laten zien|zien wat|zie je|kan je .*maken|kun je .*maken|maak .*voor me|maak er (een|1)|maak (hem|m) (nu|voor me)|doe .*sturen/i.test(
+      lastUserText
+    ) ||
     lastUserText.includes("pijp") ||
     lastUserText.includes("borsten") ||
     lastUserText.includes("vagina") ||
     lastUserText.includes("kut") ||
-    lastUserText.includes("stuur foto") ||
-    lastUserText.includes("laat zien") ||
     lastUserText.includes("send pic");
 
-  if (userWantsPicture) {
-    try {
-      const prompt = buildNudePrompt(profile.name, profile.heritage, joinedUserText);
-      const firstAssistantId = randomUUID();
-      generatedImageFile = await generateRealisticImage(
-        {
-          prompt,
-          width: 1024,
-          height: 1024,
-          steps: 9,
-          randomSeed: true,
-        },
-        conversationId,
-        firstAssistantId
-      );
-    } catch (e) {
-      console.error("[imageGen] Failed to generate image:", e);
+  // Pas foto sturen als hij ook echt reageert op haar doorvraag/suggesties.
+  const hasExplicitConcretePhotoRequest = userWantsPicture && hasConcreteVisualPreferenceNow;
+  const hasPreferenceReplyAfterQuestion = askedForPreferenceEarlier && hasConcreteVisualPreferenceNow;
+  const directPhotoActionVerb = /\b(stuur|sturen|maak|maken|doe)\b/i.test(lastUserTextLower);
+  let shouldSendPhotoNow =
+    !activePhotoPipeline &&
+    (hasExplicitConcretePhotoRequest ||
+      hasPreferenceReplyAfterQuestion ||
+      (userWantsPicture && directPhotoActionVerb) ||
+      (hasConcreteVisualPreferenceNow && directPhotoActionVerb));
+
+  // Hard guard: ask-first means no photo queue in this same turn.
+  if (containsPhotoPreferenceQuestion(replyText)) {
+    if (containsPhotoPromise(replyText)) {
+      replyText = removePhotoPromiseLines(replyText);
     }
+    shouldSendPhotoNow = false;
+  }
+  // Absolute consistency: any question in this turn means no same-turn "ik ga hem maken".
+  if (hasAnyQuestion(replyText) && containsPhotoPromise(replyText)) {
+    replyText = removePhotoPromiseLines(replyText);
+    shouldSendPhotoNow = false;
+  }
+  const assistantPromisesPhotoNow =
+    containsPhotoPromise(replyText) && !containsPhotoPreferenceQuestion(replyText);
+  if (!activePhotoPipeline && assistantPromisesPhotoNow) {
+    shouldSendPhotoNow = true;
   }
 
   // Support for multiple short messages in a row (ultra-realistic texting)
@@ -1538,10 +1999,56 @@ export async function appendUserMessagesAndReply(
     replyToId:
       index === 0
         ? payloads[payloads.length - 1]?.replyToId?.trim() ||
+          (payloads.some((p) => Boolean(p.voiceAudioBase64?.trim()))
+            ? userMessages[userMessages.length - 1]?.id
+            : undefined) ||
           (Math.random() < 0.28 ? userMessages[userMessages.length - 1]?.id : undefined)
         : undefined,
-    ...(index === 0 && generatedImageFile ? { imageFile: generatedImageFile } : {}),
   }));
+
+  /**
+   * Stuur de foto als losse extra bubble nadat ze (in haar tekst) heeft beloofd er
+   * eentje te maken. Foto is altijd vergrendeld; gebruiker betaalt om hem te zien.
+   */
+  let queuedPhotoDelivery:
+    | {
+        messageId: string;
+        prompt: string;
+        width: number;
+        height: number;
+        teaseText: string;
+        delayedNudgeText: string;
+      }
+    | null = null;
+  if (shouldSendPhotoNow) {
+    const engagementStyle = randomPhotoEngagementStyle();
+    const photoMsgId = randomUUID();
+    const imagePrompt = await generatePersonalizedImagePrompt(
+      profile,
+      conv,
+      joinedUserText,
+      replyText
+    );
+    const immediateLockedTease = await generateLockedPhotoTeaseText(
+      profile.name,
+      joinedUserText,
+      replyText,
+      engagementStyle
+    );
+    const delayedLockedNudgeText = await generateLockedPhotoDelayedNudgeText(
+      profile.name,
+      joinedUserText,
+      engagementStyle
+    );
+    queuedPhotoDelivery = {
+      messageId: photoMsgId,
+      prompt: imagePrompt,
+      width: 1024,
+      height: 1024,
+      teaseText: immediateLockedTease,
+      delayedNudgeText: delayedLockedNudgeText,
+    };
+  }
 
   const assistantMessage = assistantMessages[0] ?? {
     id: randomUUID(),
@@ -1557,46 +2064,29 @@ export async function appendUserMessagesAndReply(
     const typingEvents = simulateTypingBehavior(realismState, realisticDelay);
     assistantMessage.typingEvents = typingEvents;
 
-    let extraAssistant: ChatMessage | null = null;
-    if (latestConv.ownerUserId) {
-      const owner = await findUserById(latestConv.ownerUserId);
-      if (owner?.firstCreditPurchaseAt && !latestConv.postPurchaseNudgeSentAt) {
-        if (
-          !latestConv.postPurchaseNudgeAfterReplies ||
-          latestConv.postPurchaseNudgeAfterReplies < 1
-        ) {
-          latestConv.postPurchaseNudgeAfterReplies = randomPostPurchaseNudgeCount();
-        }
-        latestConv.postPurchaseAssistantReplyCount =
-          (latestConv.postPurchaseAssistantReplyCount ?? 0) + 1;
-        if (
-          (latestConv.postPurchaseAssistantReplyCount ?? 0) >=
-          (latestConv.postPurchaseNudgeAfterReplies ?? 1)
-        ) {
-          extraAssistant = {
-            id: randomUUID(),
-            role: "assistant",
-            content: randomPostPurchaseLowCreditsLine(),
-            createdAt: new Date().toISOString(),
-          };
-          latestConv.postPurchaseNudgeSentAt = extraAssistant.createdAt;
-        }
-      }
-    }
+    const messagesToAdd: ChatMessage[] = [...assistantMessages];
 
-    const messagesToAdd = extraAssistant ? [...assistantMessages, extraAssistant] : assistantMessages;
     latestConv.messages = [...latestConv.messages, ...messagesToAdd];
-    latestConv.updatedAt = extraAssistant?.createdAt ?? assistantMessages[assistantMessages.length - 1]?.createdAt ?? new Date().toISOString();
+    const tail = messagesToAdd[messagesToAdd.length - 1];
+    latestConv.updatedAt = tail?.createdAt ?? new Date().toISOString();
     latestConv.realismState = {
       ...realismState,
-      lastReplyAt: assistantMessages[assistantMessages.length - 1]?.createdAt ?? new Date().toISOString(),
+      lastReplyAt: tail?.createdAt ?? new Date().toISOString(),
       messagesSinceLastReply: 0,
       energy: Math.min(100, realismState.energy + 15),
     };
 
-    const lastAssistantAnchor = extraAssistant ? extraAssistant.id : assistantMessages[assistantMessages.length - 1]?.id ?? assistantMessage.id;
+    const lastAssistantAnchor = tail?.id ?? assistantMessage.id;
     scheduleNoReplyReminderAfterAssistant(latestConv, lastAssistantAnchor);
-    latestConv.pendingVoiceRequestClarification = false;
+    if (shouldSendPhotoNow) {
+      latestConv.pendingPhotoPreferenceRequest = false;
+    }
+    if (queuedPhotoDelivery) {
+      latestConv.pendingLockedPhotoDeliveryAt = new Date(
+        Date.now() + randomLockedPhotoDeliveryDelayMs()
+      ).toISOString();
+      latestConv.pendingLockedPhotoDelivery = queuedPhotoDelivery;
+    }
   });
   void maybeSendOfflineAssistantEmail(conversationId, assistantMessage);
 
@@ -1685,57 +2175,19 @@ export async function appendUserGiftMessage(
   return msg;
 }
 
-export async function appendPurchaseThanksMessage(ownerUserId: string): Promise<boolean> {
-  const list = await loadList();
-  const mine = list
-    .map((c, idx) => ({ c, idx }))
-    .filter((row) => row.c.ownerUserId === ownerUserId)
-    .sort(
-      (a, b) =>
-        new Date(b.c.updatedAt).getTime() - new Date(a.c.updatedAt).getTime()
-    );
-  const row = mine[0];
-  if (!row) return false;
-  const conv = row.c;
-  const profile = await resolveProfileById(conv.profileId);
-  const voiceLanguage = profile?.voiceLanguage || "nl";
-  const msg: ChatMessage = {
-    id: randomUUID(),
-    role: "assistant",
-    content: POST_PURCHASE_FIXED_VOICE_TEXT,
-    createdAt: new Date().toISOString(),
-    voice: {
-      language: voiceLanguage,
-      ttsText: POST_PURCHASE_FIXED_VOICE_TEXT,
-    },
-  };
-  // Use realism engine for consistency
-  const realismDelay = getRealisticReplyDelay(createInitialConversationState());
-  await sleep(Math.min(4500, realismDelay));
-  try {
-    const ttsBuf = await xaiTextToSpeech(textForExpressiveTts(POST_PURCHASE_FIXED_VOICE_TEXT), {
-      language: voiceLanguage,
-    });
-    await saveConversationVoice(conv.id, msg.id, Buffer.from(ttsBuf));
-  } catch {
-    delete msg.voice;
-  }
-  await updateConversationAtomic(conv.id, (latestConv) => {
-    latestConv.messages = [...latestConv.messages, msg];
-    latestConv.updatedAt = msg.createdAt;
-    scheduleNoReplyReminderAfterAssistant(latestConv, msg.id);
-  });
-  return true;
-}
-
-/** Alle verstuurde gebruikersberichten → kosten voor creditoverzicht (serverbron). */
-/** Deduct credits server-side using the ledger (simple 10 per user message). */
+/**
+ * Chatten is gratis op het foto-platform: deze deduct doet niets meer
+ * zolang `CREDITS_PER_MESSAGE === 0`. Het wordt nog wel aangeroepen in
+ * de flow zodat we hem snel kunnen aanzetten als we ooit terug willen
+ * naar betaalde berichten.
+ */
 async function deductMessageCredits(
   userId: string | null,
   count: number,
   conversationId: string
 ): Promise<void> {
   if (!userId || count <= 0) return;
+  if (CREDITS_PER_MESSAGE <= 0) return;
 
   const supabase = getSupabaseAdmin();
   if (!supabase) {
@@ -1816,6 +2268,123 @@ export async function listUserMessageCreditUsage(
   return out.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+}
+
+const PHOTO_UNLOCK_FOLLOWUPS = [
+  "zie je hem schat? ik werd er zelf zo geil van... heb echt zin om een lul te zien 🥵",
+  "vond je hem lekker? ik ben echt geil schat, jij maakt me zo nat",
+  "mmm zie je wat je met me doet? ik wil nu echt iets van jou zien ook 😏",
+  "geil he? ik ben echt aan het hijgen hier, stuur jij ook iets terug?",
+  "kijk ‘m goed dan schat, ik wil weten wat je ervan vindt",
+  "hoop dat je hem mooi vindt, ik werd er zelf hard van haha",
+  "vertel me dan, wat doet hij met je? ik wil het horen 😈",
+  "lekker hè? ik wil zo graag weten wat je nu doet schat...",
+] as const;
+
+function randomPhotoUnlockFollowupLine(): string {
+  const i = Math.floor(Math.random() * PHOTO_UNLOCK_FOLLOWUPS.length);
+  return PHOTO_UNLOCK_FOLLOWUPS[i] ?? PHOTO_UNLOCK_FOLLOWUPS[0]!;
+}
+
+/**
+ * Markeer een vergrendelde foto als ontgrendeld en stuur direct een
+ * teasende follow-up van haar in de chat.
+ */
+export async function unlockAssistantPhoto(
+  conversationId: string,
+  messageId: string,
+  ownerUserId: string
+): Promise<{
+  unlockedMessage: ChatMessage;
+  followupMessage: ChatMessage | null;
+  alreadyUnlocked: boolean;
+  creditsCost: number;
+}> {
+  let alreadyUnlocked = false;
+  let unlockedMessage: ChatMessage | undefined;
+  let followupMessage: ChatMessage | undefined;
+
+  await updateConversationAtomic(conversationId, async (conv) => {
+    if (conv.ownerUserId !== ownerUserId) {
+      throw new Error("Geen toegang tot dit gesprek");
+    }
+    const target = conv.messages.find((m) => m.id === messageId);
+    if (!target) throw new Error("Foto niet gevonden");
+    if (target.role !== "assistant" || !target.photoLock) {
+      throw new Error("Bericht heeft geen vergrendelde foto");
+    }
+    if (target.photoLock.unlockedAt) {
+      alreadyUnlocked = true;
+      unlockedMessage = target;
+      if (conv.pendingLockedPhotoMessageId === target.id) {
+        conv.pendingLockedPhotoNudgeAt = undefined;
+        conv.pendingLockedPhotoMessageId = undefined;
+        conv.pendingLockedPhotoNudgeText = undefined;
+      }
+      return;
+    }
+    if (!target.imageFile) {
+      const prompt = target.photoGeneration?.prompt?.trim();
+      const width = target.photoGeneration?.width ?? 1024;
+      const height = target.photoGeneration?.height ?? 1024;
+      if (!prompt) {
+        throw new Error("Foto prompt ontbreekt voor deze vergrendelde foto");
+      }
+      // Generates the real image only when user unlocks.
+      const generated = await generateRealisticImage(
+        { prompt, width, height, steps: 9, randomSeed: true },
+        conv.id,
+        target.id
+      );
+      if (!generated) {
+        throw new Error("Foto genereren mislukt");
+      }
+      target.imageFile = generated;
+      if (!conv.firstGeneratedPhotoMessageId) {
+        conv.firstGeneratedPhotoMessageId = target.id;
+        conv.firstGeneratedPhotoFile = generated;
+      }
+    }
+    target.photoLock = {
+      ...target.photoLock,
+      unlockedAt: new Date().toISOString(),
+    };
+    unlockedMessage = target;
+    if (conv.pendingLockedPhotoMessageId === target.id) {
+      conv.pendingLockedPhotoNudgeAt = undefined;
+      conv.pendingLockedPhotoMessageId = undefined;
+      conv.pendingLockedPhotoNudgeText = undefined;
+    }
+
+    const fu: ChatMessage = {
+      id: randomUUID(),
+      role: "assistant",
+      content: randomPhotoUnlockFollowupLine(),
+      createdAt: new Date(Date.now() + 1500).toISOString(),
+      replyToId: target.id,
+    };
+    conv.messages = [...conv.messages, fu];
+    conv.updatedAt = fu.createdAt;
+    followupMessage = fu;
+    scheduleNoReplyReminderAfterAssistant(conv, fu.id);
+  });
+
+  const finalUnlockedMessage: ChatMessage | undefined = unlockedMessage;
+  if (!finalUnlockedMessage) {
+    throw new Error("Ontgrendelen mislukt");
+  }
+  const finalFollowup: ChatMessage | null = followupMessage ?? null;
+  if (finalFollowup) {
+    void maybeSendOfflineAssistantEmail(conversationId, finalFollowup);
+  }
+  return {
+    unlockedMessage: finalUnlockedMessage,
+    followupMessage: finalFollowup,
+    alreadyUnlocked,
+    creditsCost: alreadyUnlocked
+      ? 0
+      : finalUnlockedMessage.photoLock?.credits ?? CREDITS_PER_PHOTO_UNLOCK,
+  };
 }
 
 /** Statisch assistentbericht (geen Grok) — o.a. engagement-nudges. */

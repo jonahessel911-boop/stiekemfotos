@@ -2,7 +2,7 @@ import type { Messages } from "@/lib/messages/types";
 
 export const en: Messages = {
   nav: {
-    feed: "Feed",
+    feed: "Requests",
     messages: "Messages",
     profiles: "Profiles",
     credits: "Credits",

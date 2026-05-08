@@ -8,8 +8,9 @@ export async function GET() {
     if (dbProfiles.length > 0) {
       return NextResponse.json({ profiles: dbProfiles });
     }
+    // If Supabase is configured but empty/misconfigured, keep app usable with local fallback.
     if (isSupabaseProfilesEnabled()) {
-      return NextResponse.json({ profiles: [] });
+      console.warn("[profiles] Supabase returned 0 active profiles, falling back to local profiles.");
     }
     return NextResponse.json({ profiles: allProfiles });
   } catch (e) {

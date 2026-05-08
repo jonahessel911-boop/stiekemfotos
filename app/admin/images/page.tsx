@@ -14,6 +14,7 @@ type TestResult = {
   prompt: string;
   imageUrl: string | null;
   error: string | null;
+  errorDetail?: string | null;
   loading: boolean;
 };
 
@@ -56,7 +57,7 @@ export default function AdminImageTest() {
     const profile = profiles.find((p) => p.id === selectedProfile);
     if (!profile) return;
 
-    setResult({ prompt: '', imageUrl: null, error: null, loading: true });
+    setResult({ prompt: '', imageUrl: null, error: null, errorDetail: null, loading: true });
 
     try {
       // Call the image generation directly via a new test endpoint
@@ -71,12 +72,19 @@ export default function AdminImageTest() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed');
+      if (!res.ok) {
+        throw new Error(
+          data.detail
+            ? `${data.error || 'Failed'}\n\nDetails: ${data.detail}`
+            : data.error || 'Failed'
+        );
+      }
 
       setResult({
         prompt: data.prompt,
         imageUrl: data.imageUrl,
         error: null,
+        errorDetail: null,
         loading: false,
       });
     } catch (e) {
@@ -84,6 +92,7 @@ export default function AdminImageTest() {
         prompt: '',
         imageUrl: null,
         error: e instanceof Error ? e.message : 'Unknown error',
+        errorDetail: null,
         loading: false,
       });
     }
@@ -167,8 +176,8 @@ export default function AdminImageTest() {
                   </div>
                 )}
                 <p className="mt-3 text-xs text-red-500">
-                  The external image model (Hugging Face Space) is currently returning errors. 
-                  This can happen when the model is overloaded or has temporary issues.
+                  The external image model (Z Image Turbo API) returned an error.
+                  Check API key, credits, and task status details above.
                 </p>
               </div>
             )}

@@ -25,7 +25,7 @@ function keyForPathname(pathname: string): NavKey | null {
 }
 
 const MOBILE_TAB_SHORT: Record<NavKey, string> = {
-  feed: 'Feed',
+  feed: 'Aanvragen',
   messages: 'Chat',
   profiles: 'Profiles',
   credits: 'Credits',

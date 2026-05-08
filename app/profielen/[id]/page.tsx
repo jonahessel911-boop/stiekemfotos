@@ -12,6 +12,16 @@ import { isProfileDisplayedOnline } from '@/lib/profile-display-online';
 import { ProfileInlineChat } from '@/components/ProfileInlineChat';
 import { getCreditsBalance } from '@/lib/credits-client';
 
+const DEFAULT_PHOTO_UNLOCK_CREDITS = 100;
+const PHOTO_REQUEST_SUGGESTION = 'kan je een nieuwe foto voor me maken schat?';
+
+type PortfolioItem = {
+  conversationId: string;
+  messageId: string;
+  createdAt: string;
+  imageUrl: string;
+};
+
 function CreditsCornerPill() {
   const [n, setN] = useState(() => (typeof window !== 'undefined' ? getCreditsBalance() : 0));
   useEffect(() => {
@@ -37,6 +47,8 @@ export default function ProfielDetailPage() {
   const [convError, setConvError] = useState<string | null>(null);
   const [liked, setLiked] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
   const loginRedirect = `/inloggen?next=${encodeURIComponent(`/profielen/${id}`)}`;
 
   React.useEffect(() => {
@@ -96,6 +108,30 @@ export default function ProfielDetailPage() {
     };
   }, [profile?.id]);
 
+  React.useEffect(() => {
+    if (!profile) return;
+    let cancel = false;
+    (async () => {
+      setPortfolioLoading(true);
+      try {
+        const res = await fetch(`/api/profiles/${profile.id}/portfolio`, { credentials: 'include' });
+        if (res.status === 401) {
+          if (!cancel) setPortfolioItems([]);
+          return;
+        }
+        const data = (await res.json()) as { items?: PortfolioItem[] };
+        if (!cancel) setPortfolioItems(Array.isArray(data.items) ? data.items : []);
+      } catch {
+        if (!cancel) setPortfolioItems([]);
+      } finally {
+        if (!cancel) setPortfolioLoading(false);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, [profile?.id]);
+
   if (profileLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
@@ -128,11 +164,27 @@ export default function ProfielDetailPage() {
     });
   };
 
+  const requestPhotoCta = () => {
+    if (!conversationId) return;
+    window.dispatchEvent(
+      new CustomEvent('dm-request-photo', {
+        detail: {
+          conversationId,
+          text: PHOTO_REQUEST_SUGGESTION,
+        },
+      })
+    );
+  };
+
   const idSeed = Array.from(profile.id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
   const showOnlineUi = isProfileDisplayedOnline(profile.id);
   const avatarUrl = profilePhotoSrc(profile.photo, { widthCss: 128, heightCss: 160 });
   const tag1 = `${1990 + (idSeed % 10)}-0${1 + (idSeed % 9)}-1`;
   const interestTag = profile.interests[0] ?? 'Creatief';
+  const unlockCredits =
+    typeof profile.photoUnlockCredits === 'number' && Number.isFinite(profile.photoUnlockCredits)
+      ? Math.max(1, Math.floor(profile.photoUnlockCredits))
+      : DEFAULT_PHOTO_UNLOCK_CREDITS;
 
   const chatBlock = (
     <>
@@ -206,6 +258,9 @@ export default function ProfielDetailPage() {
                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
                   {tag1}
                 </span>
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                  {unlockCredits} credits per foto
+                </span>
               </div>
             </div>
             <span className="shrink-0 text-gray-400">{expanded ? '▲' : '▼'}</span>
@@ -243,6 +298,46 @@ export default function ProfielDetailPage() {
               Like
             </Button>
           </div>
+        </div>
+
+        <div className="mb-2 shrink-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-conv">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-gray-900">Portfolio</h3>
+            <span className="text-[11px] font-medium text-gray-500">Laatste 30 dagen</span>
+          </div>
+          <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {(portfolioItems.length > 0 ? portfolioItems : Array.from({ length: 6 }).map((_, i) => ({
+              conversationId: conversationId ?? `placeholder-${i}`,
+              messageId: `placeholder-${i}`,
+              createdAt: new Date().toISOString(),
+              imageUrl: avatarUrl,
+            }))).map((item) => (
+              <div
+                key={`${item.conversationId}:${item.messageId}`}
+                className="relative h-40 w-28 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
+              >
+                <img
+                  src={item.imageUrl}
+                  alt=""
+                  className="h-full w-full object-cover blur-xl scale-110"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <div className="absolute inset-0 bg-black/25" />
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            onClick={requestPhotoCta}
+            disabled={!conversationId}
+            className="mt-3 h-11 w-full rounded-2xl text-sm font-semibold"
+          >
+            Vraag om foto
+          </Button>
+          {portfolioLoading ? (
+            <p className="mt-2 text-[11px] text-gray-500">Portfolio laden…</p>
+          ) : null}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-conv">
@@ -315,6 +410,51 @@ export default function ProfielDetailPage() {
                 <Briefcase className="h-4 w-4" />
                 {interestTag}
               </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">
+                {unlockCredits} credits per foto
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Portfolio</h2>
+              <span className="text-xs font-medium text-gray-500">Intieme foto’s · 30 dagen</span>
+            </div>
+            <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {(portfolioItems.length > 0 ? portfolioItems : Array.from({ length: 8 }).map((_, i) => ({
+                conversationId: conversationId ?? `placeholder-${i}`,
+                messageId: `placeholder-${i}`,
+                createdAt: new Date().toISOString(),
+                imageUrl: avatarUrl,
+              }))).map((item) => (
+                <div
+                  key={`${item.conversationId}:${item.messageId}`}
+                  className="relative h-56 w-40 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
+                >
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    className="h-full w-full object-cover blur-xl scale-110"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div className="absolute inset-0 bg-black/25" />
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Button
+                type="button"
+                onClick={requestPhotoCta}
+                disabled={!conversationId}
+                className="h-11 rounded-2xl px-6 text-sm font-semibold"
+              >
+                Vraag om foto
+              </Button>
+              {portfolioLoading ? (
+                <p className="mt-2 text-xs text-gray-500">Portfolio laden…</p>
+              ) : null}
             </div>
           </div>
 

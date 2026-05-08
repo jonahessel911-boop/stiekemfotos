@@ -140,6 +140,7 @@ create table if not exists profiles (
   system_prompt text not null,
   avatar_url text,
   photo_urls jsonb not null default '[]'::jsonb,
+  photo_unlock_credits integer not null default 100 check (photo_unlock_credits > 0),
   voice_language text not null default 'ro',
   heritage text,
   is_active boolean not null default true,

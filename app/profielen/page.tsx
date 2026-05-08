@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { profilePhotoSrc } from '@/lib/profile-image-url';
 import { isProfileDisplayedOnline } from '@/lib/profile-display-online';
 
+const DEFAULT_PHOTO_UNLOCK_CREDITS = 100;
+
 export default function ProfielenPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'online' | 'following'>('all');
   const [likedProfiles, setLikedProfiles] = useState<string[]>([]);
@@ -110,6 +112,12 @@ export default function ProfielenPage() {
             </div>
           ) : (
             filteredProfiles.map((profile) => (
+            (() => {
+              const unlockCredits =
+                typeof profile.photoUnlockCredits === 'number' && Number.isFinite(profile.photoUnlockCredits)
+                  ? Math.max(1, Math.floor(profile.photoUnlockCredits))
+                  : DEFAULT_PHOTO_UNLOCK_CREDITS;
+              return (
             <div 
               key={profile.id}
               className="group flex flex-col bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
@@ -167,6 +175,9 @@ export default function ProfielenPage() {
                   <span className="text-gray-400 text-sm">,</span>
                   <span className="font-semibold text-[15px] text-gray-900 sm:text-base">{profile.age}</span>
                 </div>
+                <p className="mb-2 text-[11px] font-medium text-gray-600 sm:text-xs">
+                  {unlockCredits} credits per foto
+                </p>
                 
                 <div className="mt-auto">
                   <Link
@@ -178,6 +189,8 @@ export default function ProfielenPage() {
                 </div>
               </div>
             </div>
+              );
+            })()
             ))
           )}
         </div>

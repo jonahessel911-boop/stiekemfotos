@@ -12,6 +12,8 @@ export interface Profile {
   /** xAI TTS: nl | ru | uk | pl | ro | bg, etc. */
   voiceLanguage: string;
   photo: string;
+  /** Credits needed to unlock one generated photo for this profile. */
+  photoUnlockCredits?: number;
   /** Optioneel: extra foto-URL’s (bijv. uit Supabase) voor feed/galerij. */
   photoGallery?: string[];
   photosCount: number;
