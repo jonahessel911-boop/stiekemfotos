@@ -48,3 +48,37 @@ export async function xaiTextToSpeech(
 
   return res.arrayBuffer();
 }
+
+export async function xaiSpeechToText(
+  audio: ArrayBuffer,
+  options?: { mimeType?: string; filename?: string; language?: string }
+): Promise<string> {
+  const key = requireXaiApiKey();
+  const blob = new Blob([audio], {
+    type: options?.mimeType || "audio/webm",
+  });
+  const form = new FormData();
+  form.append("file", blob, options?.filename || "voice.webm");
+  form.append("model", process.env.XAI_STT_MODEL || "grok-2-audio-transcribe");
+  if (options?.language?.trim()) {
+    form.append("language", options.language.trim());
+  }
+
+  const res = await fetch("https://api.x.ai/v1/audio/transcriptions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+    },
+    body: form,
+  });
+  const raw = await res.text();
+  if (!res.ok) {
+    throw new Error(`STT (${res.status}): ${raw.slice(0, 400)}`);
+  }
+  try {
+    const json = JSON.parse(raw) as { text?: string; transcript?: string };
+    return (json.text || json.transcript || "").trim();
+  } catch {
+    return raw.trim();
+  }
+}

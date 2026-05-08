@@ -2410,6 +2410,25 @@ export async function appendSystemAssistantMessage(
   return true;
 }
 
+export async function appendPurchaseThanksMessage(ownerUserId: string): Promise<boolean> {
+  const list = await loadList();
+  const target = list
+    .filter((c) => c.ownerUserId === ownerUserId)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+  if (!target) return false;
+  const msg: ChatMessage = {
+    id: randomUUID(),
+    role: "assistant",
+    content: "lekker schat, ik zie je aankoop 😘 wil je dat ik meteen iets spannends voor je maak?",
+    createdAt: new Date().toISOString(),
+  };
+  target.messages = [...target.messages, msg];
+  target.updatedAt = msg.createdAt;
+  await saveList(list);
+  void maybeSendOfflineAssistantEmail(target.id, msg);
+  return true;
+}
+
 /** Seed demo-gesprekken voor gasten (alleen als er nog geen owner-loze chats zijn). */
 export async function ensureSeedConversations(): Promise<void> {
   const list = await loadList();

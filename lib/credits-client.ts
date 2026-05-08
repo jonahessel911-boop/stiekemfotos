@@ -14,6 +14,7 @@ export type CreditPurchaseRecord = {
 
 /** Eén verstuurd bericht (per stuk in een batch) kost dit veel credits. */
 export const CREDITS_PER_MESSAGE = 10;
+export const CREDITS_PER_PHOTO_UNLOCK = 100;
 
 /** Startbalans: eerste credits gratis. */
 export const INITIAL_FREE_CREDITS = 100;
@@ -164,6 +165,18 @@ export function spendChatCredit(amount: number = CREDITS_PER_MESSAGE) {
   // Now primarily handled server-side via ledger. Local update for immediate UI feedback.
   const current = getCreditsBalanceSync();
   setCreditsBalance(current - amount);
+}
+
+export function canAffordPhotoUnlock(cost: number = CREDITS_PER_PHOTO_UNLOCK): boolean {
+  return getCreditsBalanceSync() >= Math.max(0, Math.floor(cost));
+}
+
+export function spendPhotoUnlock(cost: number = CREDITS_PER_PHOTO_UNLOCK): boolean {
+  const amount = Math.max(0, Math.floor(cost));
+  const current = getCreditsBalanceSync();
+  if (current < amount) return false;
+  setCreditsBalance(current - amount);
+  return true;
 }
 
 /** Terugboeken als verzending faalt na een directe (optimistische) aftrek. */

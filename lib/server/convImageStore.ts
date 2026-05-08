@@ -41,3 +41,25 @@ export async function saveConversationVoice(
   await writeFile(path.join(dir, filename), buffer);
   return filename;
 }
+
+/** Bewaart user-voice input in originele mime-extensie voor STT/debugging. */
+export async function saveConversationVoiceInput(
+  conversationId: string,
+  messageId: string,
+  buffer: Buffer,
+  mimeType: string
+): Promise<string> {
+  const m = (mimeType || "").toLowerCase();
+  const ext = m.includes("wav")
+    ? "wav"
+    : m.includes("mpeg") || m.includes("mp3")
+      ? "mp3"
+      : m.includes("ogg")
+        ? "ogg"
+        : "webm";
+  const filename = `${messageId}.${ext}`;
+  const dir = convVoiceDir(conversationId);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, filename), buffer);
+  return filename;
+}
