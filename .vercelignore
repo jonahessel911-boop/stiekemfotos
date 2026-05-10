@@ -1,0 +1,11 @@
+# Lokale Python-venvs (tienduizenden bestanden) — hoort niet op Vercel
+.venv-zimage
+.venv-zimage311
+.venv*/
+
+# Runtime JSON/images op schijf — productie gebruikt Blob/Supabase; niet bundlen
+data
+
+# Vercel installeert zelf dependencies en bouwt .next
+node_modules
+.next

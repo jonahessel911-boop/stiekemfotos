@@ -1,3 +1,8 @@
+# local ML/python tooling (niet committen)
+.venv-zimage/
+.venv-zimage311/
+.venv*/
+
 # dependencies
 /node_modules
 /.pnp
