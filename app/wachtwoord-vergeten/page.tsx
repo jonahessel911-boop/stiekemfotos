@@ -31,7 +31,7 @@ export default function WachtwoordVergetenPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--surface)] pb-24">
+    <div className="min-h-screen bg-[var(--auth-shell-bg)] pb-24">
       <div className="pt-10 max-w-md mx-auto px-4">
         <div className="flex justify-center mb-6">
           <Logo variant="hero" className="scale-90" />
@@ -42,7 +42,7 @@ export default function WachtwoordVergetenPage() {
         </p>
 
         {done ? (
-          <div className="bg-[var(--surface-card)] rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4">
+          <div className="rounded-2xl border border-primary/15 bg-[var(--onboarding-card)] p-6 shadow-md shadow-primary/5 space-y-4">
             <p className="text-sm text-gray-700">
               Als dit e-mailadres bij ons bekend is, ontvang je zo een mail met een link. Controleer ook
               je spam.
@@ -57,7 +57,7 @@ export default function WachtwoordVergetenPage() {
         ) : (
           <form
             onSubmit={submit}
-            className="space-y-4 bg-[var(--surface-card)] rounded-2xl border border-gray-200 p-6 shadow-sm"
+            className="space-y-4 rounded-2xl border border-primary/15 bg-[var(--onboarding-card)] p-6 shadow-md shadow-primary/5"
           >
             {error && (
               <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2 border border-red-100">

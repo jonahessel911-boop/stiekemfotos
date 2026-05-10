@@ -16,7 +16,7 @@ export function CircularLoader({ progress }: { progress: number }) {
           cy="60"
           r={r}
           fill="none"
-          stroke="#e8eaee"
+          stroke="#f0dce4"
           strokeWidth="10"
         />
         <circle

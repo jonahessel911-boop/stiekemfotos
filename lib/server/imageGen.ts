@@ -1,12 +1,26 @@
 import { mkdir, writeFile } from "fs/promises";
 import { createHash } from "crypto";
 import path from "path";
+import type { Profile } from "@/lib/types/profile";
+import { buildStableVisualIdentityForProfile } from "@/lib/server/profileVisualIdentity";
 
 const ZMODEL_API_KEY = process.env.ZMODEL_API_KEY?.trim() || "";
 const ZMODEL_BASE_URL = process.env.ZMODEL_BASE_URL?.trim() || "https://zimageturbo.ai";
 const ZMODEL_POLL_MS = 2000;
 const ZMODEL_TIMEOUT_MS = 120_000;
+const ZMODEL_CREATE_RETRIES = 4;
+const ZMODEL_STATUS_RETRIES = 3;
 const ALLOWED_ASPECT_RATIOS = new Set(["1:1", "4:3", "3:4", "16:9", "9:16"]);
+
+/** Z Image Turbo API: prompt max 1000 chars (docs). Lange prompts worden server-side afgekapt. */
+export const ZMODEL_PROMPT_MAX_CHARS = 1000;
+
+/**
+ * Natuurlijke zinnen (geen ALL CAPS slogan) — die woorden werden op verificatiebriefjes geschilderd.
+ * Geen woorden grid/raster (prikkelen het model).
+ */
+const ZMODEL_SINGLE_FRAME_PREFIX =
+  "Photorealistic amateur smartphone photograph, single exposure, handheld candid composition, natural messy indoor lighting, entire frame is one continuous shot of one woman. ";
 
 export type GenerationStatus = "success" | "nsfw_blocked" | "failed";
 
@@ -94,6 +108,24 @@ function gcd(a: number, b: number): number {
   return x || 1;
 }
 
+/** Max lengte van user prompt vóór server-side prefix (ZModel max 1000). */
+export function zModelMaxUserPromptBodyChars(): number {
+  return ZMODEL_PROMPT_MAX_CHARS - ZMODEL_SINGLE_FRAME_PREFIX.length;
+}
+
+export function finalizePromptForZModel(userPrompt: string): string {
+  const body = userPrompt.replace(/\s+/g, " ").trim();
+  const prefix = ZMODEL_SINGLE_FRAME_PREFIX;
+  const maxBody = ZMODEL_PROMPT_MAX_CHARS - prefix.length;
+  if (maxBody < 64) {
+    return prefix.slice(0, ZMODEL_PROMPT_MAX_CHARS).trim();
+  }
+  if (body.length <= maxBody) {
+    return `${prefix}${body}`;
+  }
+  return `${prefix}${body.slice(0, maxBody).trimEnd()}`;
+}
+
 function aspectRatioForSize(width: number, height: number): string {
   const d = gcd(width, height);
   const ratio = `${Math.floor(width / d)}:${Math.floor(height / d)}`;
@@ -114,20 +146,36 @@ async function tryGenerateWithZModel(
     return { error: "ZMODEL_API_KEY ontbreekt." };
   }
   const aspectRatio = aspectRatioForSize(options.width ?? 1024, options.height ?? 1024);
-  const createRes = await fetch(`${ZMODEL_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${ZMODEL_API_KEY}`,
-    },
-    body: JSON.stringify({
-      prompt: options.prompt,
-      aspect_ratio: aspectRatio,
-    }),
-  });
-  const createRaw = await createRes.text();
-  if (!createRes.ok) {
-    return { error: `ZModel generate error ${createRes.status}: ${createRaw.slice(0, 300)}` };
+  let createRaw = "";
+  let createStatus = 0;
+  for (let attempt = 1; attempt <= ZMODEL_CREATE_RETRIES; attempt += 1) {
+    const createRes = await fetch(`${ZMODEL_BASE_URL}/api/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": "stiekefotos-image-worker/1.0",
+        Authorization: `Bearer ${ZMODEL_API_KEY}`,
+      },
+      body: JSON.stringify({
+        prompt: finalizePromptForZModel(options.prompt),
+        aspect_ratio: aspectRatio,
+      }),
+    });
+    createStatus = createRes.status;
+    createRaw = await createRes.text();
+    if (createRes.ok) break;
+    const looksHtml = /^\s*</.test(createRaw);
+    const retryable = createRes.status >= 500 || createRes.status === 429 || looksHtml;
+    if (!retryable || attempt >= ZMODEL_CREATE_RETRIES) {
+      return {
+        error: `ZModel generate error ${createRes.status}: ${createRaw.slice(0, 300)}`,
+      };
+    }
+    await sleep(700 * attempt);
+  }
+  if (createStatus < 200 || createStatus >= 300) {
+    return { error: `ZModel generate error ${createStatus}: ${createRaw.slice(0, 300)}` };
   }
   let created: ZModelGenerateResponse;
   try {
@@ -145,18 +193,32 @@ async function tryGenerateWithZModel(
   let lastStatus = created.data?.status ?? "IN_PROGRESS";
   while (Date.now() - started < ZMODEL_TIMEOUT_MS) {
     await sleep(ZMODEL_POLL_MS);
-    const statusRes = await fetch(
-      `${ZMODEL_BASE_URL}/api/status?task_id=${encodeURIComponent(taskId)}`,
-      {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${ZMODEL_API_KEY}`,
-      },
+    let statusRaw = "";
+    let statusCode = 0;
+    for (let attempt = 1; attempt <= ZMODEL_STATUS_RETRIES; attempt += 1) {
+      const statusRes = await fetch(
+        `${ZMODEL_BASE_URL}/api/status?task_id=${encodeURIComponent(taskId)}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            "User-Agent": "stiekefotos-image-worker/1.0",
+            Authorization: `Bearer ${ZMODEL_API_KEY}`,
+          },
+        }
+      );
+      statusCode = statusRes.status;
+      statusRaw = await statusRes.text();
+      if (statusRes.ok) break;
+      const looksHtml = /^\s*</.test(statusRaw);
+      const retryable = statusRes.status >= 500 || statusRes.status === 429 || looksHtml;
+      if (!retryable || attempt >= ZMODEL_STATUS_RETRIES) {
+        return { error: `ZModel status error ${statusRes.status}: ${statusRaw.slice(0, 300)}` };
+      }
+      await sleep(500 * attempt);
     }
-    );
-    const statusRaw = await statusRes.text();
-    if (!statusRes.ok) {
-      return { error: `ZModel status error ${statusRes.status}: ${statusRaw.slice(0, 300)}` };
+    if (statusCode < 200 || statusCode >= 300) {
+      return { error: `ZModel status error ${statusCode}: ${statusRaw.slice(0, 300)}` };
     }
     let statusData: ZModelStatusResponse;
     try {
@@ -224,10 +286,13 @@ export async function generateRealisticImageDetailed(
   } = options;
   const outputDir = path.join(process.cwd(), "data", "conv-images", conversationId);
   await mkdir(outputDir, { recursive: true });
-  const promptHash = createHash("sha256").update(prompt).digest("hex").slice(0, 12);
+  const promptHash = createHash("sha256")
+    .update(finalizePromptForZModel(prompt))
+    .digest("hex")
+    .slice(0, 12);
   const startedAt = Date.now();
 
-  // Primary/only provider: ZModel Turbo API
+  // Primary/only provider: ZModel Turbo API (finaliseert prompt intern: max 1000 chars + single-frame prefix)
   const zResult = await tryGenerateWithZModel(
     { prompt, width, height, steps: options.steps, seed, randomSeed },
     outputDir,
@@ -257,14 +322,10 @@ export async function generateRealisticImageDetailed(
   };
 }
 
-export function buildNudePrompt(
-  profileName: string,
-  heritage: string | undefined,
-  userRequest: string
-): string {
-  void profileName;
-  void heritage;
-  const direct = userRequest.trim();
-  if (direct.length > 0) return direct;
-  return "amateur smartphone photo, realistic lighting";
+export function buildNudePrompt(profile: Profile, userRequest: string): string {
+  const identity =
+    profile.visualIdentityPrompt?.trim().replace(/\s+/g, " ") ||
+    buildStableVisualIdentityForProfile(profile);
+  const scene = userRequest.trim() || "amateur smartphone photo realistic lighting same woman as profile";
+  return `${identity}, scene: ${scene}`;
 }

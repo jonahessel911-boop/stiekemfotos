@@ -2,9 +2,10 @@ import type { Messages } from "@/lib/messages/types";
 
 export const nl: Messages = {
   nav: {
-    feed: "Aanvragen",
-    messages: "Berichten",
+    feed: "Verzoeken",
+    messages: "Chat",
     profiles: "Profielen",
+    gallery: "Gallerij",
     credits: "Credits",
   },
   common: {

@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
     const res = NextResponse.json({
       ok: true,
-      needsEmailVerification: Boolean(user.emailVerifyToken && !user.emailVerifiedAt),
+      needsEmailVerification: false,
       user: {
         id: user.id,
         email: user.email,

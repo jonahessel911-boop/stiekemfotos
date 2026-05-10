@@ -3,14 +3,14 @@
 import React, { useEffect } from 'react';
 import { hasCompletedStartup } from '@/lib/onboarding-client';
 
-/** `/` — stuurt door naar onboarding of direct naar de feed. */
+/** `/` — stuurt door naar onboarding of direct naar profielen. */
 export default function HomeGate() {
   useEffect(() => {
     if (!hasCompletedStartup()) {
       window.location.replace('/start');
       return;
     }
-    window.location.replace('/nieuwsfeed');
+    window.location.replace('/profielen');
   }, []);
 
   return (

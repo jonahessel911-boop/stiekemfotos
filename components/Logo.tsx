@@ -26,7 +26,7 @@ export default function Logo({ variant = 'nav', className = '' }: LogoProps) {
         }`}
       >
         <Image
-          src="/logo-mark.png"
+          src="/logo-stiekemefotos.png"
           alt=""
           width={imgSize}
           height={imgSize}
@@ -43,16 +43,16 @@ export default function Logo({ variant = 'nav', className = '' }: LogoProps) {
           style={{ fontFamily: 'inherit' }}
         >
           {isHero ? (
-            'discreetemeisjes.nl'
+            'stiekemefotos.nl'
           ) : (
             <>
-              <span className="text-gray-900">discreetemeisjes</span>
+              <span className="text-gray-900">stiekemefotos</span>
               <span className="text-primary">.nl</span>
             </>
           )}
         </div>
         <div className={`font-medium text-gray-600 max-[380px]:hidden sm:text-gray-500 ${tag}`}>
-          exclusieve ontmoetingen · discreet vertrouwen
+          Dé site waarop vrouwen bijverdienen met stiekeme fotos
         </div>
       </div>
     </div>

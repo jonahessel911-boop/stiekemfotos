@@ -126,7 +126,7 @@ function visionPayloadVariants(messages: GrokMessage[]): GrokMessage[][] {
 
 export async function completeChat(
   messages: GrokMessage[],
-  opts?: { hasImage?: boolean }
+  opts?: { hasImage?: boolean; maxTokens?: number; temperature?: number }
 ): Promise<string> {
   const key = requireXaiApiKey();
 
@@ -141,9 +141,9 @@ export async function completeChat(
 
   const payloadBase = {
     model,
-    temperature: 0.88,
+    temperature: opts?.temperature ?? 0.88,
     /** Korte chat-replies (conversie); prompt vraagt 1–2 zinnen — cap helpt tegen laptekst. */
-    max_tokens: 260,
+    max_tokens: opts?.maxTokens ?? 260,
   };
 
   let lastStatus = 0;

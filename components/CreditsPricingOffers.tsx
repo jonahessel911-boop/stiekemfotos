@@ -110,9 +110,9 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
     <div className="space-y-5">
       {showIntro ? (
         <p className="text-sm text-gray-600 leading-relaxed">
-          Je eerste <strong>{INITIAL_FREE_CREDITS} credits</strong> waren gratis. Elk bericht dat je
-          stuurt kost <strong>{CREDITS_PER_MESSAGE} credits</strong>. Kies hieronder een pakket om
-          verder te gaan.{' '}
+          Je eerste <strong>{INITIAL_FREE_CREDITS} credits</strong> waren gratis. Chatten is
+          <strong> gratis</strong>. Credits gebruik je vooral voor foto&apos;s ontgrendelen en extra&apos;s.
+          Kies hieronder een pakket als je wilt opwaarderen.{' '}
           <span className="font-semibold text-primary">
             Tijdelijke actie: Beste deal €13,99 met 60% korting.
           </span>
@@ -124,7 +124,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
         </p>
       ) : null}
       {purchaseSuccess ? (
-        <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+        <p className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs text-primary-deep">
           {purchaseSuccess}
         </p>
       ) : null}
@@ -146,7 +146,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
               </span>
             ) : null}
             {pkg.featured ? (
-              <span className="absolute right-4 top-4 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+              <span className="absolute right-4 top-4 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-deep">
                 60% korting
               </span>
             ) : null}
@@ -157,9 +157,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
             <div className="mt-1 text-sm font-semibold text-primary">
               {pkg.credits.toLocaleString('nl-NL')} credits
             </div>
-            <p className="mt-1 text-xs text-gray-500">
-              {Math.ceil(pkg.credits / CREDITS_PER_MESSAGE)} berichten
-            </p>
+            <p className="mt-1 text-xs text-gray-500">Voor foto&apos;s, unlocks en gifts</p>
             <button
               type="button"
               onClick={() => void handleBuy(pkg.id)}

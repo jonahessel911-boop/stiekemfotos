@@ -1,11 +1,11 @@
 import { unstable_cache } from "next/cache";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types/profile";
-import { getProfileById as getStaticProfileById } from "@/lib/profiles";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 
 type DbProfileRow = {
   id: string;
+  slug: string;
   first_name: string;
   age: number;
   city: string;
@@ -21,6 +21,7 @@ type DbProfileRow = {
   photo_urls: string[] | null;
   voice_language: string;
   heritage: string | null;
+  visual_identity_prompt: string | null;
   photo_unlock_credits: number | null;
   is_active: boolean;
 };
@@ -75,6 +76,7 @@ function mapDbProfile(row: DbProfileRow): Profile {
     unique[0] ?? photos[0] ?? "https://randomuser.me/api/portraits/women/1.jpg";
   return {
     id: row.id,
+    slug: row.slug,
     name: row.first_name,
     age: row.age,
     location: row.city,
@@ -82,6 +84,7 @@ function mapDbProfile(row: DbProfileRow): Profile {
     gewicht: row.gewicht_kg ?? undefined,
     cupMaat: row.cup_maat ?? undefined,
     heritage: row.heritage ?? row.country,
+    visualIdentityPrompt: row.visual_identity_prompt?.trim() || undefined,
     personaStyle: "east_european",
     voiceLanguage: row.voice_language || "ro",
     photo: primary,
@@ -158,7 +161,7 @@ async function listDbProfilesFromSupabase(limit: number): Promise<Profile[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, age, city, lengte_cm, gewicht_kg, cup_maat, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, photo_unlock_credits, is_active"
+      "id, slug, first_name, age, city, lengte_cm, gewicht_kg, cup_maat, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, visual_identity_prompt, photo_unlock_credits, is_active"
     )
     .eq("is_active", true)
     .order("created_at", { ascending: false })
@@ -168,7 +171,8 @@ async function listDbProfilesFromSupabase(limit: number): Promise<Profile[]> {
     return [];
   }
   if (!data) return [];
-  const mapped = (data as DbProfileRow[]).map(mapDbProfile);
+  const rows = data as DbProfileRow[];
+  const mapped = rows.map(mapDbProfile);
   return enforceUniquePrimaryPhoto(mapped);
 }
 
@@ -179,28 +183,40 @@ const listDbProfiles100Cached = unstable_cache(
 );
 
 export async function listDbProfiles(limit = 100): Promise<Profile[]> {
-  if (!isSupabaseProfilesEnabled()) return [];
-  if (limit === 100) return listDbProfiles100Cached();
-  return listDbProfilesFromSupabase(limit);
+  if (!isSupabaseProfilesEnabled()) {
+    return [];
+  }
+  if (limit === 100) {
+    const cached = await listDbProfiles100Cached();
+    if (cached.length > 0) {
+      return cached.slice(0, limit);
+    }
+    return await listDbProfilesFromSupabase(100);
+  }
+  return await listDbProfilesFromSupabase(limit);
 }
 
 export async function getDbProfileById(id: string): Promise<Profile | null> {
   if (!id.trim()) return null;
-  if (!isSupabaseProfilesEnabled()) return getStaticProfileById(id) ?? null;
+  if (!isSupabaseProfilesEnabled()) {
+    return null;
+  }
   const supabase = getSupabaseProfilesClient();
-  if (!supabase) return getStaticProfileById(id) ?? null;
+  if (!supabase) return null;
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, age, city, lengte_cm, gewicht_kg, cup_maat, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, photo_unlock_credits, is_active"
+      "id, slug, first_name, age, city, lengte_cm, gewicht_kg, cup_maat, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, visual_identity_prompt, photo_unlock_credits, is_active"
     )
     .eq("id", id)
     .eq("is_active", true)
     .maybeSingle();
   if (error) {
     console.error("[profilesDb] get profile failed:", error.message);
-    return getStaticProfileById(id) ?? null;
+    return null;
   }
-  if (!data) return getStaticProfileById(id) ?? null;
+  if (!data) {
+    return null;
+  }
   return mapDbProfile(data as DbProfileRow);
 }

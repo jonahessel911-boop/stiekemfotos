@@ -125,15 +125,15 @@ export default function NieuwsfeedPage() {
 
       <div className="mx-auto w-full max-w-screen-xl px-4 pt-12 sm:px-6 sm:pt-14 lg:px-8 lg:pt-20">
         <div className="sticky top-12 z-30 mb-6 border-b border-gray-200 bg-[var(--surface)] py-2 sm:top-14 lg:top-20">
-          <p className="px-2 text-xl font-bold text-gray-900">Aanvragen</p>
-          <p className="px-2 text-sm text-gray-600">Alle foto-aanvragen van users op het platform.</p>
+          <p className="px-2 text-xl font-bold text-gray-900">Verzoeken</p>
+          <p className="px-2 text-sm text-gray-600">Alle foto-verzoeken van gebruikers op het platform.</p>
         </div>
 
         <div className="mx-auto w-full max-w-3xl space-y-5">
           <section className="rounded-3xl border border-rose-100 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Foto Aanvragen</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Foto-verzoeken</h2>
                 <p className="text-sm text-gray-600">
                   In 1 dag ontvang je vaak meerdere reacties.
                 </p>
@@ -147,7 +147,7 @@ export default function NieuwsfeedPage() {
                 }}
                 className="rounded-2xl"
               >
-                Foto Aanvragen
+                Nieuw verzoek
               </Button>
             </div>
             {showRequestForm && (

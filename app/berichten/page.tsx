@@ -64,6 +64,11 @@ import {
   PROFILE_PENDING_SEND_KEY,
   type ProfilePendingSend,
 } from '@/lib/profile-pending-send';
+import {
+  DEFAULT_PHOTO_REQUEST_DRAFT,
+  PROFILE_PHOTO_REQUEST_NAV_KEY,
+  type ProfilePhotoRequestNavPayload,
+} from '@/lib/profile-photo-request';
 
 function summaryActivityMs(c: ConversationSummary): number {
   return new Date(c.updatedAt || 0).getTime();
@@ -117,7 +122,17 @@ function isEmailVerificationError(message: string | null): boolean {
 function deduplicateMessages(messages: ChatMessage[]): ChatMessage[] {
   const byId = new Map<string, ChatMessage>();
   const signatureToId = new Map<string, string>();
+  const canonicalToLocalId = new Map<string, string>();
   const now = Date.now();
+  const OPTIMISTIC_MERGE_WINDOW_MS = 45_000;
+
+  const canonicalKeyFor = (m: ChatMessage): string => {
+    const contentKey = (m.content || '').trim().toLowerCase();
+    const replyKey = (m.replyToId || '').trim().toLowerCase();
+    const img = m.imageFile ? 'img1' : 'img0';
+    const gift = m.gift ? `gift:${m.gift.direction}:${m.gift.credits}` : 'gift:none';
+    return `${m.role}|${contentKey}|${replyKey}|${img}|${gift}`;
+  };
 
   for (const msg of messages) {
     const contentKey = (msg.content || '').trim().toLowerCase();
@@ -140,6 +155,31 @@ function deduplicateMessages(messages: ChatMessage[]): ChatMessage[] {
     }
 
     if (byId.has(msg.id)) continue;
+
+    // Extra guard: collapse optimistic local-* with server-ack message
+    // even when createdAt differs by more than 3s.
+    const canonical = canonicalKeyFor(msg);
+    const isLocal = msg.id.startsWith('local-');
+    if (isLocal) {
+      if (!canonicalToLocalId.has(canonical)) {
+        canonicalToLocalId.set(canonical, msg.id);
+      }
+    } else {
+      const localId = canonicalToLocalId.get(canonical);
+      if (localId) {
+        const localMsg = byId.get(localId);
+        if (localMsg) {
+          const localTime = Date.parse(localMsg.createdAt);
+          const serverTime = Number.isFinite(msgTime) ? msgTime : now;
+          const localTs = Number.isFinite(localTime) ? localTime : now;
+          if (Math.abs(serverTime - localTs) <= OPTIMISTIC_MERGE_WINDOW_MS) {
+            byId.delete(localId);
+            canonicalToLocalId.delete(canonical);
+          }
+        }
+      }
+    }
+
     byId.set(msg.id, msg);
     if (contentKey) signatureToId.set(signature, msg.id);
   }
@@ -200,6 +240,7 @@ function BerichtenInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const chatParam = searchParams.get('chat');
+  const profileOpenParam = searchParams.get('profile');
 
   const [list, setList] = useState<ConversationSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(chatParam);
@@ -239,6 +280,8 @@ function BerichtenInner() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const attachMenuRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const focusComposerAfterProfileOpenRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -260,8 +303,10 @@ function BerichtenInner() {
   const { openPricing } = useCreditsPricing();
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
-  /** Welk gesprek de huidige niet-zachte fetch laadt (voorkomt vastlopende loading bij snel wisselen). */
+  /** Welk gesprek de huidige niet-zachte fetch laadt (legacy + sync met cache). */
   const loadingConversationIdRef = useRef<string | null>(null);
+  /** Elke nieuwe harde fetch verhoogt dit; alleen de **laatste** fetch mag de spinner uitzetten (race bij snel tab-wisselen). */
+  const conversationFetchGenerationRef = useRef(0);
   /** Cache per conversation id voor instant openen zonder verkeerde mix. */
   const conversationCacheRef = useRef<Record<string, Conversation>>({});
   /** Tot deze tijd (epoch ms) tonen we “Online” na jouw bericht / haar antwoord. */
@@ -283,6 +328,7 @@ function BerichtenInner() {
   const [giftOpenPlayedByMessageId, setGiftOpenPlayedByMessageId] = useState<
     Record<string, boolean>
   >({});
+  const lastSendFingerprintRef = useRef<{ key: string; at: number } | null>(null);
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const swipeStartRef = useRef<{ messageId: string; x: number; y: number } | null>(null);
   const [swipeOffsetByMessageId, setSwipeOffsetByMessageId] = useState<Record<string, number>>({});
@@ -296,6 +342,21 @@ function BerichtenInner() {
   const [unlockingByMessageId, setUnlockingByMessageId] = useState<Record<string, boolean>>({});
   /** Lokaal: foto's die deze sessie al ontgrendeld zijn (ook als server nog niet gepolld is). */
   const [locallyUnlockedByMessageId, setLocallyUnlockedByMessageId] = useState<Record<string, boolean>>({});
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!lightboxSrc) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxSrc(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [lightboxSrc]);
 
   const openGiftMessage = useCallback((messageId: string) => {
     setOpenedGiftByMessageId((prev) => (prev[messageId] ? prev : { ...prev, [messageId]: true }));
@@ -358,8 +419,10 @@ function BerichtenInner() {
         const d1 = (await r1.json()) as { url?: string | null };
         const d2 = (await r2.json()) as { url?: string | null };
         if (!cancel) {
-          setGiftClosedAnimationUrl(d1.url ?? null);
-          setGiftOpenAnimationUrl(d2.url ?? null);
+          // Always keep a local fallback path so gift animation can still render
+          // when admin URLs are missing.
+          setGiftClosedAnimationUrl(d1.url || '/api/animations/file/gift_closed');
+          setGiftOpenAnimationUrl(d2.url || '/api/animations/file/gift_open');
         }
       } catch {
         if (!cancel) {
@@ -433,13 +496,18 @@ function BerichtenInner() {
 
   const fetchConversation = useCallback(async (id: string, opts?: { soft?: boolean }) => {
     const soft = opts?.soft === true;
+    let generationAtStart = 0;
     if (!soft) {
+      generationAtStart = ++conversationFetchGenerationRef.current;
       loadingConversationIdRef.current = id;
       setLoadingMessages(true);
     }
     setError(null);
     try {
-      const res = await fetch(`/api/conversations/${id}`, { credentials: 'include' });
+      const res = await fetch(`/api/conversations/${id}`, {
+        credentials: 'include',
+        signal: AbortSignal.timeout(28_000),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Gesprek niet gevonden');
       if (selectedIdRef.current !== id) return;
@@ -472,9 +540,19 @@ function BerichtenInner() {
       }
     } catch (e) {
       if (selectedIdRef.current !== id) return;
-      setError(e instanceof Error ? e.message : 'Fout');
+      const msg =
+        e instanceof Error && e.name === 'TimeoutError'
+          ? 'Gesprek laden duurt te lang. Probeer opnieuw.'
+          : e instanceof Error
+            ? e.message
+            : 'Fout';
+      setError(msg);
     } finally {
-      if (!soft && loadingConversationIdRef.current === id) {
+      if (
+        !soft &&
+        generationAtStart > 0 &&
+        generationAtStart === conversationFetchGenerationRef.current
+      ) {
         loadingConversationIdRef.current = null;
         setLoadingMessages(false);
       }
@@ -541,12 +619,15 @@ function BerichtenInner() {
       if (sid) {
         void fetchConversation(sid, { soft: true });
       }
-      void fetchList({ silent: true });
+      /** Geen parallelle inbox-GET tijdens profiel→chat bootstrap (race met POST overschrijft list). */
+      if (!profileOpenParam?.trim()) {
+        void fetchList({ silent: true });
+      }
     };
     sync();
     window.addEventListener('dm-credits-updated', sync);
     return () => window.removeEventListener('dm-credits-updated', sync);
-  }, [fetchConversation, fetchList]);
+  }, [fetchConversation, fetchList, profileOpenParam]);
 
   useEffect(() => {
     const onPurchased = () => {
@@ -554,15 +635,19 @@ function BerichtenInner() {
       if (sid) {
         void fetchConversation(sid, { soft: true });
       }
-      void fetchList({ silent: true });
+      if (!profileOpenParam?.trim()) {
+        void fetchList({ silent: true });
+      }
     };
     window.addEventListener('dm-credits-purchased', onPurchased);
     return () => window.removeEventListener('dm-credits-purchased', onPurchased);
-  }, [fetchConversation, fetchList]);
+  }, [fetchConversation, fetchList, profileOpenParam]);
 
   useEffect(() => {
+    /** Profiel-deep-link flow doet zelf POST + fetchList; concurrente mount-fetch overschrijft soms die state. */
+    if (profileOpenParam?.trim()) return;
     fetchList();
-  }, [fetchList]);
+  }, [fetchList, profileOpenParam]);
 
   useEffect(() => {
     const id = window.setInterval(() => setPresenceNow(Date.now()), 30_000);
@@ -597,6 +682,102 @@ function BerichtenInner() {
   useEffect(() => {
     if (chatParam) setSelectedId(chatParam);
   }, [chatParam]);
+
+  const openingProfileDeepLink = Boolean(profileOpenParam?.trim() && !chatParam);
+  const profileDeepLinkBooting = openingProfileDeepLink && !selectedId;
+
+  useEffect(() => {
+    const pid = profileOpenParam?.trim();
+    if (!pid || chatParam) return;
+
+    void (async () => {
+      let draft = DEFAULT_PHOTO_REQUEST_DRAFT;
+      try {
+        const raw = sessionStorage.getItem(PROFILE_PHOTO_REQUEST_NAV_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as ProfilePhotoRequestNavPayload;
+          if (parsed.profileId === pid && typeof parsed.draft === 'string' && parsed.draft.trim()) {
+            draft = parsed.draft.trim();
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        const createRes = await fetch('/api/conversations', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profileId: pid }),
+        });
+        const createData = (await createRes.json()) as {
+          conversation?: Conversation;
+          error?: string;
+        };
+
+        if (!createRes.ok) {
+          setLoadingList(false);
+          if (createRes.status === 401) {
+            window.location.assign(`/inloggen?next=${encodeURIComponent(`/profielen/${pid}`)}`);
+            return;
+          }
+          setError(createData.error ?? 'Chat openen mislukt');
+          router.replace('/berichten', { scroll: false });
+          return;
+        }
+
+        const conv = createData.conversation;
+        if (!conv?.id) {
+          setLoadingList(false);
+          setError('Chat openen mislukt');
+          router.replace('/berichten', { scroll: false });
+          return;
+        }
+
+        try {
+          sessionStorage.removeItem(PROFILE_PHOTO_REQUEST_NAV_KEY);
+        } catch {
+          /* */
+        }
+
+        /** Gesprek uit POST — chat kan direct tonen; GEEN wachten op GET inbox (die kan 403/hangen). */
+        conversationCacheRef.current[conv.id] = conv;
+
+        const summary: ConversationSummary = {
+          id: conv.id,
+          profileId: conv.profileId,
+          profileName: conv.profileName,
+          previewAvatar: conv.previewAvatar,
+          lastMessage: '',
+          lastMessageFromAssistant: false,
+          timestamp: formatMessageTime(conv.updatedAt),
+          updatedAt: conv.updatedAt,
+          unread: 0,
+          isOnline: conv.isOnline,
+        };
+        setList((prev) => {
+          const without = prev.filter((c) => c.profileId !== conv.profileId);
+          const next = [summary, ...without];
+          listRef.current = next;
+          return next;
+        });
+
+        setLoadingList(false);
+
+        setSelectedId(conv.id);
+        setInput(draft);
+        focusComposerAfterProfileOpenRef.current = true;
+        router.replace(`/berichten?chat=${encodeURIComponent(conv.id)}`, { scroll: false });
+
+        void fetchList({ silent: true });
+      } catch (e) {
+        setLoadingList(false);
+        setError(e instanceof Error ? e.message : 'Chat openen mislukt');
+        router.replace('/berichten', { scroll: false });
+      }
+    })();
+  }, [profileOpenParam, chatParam, router, fetchList]);
 
   useEffect(() => {
     if (selectedId) {
@@ -656,6 +837,19 @@ function BerichtenInner() {
 
   const activeConversation =
     conversationForUi;
+
+  useLayoutEffect(() => {
+    if (!focusComposerAfterProfileOpenRef.current) return;
+    if (!activeConversation || loadingMessages) return;
+    focusComposerAfterProfileOpenRef.current = false;
+    requestAnimationFrame(() => {
+      try {
+        composerTextareaRef.current?.focus({ preventScroll: true });
+      } catch {
+        composerTextareaRef.current?.focus();
+      }
+    });
+  }, [activeConversation?.id, loadingMessages]);
 
   const lastChronologicalMsgId =
     displayMessages.length > 0 ? displayMessages[displayMessages.length - 1]!.id : '';
@@ -1143,9 +1337,20 @@ function BerichtenInner() {
 
     try {
       const noCredits = sendOpts?.noCredits === true;
-      const cost = noCredits ? 0 : creditsCostForBatchSize(batch.length);
+      const convForCost =
+        conversationCacheRef.current[sid] ??
+        (conversationForUi?.id === sid ? conversationForUi : null);
+      const userMsgCountBefore =
+        convForCost?.messages.filter((m) => m.role === 'user').length ?? 0;
+      const cost = noCredits
+        ? 0
+        : CREDITS_PER_MESSAGE <= 0
+          ? 0
+          : userMsgCountBefore === 0
+            ? 0
+            : creditsCostForBatchSize(batch.length);
       const balance = getCreditsBalance();
-      if (!noCredits && balance < cost) {
+      if (!noCredits && CREDITS_PER_MESSAGE > 0 && balance < cost) {
         void fetch(`/api/conversations/${sid}/credit-runout`, {
           method: 'POST',
           credentials: 'include',
@@ -1204,6 +1409,8 @@ function BerichtenInner() {
           body: JSON.stringify(
             noCredits ? { items, noCredits: true } : { items }
           ),
+          /** Breekt eindeloos wachten af; server maxDuration is 240s. */
+          signal: AbortSignal.timeout(230_000),
         });
         const data = (await res.json()) as {
           error?: string;
@@ -1224,7 +1431,7 @@ function BerichtenInner() {
       if (profileMeta) {
         pushLiveNotification(profileMeta.profileName, profileMeta.previewAvatar, `${profileMeta.profileName} typt…`);
       }
-        if (data.creditWall) {
+        if (data.creditWall && CREDITS_PER_MESSAGE > 0) {
           if (prepaid) refundChatCredit(cost);
           triggerNoCreditsFlow(sid);
         }
@@ -1252,7 +1459,11 @@ function BerichtenInner() {
           `${profileMeta.profileName} leest je bericht`
         );
       }
-        clearOptimisticForConversation(sid);
+        // Alleen wissen als server de user-berichten al heeft teruggegeven.
+        // Anders laat optimistic staan zodat verzonden tekst niet "verdwijnt".
+        if ((data.userMessages?.length ?? 0) > 0 || data.creditWall) {
+          clearOptimisticForConversation(sid);
+        }
         if (!batchOverride) {
           outgoingConversationIdRef.current = null;
         }
@@ -1291,24 +1502,6 @@ function BerichtenInner() {
           }
         }
 
-        // Clear loading/typing state as soon as server accepted the message
-        // (user message is now persisted immediately on server)
-        setInflightSends((prev) => {
-          const next = new Set(prev);
-          next.delete(sid);
-          return next;
-        });
-        setTypingVisibleAtByConv((prev) => {
-          const { [sid]: _, ...rest } = prev;
-          return rest;
-        });
-        setSendStartedAtByConv((prev) => {
-          const { [sid]: _, ...rest } = prev;
-          return rest;
-        });
-        if (!batchOverride) {
-          outgoingConversationIdRef.current = null;
-        }
         return true;
       } catch (e) {
         if (prepaid) refundChatCredit(cost);
@@ -1322,7 +1515,11 @@ function BerichtenInner() {
         setError(e instanceof Error ? e.message : 'Fout bij versturen');
         return false;
       } finally {
-        // Final safety cleanup (inflightSends already cleared on success path)
+        setInflightSends((prev) => {
+          const next = new Set(prev);
+          next.delete(sid);
+          return next;
+        });
         setTypingVisibleAtByConv((prev) => {
           const { [sid]: _, ...rest } = prev;
           return rest;
@@ -1352,6 +1549,7 @@ function BerichtenInner() {
   }, [
     clearBatchTimer,
     clearOptimisticForConversation,
+    conversationForUi,
     fetchConversation,
     fetchList,
     triggerNoCreditsFlow,
@@ -1447,14 +1645,39 @@ function BerichtenInner() {
     const trimmed = input.trim();
     if (!trimmed && !pendingImage) return;
 
+    // Voorkom double fire (bijv. touch/click + enter race): dezelfde payload
+    // binnen korte tijd maar één keer in optimistic queue.
+    const sendFingerprint = [
+      selectedId,
+      trimmed,
+      pendingImage ? pendingImage.base64.slice(0, 32) : '',
+      replyToId ?? '',
+    ].join('|');
+    const nowMs = Date.now();
+    if (
+      lastSendFingerprintRef.current &&
+      lastSendFingerprintRef.current.key === sendFingerprint &&
+      nowMs - lastSendFingerprintRef.current.at < 1500
+    ) {
+      return;
+    }
+    lastSendFingerprintRef.current = { key: sendFingerprint, at: nowMs };
+
     if (trimmed.length > MAX_USER_MESSAGE_CHARS) {
       setError(
         `Je bericht is langer dan ${MAX_USER_MESSAGE_CHARS} tekens. Maak het korter of stuur het in meerdere berichten.`
       );
       return;
     }
-    const sendCost = creditsCostForBatchSize(1);
-    if (getCreditsBalance() < sendCost) {
+    const priorUserMsgCount =
+      activeConversation?.messages.filter((m) => m.role === 'user').length ?? 0;
+    const sendCost =
+      CREDITS_PER_MESSAGE <= 0
+        ? 0
+        : priorUserMsgCount === 0
+          ? 0
+          : creditsCostForBatchSize(1);
+    if (CREDITS_PER_MESSAGE > 0 && getCreditsBalance() < sendCost) {
       triggerNoCreditsFlow(selectedId);
       return;
     }
@@ -1619,6 +1842,12 @@ function BerichtenInner() {
     router.push('/berichten', { scroll: false });
   };
 
+  const openActiveProfile = () => {
+    const profileId = activeConversation?.profileId?.trim();
+    if (!profileId) return;
+    router.push(`/profielen/${profileId}`);
+  };
+
   return (
     <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-[var(--surface)]">
       <Navbar />
@@ -1628,8 +1857,8 @@ function BerichtenInner() {
         {/* Inbox list - fully responsive, full height on mobile */}
         <div
           className={`flex w-full flex-shrink-0 flex-col border-b border-gray-200/80 bg-[var(--surface-card)] lg:min-h-0 lg:max-h-none lg:basis-[32%] lg:max-w-sm lg:border-b-0 lg:border-r lg:overflow-hidden ${
-            selectedId 
-              ? 'hidden lg:flex' 
+            selectedId || openingProfileDeepLink
+              ? 'hidden lg:flex'
               : 'flex flex-1 min-h-0 lg:flex-none lg:h-auto'
           }`}
         >
@@ -1681,7 +1910,7 @@ function BerichtenInner() {
                       className="w-12 h-12 rounded-2xl object-cover ring-2 ring-white shadow-sm"
                     />
                     {chat.isOnline && (
-                      <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full" />
+                      <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-primary border-2 border-white rounded-full" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1717,7 +1946,7 @@ function BerichtenInner() {
         {/* Chat / empty - full height when open on mobile */}
         <div
           className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--surface-card)] ${
-            selectedId ? 'flex' : 'hidden lg:flex'
+            selectedId || openingProfileDeepLink ? 'flex' : 'hidden lg:flex'
           }`}
         >
           {visibleError && (
@@ -1726,7 +1955,8 @@ function BerichtenInner() {
             </div>
           )}
 
-          {selectedId && loadingMessages && (
+          {(selectedId || openingProfileDeepLink) &&
+            (loadingMessages || profileDeepLinkBooting) && (
             <div className="flex-1 flex items-center justify-center text-gray-500">
               Laden…
             </div>
@@ -1751,31 +1981,38 @@ function BerichtenInner() {
                 >
                   ← Terug
                 </button>
-                <div className="relative shrink-0">
-                  <img
-                    src={activeConversation.previewAvatar}
-                    alt=""
-                    className="h-11 w-11 rounded-2xl object-cover ring-2 ring-white shadow-sm"
-                  />
-                  {isPeerOnlineNow && (
-                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate font-semibold text-[16px] text-gray-900">
-                    {activeConversation.profileName}
-                  </h2>
-                  <p className="mt-0.5 truncate text-[12px] text-gray-500">
-                    {isPeerOnlineNow ? (
-                      <span className="font-medium text-emerald-600">Online</span>
-                    ) : (
-                      <>
-                        Voor het laatst online ·{' '}
-                        <span className="text-gray-600">{lastOnlineSubtitle}</span>
-                      </>
+                <button
+                  type="button"
+                  onClick={openActiveProfile}
+                  className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-1.5 py-1 text-left transition-colors hover:bg-gray-50"
+                  aria-label={`Open profiel van ${activeConversation.profileName}`}
+                >
+                  <div className="relative shrink-0">
+                    <img
+                      src={activeConversation.previewAvatar}
+                      alt=""
+                      className="h-14 w-14 rounded-2xl object-cover ring-2 ring-white shadow-sm"
+                    />
+                    {isPeerOnlineNow && (
+                      <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-primary" />
                     )}
-                  </p>
-                </div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="truncate font-bold text-[20px] leading-tight text-gray-900">
+                      {activeConversation.profileName}
+                    </h2>
+                    <p className="mt-0.5 truncate text-[14px] text-gray-500">
+                      {isPeerOnlineNow ? (
+                        <span className="font-semibold text-primary">Online</span>
+                      ) : (
+                        <>
+                          Voor het laatst online ·{' '}
+                          <span className="text-gray-600">{lastOnlineSubtitle}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </button>
               </div>
 
               <div
@@ -1874,18 +2111,26 @@ function BerichtenInner() {
                               )}
                               {isUnlocked ? (
                                 <div className="overflow-hidden rounded-2xl border border-primary/25 shadow-md">
-                                  <img
-                                    src={imgSrc}
-                                    alt=""
-                                    className="max-h-80 w-full object-cover bg-black/5"
-                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => imgSrc && setLightboxSrc(imgSrc)}
+                                    disabled={!imgSrc}
+                                    className="block w-full cursor-zoom-in border-0 bg-transparent p-0 text-left disabled:cursor-default"
+                                    aria-label="Foto volledig scherm"
+                                  >
+                                    <img
+                                      src={imgSrc}
+                                      alt=""
+                                      className="max-h-80 w-full object-cover bg-black/5"
+                                    />
+                                  </button>
                                 </div>
                               ) : (
                                 <button
                                   type="button"
                                   onClick={() => void handleUnlockPhoto(m)}
                                   disabled={isUnlocking}
-                                  className="group relative w-full max-w-[260px] overflow-hidden rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/15 via-primary/5 to-pink-500/15 text-left shadow-lg active:scale-[0.99] transition-all disabled:cursor-wait"
+                                  className="group relative w-full max-w-[260px] overflow-hidden rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/15 via-primary/5 to-primary/15 text-left shadow-lg active:scale-[0.99] transition-all disabled:cursor-wait"
                                   aria-label={`Foto ontgrendelen voor ${cost} credits`}
                                 >
                                   {imgSrc ? (
@@ -1897,7 +2142,7 @@ function BerichtenInner() {
                                       draggable={false}
                                     />
                                   ) : (
-                                    <div className="h-56 w-full bg-gradient-to-br from-primary/30 to-pink-500/30" />
+                                    <div className="h-56 w-full bg-gradient-to-br from-primary/30 to-primary/30" />
                                   )}
                                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 px-4 py-3 text-center">
                                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-primary shadow-md">
@@ -1941,13 +2186,21 @@ function BerichtenInner() {
                             <div className="flex max-w-[88%] flex-col items-end space-y-2">
                               {showImg && (
                                 <div className="relative overflow-hidden rounded-2xl border border-primary/25 shadow-md">
-                                  <img
-                                    src={imgSrc}
-                                    alt=""
-                                    className="max-h-64 w-full object-cover bg-black/5"
-                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => imgSrc && setLightboxSrc(imgSrc)}
+                                    disabled={!imgSrc}
+                                    className="block w-full cursor-zoom-in border-0 bg-transparent p-0 text-left disabled:cursor-default"
+                                    aria-label="Foto volledig scherm"
+                                  >
+                                    <img
+                                      src={imgSrc}
+                                      alt=""
+                                      className="max-h-64 w-full object-cover bg-black/5"
+                                    />
+                                  </button>
                                   {!textBody && (
-                                    <div className="absolute bottom-2 right-2 rounded-full bg-black/45 p-1.5">
+                                    <div className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/45 p-1.5">
                                       {m.readByPeer === false ? (
                                         <Check
                                           className="h-3.5 w-3.5 text-white"
@@ -2004,7 +2257,7 @@ function BerichtenInner() {
                                           <p>{m.gift.credits} credits</p>
                                         </div>
                                       )
-                                    ) : (
+                                    ) : m.gift.direction === 'to_user' ? (
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -2033,6 +2286,25 @@ function BerichtenInner() {
                                           </div>
                                         ) : null}
                                       </button>
+                                    ) : (
+                                      <div className="gift-box-closed mb-2 w-full overflow-hidden rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-left text-[12px] font-semibold text-white/90">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[15px]">🎁</span>
+                                          <span>cadeau verstuurd</span>
+                                        </div>
+                                        {giftClosedAnimationUrl ? (
+                                          <div className="mt-2 overflow-hidden rounded-lg border border-white/20 bg-black/10">
+                                            <video
+                                              src={giftClosedAnimationUrl}
+                                              className="h-24 w-full object-cover"
+                                              muted
+                                              playsInline
+                                              autoPlay
+                                              loop
+                                            />
+                                          </div>
+                                        ) : null}
+                                      </div>
                                     )
                                   ) : null}
                                   <p className="whitespace-pre-wrap">{textBody}</p>
@@ -2094,7 +2366,7 @@ function BerichtenInner() {
                                         <p>{m.gift.credits} credits</p>
                                       </div>
                                     )
-                                  ) : (
+                                  ) : m.gift.direction === 'to_user' ? (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -2123,6 +2395,25 @@ function BerichtenInner() {
                                         </div>
                                       ) : null}
                                     </button>
+                                  ) : (
+                                    <div className="gift-box-closed mb-2 w-full overflow-hidden rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-left text-[12px] font-semibold text-white/90">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[15px]">🎁</span>
+                                        <span>cadeau verstuurd</span>
+                                      </div>
+                                      {giftClosedAnimationUrl ? (
+                                        <div className="mt-2 overflow-hidden rounded-lg border border-white/20 bg-black/10">
+                                          <video
+                                            src={giftClosedAnimationUrl}
+                                            className="h-24 w-full object-cover"
+                                            muted
+                                            playsInline
+                                            autoPlay
+                                            loop
+                                          />
+                                        </div>
+                                      ) : null}
+                                    </div>
                                   )}
                                   <p className="mt-2 text-right text-[11px] font-medium tabular-nums text-white/95">
                                     {formatMessageTime(m.createdAt)}
@@ -2182,7 +2473,7 @@ function BerichtenInner() {
                                     <p>{m.gift.credits} credits</p>
                                   </div>
                                 )
-                              ) : (
+                              ) : m.gift.direction === 'to_user' ? (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -2192,7 +2483,7 @@ function BerichtenInner() {
                                     });
                                     openGiftMessage(m.id);
                                   }}
-                                  className="gift-box-closed mb-2 w-full overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-r from-primary/15 to-pink-500/15 px-3 py-2 text-left text-[12px] font-semibold text-primary"
+                                  className="gift-box-closed mb-2 w-full overflow-hidden rounded-xl border border-primary/25 bg-gradient-to-r from-primary/15 to-primary/15 px-3 py-2 text-left text-[12px] font-semibold text-primary"
                                 >
                                   <div className="flex items-center gap-2">
                                     <span className="text-[15px]">🎁</span>
@@ -2211,6 +2502,25 @@ function BerichtenInner() {
                                     </div>
                                   ) : null}
                                 </button>
+                              ) : (
+                                <div className="gift-box-closed mb-2 w-full overflow-hidden rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-left text-[12px] font-semibold text-primary">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[15px]">🎁</span>
+                                    <span>cadeau verstuurd</span>
+                                  </div>
+                                  {giftClosedAnimationUrl ? (
+                                    <div className="mt-2 overflow-hidden rounded-lg border border-primary/15 bg-black/5">
+                                      <video
+                                        src={giftClosedAnimationUrl}
+                                        className="h-24 w-full object-cover"
+                                        muted
+                                        playsInline
+                                        autoPlay
+                                        loop
+                                      />
+                                    </div>
+                                  ) : null}
+                                </div>
                               )
                             ) : null}
                             <p className="whitespace-pre-wrap">{m.content}</p>
@@ -2223,7 +2533,7 @@ function BerichtenInner() {
                           {/* Realistic read receipt for assistant messages */}
                           {m.role === "assistant" && m.readAt && (
                             <div className="flex items-center gap-1 mt-0.5 pl-3">
-                              <span className="text-[10px] text-emerald-500 font-medium">✓✓</span>
+                              <span className="text-[10px] text-primary font-medium">✓✓</span>
                               <span className="text-[9px] text-gray-400">
                                 gelezen {new Date(m.readAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
                               </span>
@@ -2332,7 +2642,7 @@ function BerichtenInner() {
                     />
                   </div>
                 )}
-                <div className="mx-auto w-full max-w-3xl space-y-3">
+                <div className="mx-auto w-full max-w-3xl space-y-2">
                   {replyToId && (
                     <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
                       <div className="min-w-0">
@@ -2352,20 +2662,93 @@ function BerichtenInner() {
                       </button>
                     </div>
                   )}
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    placeholder="Typ je bericht… (Shift+Enter voor nieuwe regel)"
-                    rows={4}
-                    disabled={false}
-                    className="min-h-[6.5rem] w-full resize-y rounded-2xl border border-gray-200 px-4 py-4 text-lg leading-relaxed text-gray-900 shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 md:min-h-[5.75rem] md:text-[17px]"
-                  />
+                  <div className="flex items-end gap-2">
+                    <div className="relative shrink-0" ref={attachMenuRef}>
+                      <button
+                        type="button"
+                        disabled={sendingHere}
+                        onClick={() => setAttachMenuOpen((v) => !v)}
+                        className="flex h-12 min-h-[48px] w-12 items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+                        aria-expanded={attachMenuOpen}
+                        aria-haspopup="true"
+                        aria-label="Meer opties"
+                      >
+                        <MoreVertical className="h-6 w-6" />
+                      </button>
+                      {attachMenuOpen ? (
+                        <div
+                          className="absolute bottom-full left-0 z-30 mb-2 w-60 overflow-hidden rounded-2xl border border-gray-200 bg-white py-1 shadow-lg"
+                          role="menu"
+                        >
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={sendingHere}
+                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => {
+                              imageInputRef.current?.click();
+                              setAttachMenuOpen(false);
+                            }}
+                          >
+                            <ImagePlus className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                            Foto toevoegen
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={sendingHere}
+                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => {
+                              setShowGiftPanel((v) => !v);
+                              setAttachMenuOpen(false);
+                            }}
+                          >
+                            <Sparkles className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                            Cadeau sturen
+                          </button>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={sendingHere}
+                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => {
+                              void toggleVoiceRecording();
+                            }}
+                          >
+                            {isRecordingVoice ? (
+                              <Pause className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                            ) : (
+                              <Mic className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                            )}
+                            {isRecordingVoice ? 'Opname stoppen' : 'Spraak inspreken'}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                    <textarea
+                      ref={composerTextareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSend();
+                        }
+                      }}
+                      placeholder="Typ je bericht… (Shift+Enter voor nieuwe regel)"
+                      rows={2}
+                      disabled={false}
+                      className="max-h-32 min-h-[3.25rem] flex-1 resize-y rounded-2xl border border-gray-200 px-3 py-3 text-base leading-snug text-gray-900 shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 md:min-h-[3.5rem] md:text-[15px]"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={!input.trim() && !pendingImage}
+                      className="flex h-12 min-h-[48px] min-w-[6.5rem] shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-base font-semibold text-white shadow-sm transition-all active:scale-[0.97] hover:bg-primary/90"
+                    >
+                      Verstuur
+                    </Button>
+                  </div>
                   {(isRecordingVoice || voiceDraftBlob) && (
                     <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2">
                       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -2430,78 +2813,6 @@ function BerichtenInner() {
                       )}
                     </div>
                   )}
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="relative shrink-0" ref={attachMenuRef}>
-                      <button
-                        type="button"
-                        disabled={sendingHere}
-                        onClick={() => setAttachMenuOpen((v) => !v)}
-                        className="flex h-14 min-h-[56px] w-14 items-center justify-center rounded-2xl border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
-                        aria-expanded={attachMenuOpen}
-                        aria-haspopup="true"
-                        aria-label="Meer opties"
-                      >
-                        <MoreVertical className="h-7 w-7" />
-                      </button>
-                      {attachMenuOpen ? (
-                        <div
-                          className="absolute bottom-full left-0 z-30 mb-2 w-60 overflow-hidden rounded-2xl border border-gray-200 bg-white py-1 shadow-lg"
-                          role="menu"
-                        >
-                          <button
-                            type="button"
-                            role="menuitem"
-                            disabled={sendingHere}
-                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-                            onClick={() => {
-                              imageInputRef.current?.click();
-                              setAttachMenuOpen(false);
-                            }}
-                          >
-                            <ImagePlus className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                            Foto toevoegen
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            disabled={sendingHere}
-                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-                            onClick={() => {
-                              setShowGiftPanel((v) => !v);
-                              setAttachMenuOpen(false);
-                            }}
-                          >
-                            <Sparkles className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                            Cadeau sturen
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            disabled={sendingHere}
-                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-                            onClick={() => {
-                              void toggleVoiceRecording();
-                            }}
-                          >
-                            {isRecordingVoice ? (
-                              <Pause className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                            ) : (
-                              <Mic className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                            )}
-                            {isRecordingVoice ? 'Opname stoppen' : 'Spraak inspreken'}
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={handleSend}
-                      disabled={!input.trim() && !pendingImage}
-                      className="flex h-14 min-h-[56px] min-w-[7.75rem] shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary px-8 text-base font-semibold text-white shadow-sm transition-all active:scale-[0.97] hover:bg-primary/90 sm:min-w-[8.5rem]"
-                    >
-                      Verstuur
-                    </Button>
-                  </div>
                 </div>
               </div>
             </div>
@@ -2523,8 +2834,10 @@ function BerichtenInner() {
             </div>
           )}
 
-          {!selectedId && !loadingList && list.length === 0 && <EmptyState />}
-          {!selectedId && !loadingList && list.length > 0 && (
+          {!selectedId && !openingProfileDeepLink && !loadingList && list.length === 0 && (
+            <EmptyState />
+          )}
+          {!selectedId && !openingProfileDeepLink && !loadingList && list.length > 0 && (
             <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 text-center">
               <p className="text-lg font-semibold text-gray-900">Selecteer een gesprek</p>
               <p className="text-sm text-gray-600 mt-2 max-w-sm">
@@ -2556,6 +2869,34 @@ function BerichtenInner() {
           </div>
         ))}
       </div>
+
+      {lightboxSrc ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vergrote foto"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/92 p-3"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-3 top-3 z-[201] rounded-full bg-white/15 p-2.5 text-white hover:bg-white/25"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxSrc(null);
+            }}
+            aria-label="Sluiten"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <img
+            src={lightboxSrc}
+            alt=""
+            className="max-h-[min(92dvh,92vh)] max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2688,7 +3029,16 @@ function CreditsSidebar({
           Koop Credits <ArrowRight className="inline ml-1 w-4 h-4" />
         </Button>
         <p className="text-center text-xs mt-4 opacity-70">
-          {balance < CREDITS_PER_PHOTO_UNLOCK ? (
+          {CREDITS_PER_MESSAGE <= 0 ? (
+            balance < CREDITS_PER_PHOTO_UNLOCK ? (
+              <span>
+                Nog {balance} credits. Voor het ontgrendelen van een foto heb je {CREDITS_PER_PHOTO_UNLOCK}{' '}
+                credits nodig. <span className="font-semibold">Chatten is gratis.</span>
+              </span>
+            ) : (
+              <>Je hebt {balance} credits voor foto&apos;s.</>
+            )
+          ) : balance < CREDITS_PER_PHOTO_UNLOCK ? (
             <span className="font-semibold">
               Te weinig credits voor een foto — open prijzen om bij te kopen.
             </span>

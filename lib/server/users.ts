@@ -24,8 +24,13 @@ export type UserRecord = {
   zoekLeeftijdCategorie?: string;
   zoekEigenschappen?: string[];
   geschatteMatches?: number;
-  /** Geplande ijsbrekers van 4 profielen over meerdere dagen. */
+  /** Geplande ijsbrekers van profielen over meerdere dagen. */
   engagementSlots?: EngagementSlot[];
+  /**
+   * Automatische outreach (startinbox, ijsbrekers, like-nudges): rolling week anti-spam.
+   * Elke entry = één verstuurd automatisch assistentbericht; distinct profileIds tellen mee tot max 3/week.
+   */
+  engagementOutboundLog?: Array<{ profileId: string; sentAt: string }>;
   /** Eerste echte credit-aankoopmoment (server side marker). */
   firstCreditPurchaseAt?: string;
   /** Laatste actieve moment in de app (voor offline e-mail triggers). */
@@ -40,6 +45,11 @@ export type UserRecord = {
   passwordResetExpiresAt?: string;
   /** Live extracted user facts from chats (relationship, kids, work, birthday, ...). */
   personalFacts?: UserPersonalFacts;
+  /**
+   * Platform-welcome onboarding na eerste login (`null` = nog niet afgerond).
+   * Ontbreekt het veld → bestaande accounts vóór deze feature (geen onboarding).
+   */
+  platformOnboardingCompletedAt?: string | null;
 };
 
 export type ReactionNudge = {
@@ -119,7 +129,7 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     discreetAkkoord: input.discreetAkkoord,
     voorwaardenAkkoord: input.voorwaardenAkkoord,
     createdAt,
-    emailVerifyToken: randomUUID(),
+    emailVerifiedAt: createdAt,
     engagementSlots: await resolveEngagementSlotsForNewUser(createdAt),
     ...(input.zoekLeeftijdCategorie
       ? { zoekLeeftijdCategorie: input.zoekLeeftijdCategorie }
@@ -130,10 +140,12 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     ...(typeof input.geschatteMatches === "number"
       ? { geschatteMatches: input.geschatteMatches }
       : {}),
+    platformOnboardingCompletedAt: null,
   };
   const list = await load();
   list.push(user);
   await save(list);
+  await upsertAppUserToSupabaseUsers(user);
   return user;
 }
 
@@ -146,7 +158,20 @@ export function toPublicUser(u: UserRecord) {
     createdAt: u.createdAt,
     emailVerified: Boolean(u.emailVerifiedAt),
     hasCreditPurchase: Boolean(u.firstCreditPurchaseAt),
+    /** Alleen `null` = nieuw account, onboarding nog niet gedaan. Ontbrekend veld = legacy gebruiker. */
+    needsPlatformOnboarding: u.platformOnboardingCompletedAt === null,
   };
+}
+
+export async function completePlatformOnboarding(userId: string): Promise<UserRecord | null> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return null;
+  const next = { ...list[i]!, platformOnboardingCompletedAt: new Date().toISOString() };
+  list[i] = next;
+  await save(list);
+  await upsertAppUserToSupabaseUsers(next);
+  return next;
 }
 
 export async function verifyUserEmailByToken(token: string): Promise<UserRecord | null> {
@@ -164,6 +189,7 @@ export async function verifyUserEmailByToken(token: string): Promise<UserRecord 
   };
   list[i] = next;
   await save(list);
+  await upsertAppUserToSupabaseUsers(next);
   return next;
 }
 
@@ -216,9 +242,8 @@ export async function updateUserEmailForVerification(
 }
 
 export async function isUserEmailVerified(userId: string): Promise<boolean> {
-  const user = await findUserById(userId);
-  if (!user) return false;
-  return Boolean(user.emailVerifiedAt) || !user.emailVerifyToken;
+  void userId;
+  return true;
 }
 
 export async function updateUserEngagementSlots(
@@ -243,6 +268,19 @@ export async function updateUserReactionNudges(
   await save(list);
 }
 
+export async function updateUserEngagementOutboundLog(
+  userId: string,
+  log: NonNullable<UserRecord["engagementOutboundLog"]>
+): Promise<void> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return;
+  const user = list[i]!;
+  list[i] = { ...user, engagementOutboundLog: log };
+  await save(list);
+  await upsertAppUserToSupabaseUsers(list[i]!);
+}
+
 export async function markCreditPurchase(userId: string): Promise<boolean> {
   const list = await load();
   const i = list.findIndex((u) => u.id === userId);
@@ -251,6 +289,7 @@ export async function markCreditPurchase(userId: string): Promise<boolean> {
   if (u.firstCreditPurchaseAt) return false;
   list[i] = { ...u, firstCreditPurchaseAt: new Date().toISOString() };
   await save(list);
+  await upsertAppUserToSupabaseUsers(list[i]!);
   return true;
 }
 

@@ -2,8 +2,8 @@ const POSTMARK_URL = "https://api.postmarkapp.com/email";
 
 const POSTMARK_SERVER_TOKEN =
   process.env.POSTMARK_SERVER_TOKEN ?? process.env.POSTMARK_API_TOKEN ?? "";
-const POSTMARK_FROM_EMAIL = process.env.POSTMARK_FROM_EMAIL ?? "info@discreetemeisjes.nl";
-const APP_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.discreetemeisjes.nl";
+const POSTMARK_FROM_EMAIL = process.env.POSTMARK_FROM_EMAIL ?? "info@stiekemefotos.nl";
+const APP_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.stiekemefotos.nl";
 
 type MailPayload = {
   to: string;
@@ -27,11 +27,11 @@ function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref
                 <table role="presentation" cellspacing="0" cellpadding="0">
                   <tr>
                     <td style="vertical-align:middle;">
-                      <img src="${APP_URL}/logo-mark.png" alt="discreetemeisjes" width="50" height="50" style="display:block;width:50px;height:50px;border-radius:999px;" />
+                      <img src="${APP_URL}/logo-stiekemefotos.png" alt="stiekemefotos" width="50" height="50" style="display:block;width:50px;height:50px;border-radius:999px;" />
                     </td>
                     <td style="vertical-align:middle;padding-left:12px;">
-                      <div style="font-size:30px;font-weight:800;line-height:1;color:#0f172a;">discreetemeisjes.nl</div>
-                      <div style="margin-top:4px;font-size:12px;color:#6b7280;font-weight:600;">exclusieve ontmoetingen · discreet vertrouwen</div>
+                      <div style="font-size:30px;font-weight:800;line-height:1;color:#0f172a;">stiekemefotos.nl</div>
+                      <div style="margin-top:4px;font-size:12px;color:#6b7280;font-weight:600;">Dé site waarop vrouwen bijverdienen met stiekeme fotos</div>
                     </td>
                   </tr>
                 </table>
@@ -41,12 +41,12 @@ function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref
               <td style="padding:24px;">
                 <div style="font-size:32px;font-weight:800;line-height:1.15;color:#0f172a;">${title}</div>
                 <div style="margin-top:10px;font-size:19px;font-weight:600;color:#374151;">${subtitle}</div>
-                <div style="margin-top:16px;height:3px;width:74px;background:#e20a62;border-radius:999px;"></div>
+                <div style="margin-top:16px;height:3px;width:74px;background:#c6003f;border-radius:999px;"></div>
                 <div style="margin-top:20px;">
                 ${body}
                 </div>
                 <div style="margin-top:26px;">
-                  <a href="${safeHref}" style="display:inline-block;background:#d10057;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:16px;">${ctaText}</a>
+                  <a href="${safeHref}" style="display:inline-block;background:#c6003f;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:16px;">${ctaText}</a>
                 </div>
                 <p style="margin-top:18px;font-size:12px;color:#6b7280;">
                   18+ · Privé en discreet. Als je dit niet wilt ontvangen, log in en pas je voorkeuren aan.
@@ -104,7 +104,7 @@ export async function sendAccountVerificationEmail(input: {
   const verifyUrl = `${APP_URL}/api/auth/verify-email?token=${encodeURIComponent(input.verifyToken)}`;
   const t = shellTemplate(
     `Bijna klaar ${input.naam} 💌`,
-    "Bevestig eerst je e-mailadres om discreetemeisjes te openen.",
+    "Bevestig eerst je e-mailadres om stiekemefotos te openen.",
     "Bevestig mijn e-mail",
     verifyUrl,
     `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
@@ -116,7 +116,7 @@ export async function sendAccountVerificationEmail(input: {
   );
   await sendMail({
     to: input.to,
-    subject: "Bevestig je e-mail voor discreetemeisjes.nl",
+    subject: "Bevestig je e-mail voor stiekemefotos.nl",
     html: t.html,
     text: `${t.text}\n\nBevestig je e-mail: ${verifyUrl}`,
   });
@@ -142,7 +142,7 @@ export async function sendPasswordResetEmail(input: {
   );
   await sendMail({
     to: input.to,
-    subject: "Stel je wachtwoord opnieuw in — discreetemeisjes.nl",
+    subject: "Stel je wachtwoord opnieuw in — stiekemefotos.nl",
     html: t.html,
     text: `${t.text}\n\nWachtwoord resetten: ${resetUrl}`,
   });
@@ -163,7 +163,7 @@ export async function sendOfflineNewMessageEmail(input: {
     `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
       Hey ${input.naam}, <b>${input.profileName}</b> heeft je een bericht gestuurd.
     </p>
-    <blockquote style="margin:0;border-left:4px solid #f3d2df;padding:8px 12px;color:#4f3b66;background:#faf6fb;border-radius:8px;">
+    <blockquote style="margin:0;border-left:4px solid #cfead8;padding:8px 12px;color:#1f3a2a;background:#f4fbf7;border-radius:8px;">
       ${input.preview}
     </blockquote>`
   );

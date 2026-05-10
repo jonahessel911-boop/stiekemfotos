@@ -48,7 +48,7 @@ export default function WachtwoordResetPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--surface)] pb-24">
+    <div className="min-h-screen bg-[var(--auth-shell-bg)] pb-24">
       <div className="pt-10 max-w-md mx-auto px-4">
         <div className="flex justify-center mb-6">
           <Logo variant="hero" className="scale-90" />
@@ -57,7 +57,7 @@ export default function WachtwoordResetPage() {
         <p className="text-sm text-gray-600 text-center mb-8">Kies een nieuw wachtwoord voor je account.</p>
 
         {done ? (
-          <div className="bg-[var(--surface-card)] rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4">
+          <div className="rounded-2xl border border-primary/15 bg-[var(--onboarding-card)] p-6 shadow-md shadow-primary/5 space-y-4">
             <p className="text-sm text-gray-700">Je wachtwoord is bijgewerkt. Je kunt nu inloggen.</p>
             <Link
               href="/inloggen"
@@ -69,7 +69,7 @@ export default function WachtwoordResetPage() {
         ) : (
           <form
             onSubmit={submit}
-            className="space-y-4 bg-[var(--surface-card)] rounded-2xl border border-gray-200 p-6 shadow-sm"
+            className="space-y-4 rounded-2xl border border-primary/15 bg-[var(--onboarding-card)] p-6 shadow-md shadow-primary/5"
           >
             {error && (
               <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2 border border-red-100">

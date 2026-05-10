@@ -7,7 +7,6 @@ import {
   listSummaries,
 } from "@/lib/server/conversations";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
-import { maybeSendEngagementNudges } from "@/lib/server/engagementNudges";
 import { isUserEmailVerified, touchUserSeen } from "@/lib/server/users";
 
 export async function GET() {
@@ -24,7 +23,14 @@ export async function GET() {
         );
       }
       await ensureUserInboxForOwner(userId);
-      await maybeSendEngagementNudges(userId);
+      /**
+       * Belangrijk:
+       * We sturen GEEN engagement-nudges meer tijdens inbox-laden.
+       * Anders krijgt de gebruiker bij elke refresh/open nieuwe berichten,
+       * wat als "database slaat niet goed op" voelt.
+       *
+       * Nudges moeten alleen via aparte trigger/cron komen, niet via GET inbox.
+       */
     }
     const conversations = await listSummaries(userId);
     return NextResponse.json({ conversations });

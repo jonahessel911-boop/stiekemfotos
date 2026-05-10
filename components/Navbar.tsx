@@ -3,31 +3,34 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Logo from './Logo';
-import { Home, MessageCircle, Users, CreditCard, Bell, LogOut } from 'lucide-react';
+import { Home, MessageCircle, Users, CreditCard, Bell, LogOut, Images } from 'lucide-react';
 import { clearStoredUser, getStoredUser } from '@/lib/onboarding-client';
 import { useI18n } from '@/components/I18nProvider';
 
 const navItems = [
-  { icon: Home, key: 'feed', href: '/nieuwsfeed' },
-  { icon: MessageCircle, key: 'messages', href: '/berichten' },
   { icon: Users, key: 'profiles', href: '/profielen' },
+  { icon: MessageCircle, key: 'messages', href: '/berichten' },
+  { icon: Images, key: 'gallery', href: '/gallerij' },
+  { icon: Home, key: 'feed', href: '/nieuwsfeed' },
   { icon: CreditCard, key: 'credits', href: '/credits' },
 ] as const;
 
 type NavKey = (typeof navItems)[number]['key'];
 
 function keyForPathname(pathname: string): NavKey | null {
-  if (pathname === '/' || pathname.startsWith('/nieuwsfeed')) return 'feed';
+  if (pathname === '/' || pathname.startsWith('/profielen')) return 'profiles';
+  if (pathname.startsWith('/nieuwsfeed')) return 'feed';
   if (pathname.startsWith('/berichten')) return 'messages';
-  if (pathname.startsWith('/profielen')) return 'profiles';
+  if (pathname.startsWith('/gallerij') || pathname.startsWith('/mijn-fotos')) return 'gallery';
   if (pathname.startsWith('/credits')) return 'credits';
   return null;
 }
 
 const MOBILE_TAB_SHORT: Record<NavKey, string> = {
-  feed: 'Aanvragen',
+  profiles: 'Profielen',
   messages: 'Chat',
-  profiles: 'Profiles',
+  gallery: 'Gallerij',
+  feed: 'Verzoeken',
   credits: 'Credits',
 };
 
@@ -35,11 +38,10 @@ export default function Navbar() {
   const { t, locale } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
-  const stored = getStoredUser();
-  const storedShortName = stored?.naam?.trim().split(/\s+/)[0] ?? '';
-  const [activeItem, setActiveItem] = useState<NavKey>(() => keyForPathname(pathname) ?? 'feed');
-  const [naamKort, setNaamKort] = useState(storedShortName);
-  const [initial, setInitial] = useState(storedShortName.charAt(0).toUpperCase());
+  /** Lege initiële staat: voorkomt hydration mismatch (SSR heeft geen localStorage). */
+  const [activeItem, setActiveItem] = useState<NavKey>(() => keyForPathname(pathname) ?? 'profiles');
+  const [naamKort, setNaamKort] = useState('');
+  const [initial, setInitial] = useState('');
 
   useEffect(() => {
     let cancel = false;
@@ -76,7 +78,7 @@ export default function Navbar() {
 
   const mobileBar = (
     <div
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(190,18,60,0.35)]"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(198,0,63,0.35)]"
       role="navigation"
       aria-label="Hoofdmenu mobiel"
     >
@@ -198,7 +200,7 @@ export default function Navbar() {
                   <div className="text-sm font-semibold text-gray-900">
                     {naamKort || '...'}
                   </div>
-                  <div className="-mt-0.5 text-[10px] text-emerald-500">{t('common.online')}</div>
+                  <div className="-mt-0.5 text-[10px] text-primary">{t('common.online')}</div>
                 </div>
               </div>
               <button

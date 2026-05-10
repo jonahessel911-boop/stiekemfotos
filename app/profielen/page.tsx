@@ -11,7 +11,36 @@ import { isProfileDisplayedOnline } from '@/lib/profile-display-online';
 
 const DEFAULT_PHOTO_UNLOCK_CREDITS = 100;
 
+/** Unieke foto-URL’s (avatar + galerij), volgorde behouden. */
+function profilePhotoCandidates(profile: Profile): string[] {
+  const raw = [profile.photo, ...(profile.photoGallery ?? [])].filter(Boolean) as string[];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const u of raw) {
+    if (!seen.has(u)) {
+      seen.add(u);
+      out.push(u);
+    }
+  }
+  return out.length ? out : [profile.photo];
+}
+
+/**
+ * Willekeurige kaartfoto uit avatar + galerij; keuze wordt per sessie/profiel gecached
+ * zodat tabs/filter niet bij elke render een andere foto tonen.
+ */
+function pickRandomCardPreviewPhoto(profile: Profile, cache: Map<string, string>): string {
+  const urls = profilePhotoCandidates(profile);
+  if (urls.length <= 1) return urls[0] ?? profile.photo;
+  const prev = cache.get(profile.id);
+  if (prev && urls.includes(prev)) return prev;
+  const picked = urls[Math.floor(Math.random() * urls.length)]!;
+  cache.set(profile.id, picked);
+  return picked;
+}
+
 export default function ProfielenPage() {
+  const cardPreviewPickRef = React.useRef<Map<string, string>>(new Map());
   const [activeTab, setActiveTab] = useState<'all' | 'online' | 'following'>('all');
   const [likedProfiles, setLikedProfiles] = useState<string[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -100,8 +129,8 @@ export default function ProfielenPage() {
           </button>
         </div>
 
-        {/* Compact grid: meer kolommen = kleinere kaarten */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        {/* Minder kolommen = grotere foto’s op de kaart */}
+        <div className="grid grid-cols-2 gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {!loaded ? (
             <div className="col-span-full rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500">
               Profielen laden…
@@ -117,17 +146,18 @@ export default function ProfielenPage() {
                 typeof profile.photoUnlockCredits === 'number' && Number.isFinite(profile.photoUnlockCredits)
                   ? Math.max(1, Math.floor(profile.photoUnlockCredits))
                   : DEFAULT_PHOTO_UNLOCK_CREDITS;
+              const previewUrl = pickRandomCardPreviewPhoto(profile, cardPreviewPickRef.current);
               return (
             <div 
               key={profile.id}
               className="group flex flex-col bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
             >
-              <div className="relative aspect-[4/5] max-h-[118px] w-full overflow-hidden sm:max-h-[128px]">
+              <div className="relative aspect-[4/5] w-full overflow-hidden">
                 <img
-                  src={profilePhotoSrc(profile.photo, { widthCss: 280, heightCss: 350 })}
+                  src={profilePhotoSrc(previewUrl, { widthCss: 440, heightCss: 550 })}
                   alt={profile.name}
-                  width={280}
-                  height={350}
+                  width={440}
+                  height={550}
                   className="h-full w-full object-cover object-top"
                   loading="lazy"
                   decoding="async"
@@ -146,10 +176,10 @@ export default function ProfielenPage() {
 
                 {isProfileDisplayedOnline(profile.id) ? (
                   <div
-                    className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 shadow-md ring-1 ring-emerald-500/30"
+                    className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 shadow-md ring-1 ring-primary/30"
                     title="Online"
                   >
-                    <span className="online-dot-pulse h-3 w-3 rounded-full bg-emerald-500" />
+                    <span className="online-dot-pulse h-3 w-3 rounded-full bg-primary" />
                   </div>
                 ) : null}
                 

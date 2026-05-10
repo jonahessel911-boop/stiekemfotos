@@ -16,7 +16,7 @@ export function getDataDir(): string {
     return path.isAbsolute(fromEnv) ? fromEnv : path.resolve(process.cwd(), fromEnv);
   }
   if (process.env.VERCEL === "1" || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return path.join(os.tmpdir(), "discreetemeisjes-data");
+    return path.join(os.tmpdir(), "stiekemefotos-data");
   }
   return path.join(process.cwd(), "data");
 }

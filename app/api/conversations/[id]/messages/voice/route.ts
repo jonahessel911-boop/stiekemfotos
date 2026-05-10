@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
   appendUserMessagesAndReply,
+  flushInboxAutomationsForOwner,
   recordOwnerPolledConversation,
 } from "@/lib/server/conversations";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
@@ -95,6 +96,8 @@ export async function POST(
       ],
       { requesterUserId: userId }
     );
+
+    await flushInboxAutomationsForOwner(userId);
 
     return NextResponse.json({
       ...result,

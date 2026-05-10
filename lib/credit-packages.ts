@@ -10,7 +10,7 @@ Andere opties:
 Koop via de prijzen-popup in de app.`;
 
 export const CREDITS_VOICE_LINE_NL =
-  "Om verder te chatten heb je credits nodig. Eén bericht kost 10 credits — open de prijzen om bij te kopen.";
+  "Chatten is gratis. Credits gebruik je voor foto’s ontgrendelen en extra’s — open de prijzen om bij te kopen.";
 
 /** Demo-pakket na „betaling”. */
 export const FEATURED_DEAL_CREDITS = 250;

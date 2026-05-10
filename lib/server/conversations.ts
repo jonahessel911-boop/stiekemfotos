@@ -1,5 +1,10 @@
 import { randomUUID } from "crypto";
 import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
+import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
+import {
+  loadConversationsRelational,
+  saveConversationsRelational,
+} from "@/lib/server/conversationsRelational";
 import type { Conversation, ConversationSummary, ChatMessage } from "@/lib/types/chat";
 import type { Profile } from "@/lib/types/profile";
 import { getDbProfileById, listDbProfiles, isSupabaseProfilesEnabled } from "@/lib/server/profilesDb";
@@ -34,14 +39,41 @@ import {
   updateUserPersonalFacts,
   type UserRecord,
 } from "@/lib/server/users";
-import { buildNudePrompt, generateRealisticImage } from "@/lib/server/imageGen";
+import { generateRealisticImage, zModelMaxUserPromptBodyChars } from "@/lib/server/imageGen";
+import { buildStableVisualIdentityForProfile } from "@/lib/server/profileVisualIdentity";
 import { sendGiftReceivedEmail, sendOfflineNewMessageEmail } from "@/lib/server/email";
-import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { upsertAppUserToSupabaseUsers } from "@/lib/server/supabaseUserSync";
-import { sortChatMessagesChronologically } from "@/lib/chat-message-order";
+import {
+  dedupeChatMessagesById,
+  sortChatMessagesChronologically,
+} from "@/lib/chat-message-order";
 import { extractPersonalFactsFromText, formatPersonalFactsForPrompt } from "@/lib/user-personal-facts";
 
 const FILE = "conversations.json";
+
+/** User-tekst die telt als concrete visuele fotowens (trigger + details). Ook: naakt/nude. */
+const CONCRETE_PHOTO_INTENT_REGEX =
+  /lingerie|string|kleur|groen|zwart|rood|blauw|wit|paars|roze|geel|oranje|standje|positie|knie[eë]n|doggy|missionaris|bovenop|close|close-up|hele lichaam|kont|borsten|boobs|tits|tieten|tepels|kut|nat maken|pijp|neuken|selfie|hoek|camera|jurkje|setje|shirt|trui|pakje|sport|sportpak|trainingspak|outfit|zonder|met bh|zonder bh|billen|achterkant|vooraanzicht|gezicht|naam erop|naam op|briefje|papier|naakt|nude|naktfoto|naaktfoto|bloot|helemaal|ontkleed/i;
+
+function isVagueUserPhotoReply(text: string): boolean {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (!t) return true;
+  const lower = t.toLowerCase();
+  if (CONCRETE_PHOTO_INTENT_REGEX.test(lower)) return false;
+  if (/\b(stuur|maak)\b.*\b(foto|selfie|pic|picture|plaatje)\b/i.test(lower)) return false;
+  if (/\b(foto|selfie)\b/i.test(lower) && t.length < 80) return false;
+  return t.length <= 40;
+}
+
+function mergePhotoCycleIntent(prev: string | undefined, incoming: string): string {
+  const inc = incoming.replace(/\s+/g, " ").trim();
+  if (!inc) return (prev ?? "").trim();
+  if (isVagueUserPhotoReply(inc)) return (prev ?? "").trim();
+  const base = (prev ?? "").trim();
+  if (!base) return inc;
+  if (base.includes(inc) || inc.includes(base)) return inc.length >= base.length ? inc : base;
+  return `${base}\n${inc}`;
+}
 
 /**
  * Voorkomt dubbele threads (zelfde owner + profileId): één gesprek met alle berichten.
@@ -165,8 +197,6 @@ async function getInboxProfileIdsForPlatform(): Promise<string[]> {
   }
   return [];
 }
-const INITIAL_ASSISTANT_MIN_DELAY_MS = 20 * 1000;
-const INITIAL_ASSISTANT_MAX_DELAY_MS = 5 * 60 * 1000;
 const FREE_START_CREDITS = 100;
 
 /** Max. trede 3 = vierde herinnering (~3 dagen); daarna geen verdere auto-nudges. */
@@ -266,7 +296,29 @@ function noReplyLineForStage(stage: number, conv: Conversation): string {
   return pickNoReplyLineAvoidingRecent(pool, stage, conv);
 }
 
+function messageEndsConversationForNow(text: string): boolean {
+  const t = (text || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!t) return false;
+  return (
+    /\b(slaap lekker|welterusten|fijne nacht|ik ga slapen|ik ga naar bed)\b/i.test(t) ||
+    /\b(tot morgen|spreek je morgen|we praten morgen|morgen weer)\b/i.test(t) ||
+    /\b(ik kijk uit naar morgen)\b/i.test(t)
+  );
+}
+
+function shouldSuppressNoReplyReminder(conv: Conversation): boolean {
+  const lastAssistant = [...conv.messages].reverse().find((m) => m.role === "assistant");
+  if (!lastAssistant) return false;
+  return messageEndsConversationForNow(lastAssistant.content ?? "");
+}
+
 function scheduleNoReplyReminderAfterAssistant(conv: Conversation, afterAssistantMessageId: string): void {
+  if (shouldSuppressNoReplyReminder(conv)) {
+    conv.pendingNoReplyReminderStage = undefined;
+    conv.pendingNoReplyAfterAssistantId = undefined;
+    conv.pendingNoReplyFollowUpAt = undefined;
+    return;
+  }
   conv.pendingNoReplyReminderStage = 0;
   conv.pendingNoReplyAfterAssistantId = afterAssistantMessageId;
   conv.pendingNoReplyFollowUpAt = new Date(
@@ -354,26 +406,6 @@ async function resolveProfileById(profileId: string): Promise<Profile | null> {
   return getDbProfileById(profileId);
 }
 
-function openerForProfile(profileId: string): string {
-  /**
-   * Korte intro + uitnodiging om foto's te kopen.
-   * AI introduceert zichzelf, vraagt waar hij van houdt zodat ze er een
-   * persoonlijke foto van kan maken. Wisselende toon = realistisch.
-   */
-  const OPENERS = [
-    "hee schat, ben hier nieuw — verdien even bij met foto's. waar val jij op? maak ik er eentje voor je 😘",
-    "hoi, ik ben hier om wat bij te verdienen met foto's. zeg maar wat je geil vindt, dan maak ik er eentje speciaal voor jou",
-    "hey, ik stuur graag exclusieve foto's naar mannen die ik leuk vind. waar word jij wild van?",
-    "hoii, ik maak custom foto's voor mijn favoriete mannen hier. vertel eens wat jij wilt zien?",
-    "hey jij — vertel maar wat je opwindt, dan maak ik er een lekkere foto van voor je",
-    "hoi schat, ik verdien wat bij met intieme foto's. waar heb jij zin in vandaag?",
-  ] as const;
-  const seed =
-    profileId.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0) + Date.now();
-  const i = Math.abs(seed) % OPENERS.length;
-  return OPENERS[i] ?? OPENERS[0]!;
-}
-
 function grokHistoryLine(m: ChatMessage): string {
   if (m.role === "user" && m.voice?.transcript) {
     return m.voice.transcript;
@@ -390,6 +422,12 @@ async function buildSystemContent(
   messages: ChatMessage[],
   ownerUserId?: string
 ): Promise<string> {
+  const firstName = (full: string | undefined): string => {
+    const raw = (full ?? "").trim();
+    if (!raw) return "";
+    return raw.split(/\s+/)[0] ?? raw;
+  };
+
   const buildCurrentTimeContext = (): string => {
     const now = new Date();
     const amsterdamParts = new Intl.DateTimeFormat("nl-NL", {
@@ -448,6 +486,17 @@ async function buildSystemContent(
     if (ownerUserId) {
       try {
         const owner = await findUserById(ownerUserId);
+        const ownerFirstName = firstName(owner?.naam);
+        if (ownerFirstName) {
+          basePrompt = `${basePrompt}
+
+=== GEBRUIKERSNAAM CONTEXT (hard) ===
+De gebruiker heet: ${ownerFirstName}
+- Je MAG zijn naam af en toe in een zin gebruiken voor natuurlijk gevoel (bijv. "haha ${ownerFirstName}, jij maakt me gek").
+- Doe dit NIET in elk bericht; houd het spaarzaam (ongeveer 1 op 4-6 antwoorden).
+- Gebruik zijn naam nooit 2 antwoorden achter elkaar.
+=== einde gebruikersnaam context ===`;
+        }
         const memoryBlock = formatPersonalFactsForPrompt(owner?.personalFacts);
         if (memoryBlock) {
           basePrompt = `${basePrompt}\n\n${memoryBlock}`;
@@ -464,12 +513,74 @@ async function buildSystemContent(
   }
 }
 
+function normalizeConversationMessages(list: Conversation[]): Conversation[] {
+  /** `messages.id` is globaal uniek in Postgres — dubbele ids over threads → pkey-fout. */
+  const seenMsgIds = new Set<string>();
+
+  return list.map((c) => {
+    const deduped = dedupeChatMessagesById(c.messages);
+    const messages = sortChatMessagesChronologically(
+      deduped.map((m) => {
+        let id = typeof m.id === "string" ? m.id.trim() : "";
+        if (!id) {
+          const nid = randomUUID();
+          seenMsgIds.add(nid);
+          return { ...m, id: nid };
+        }
+        if (!seenMsgIds.has(id)) {
+          seenMsgIds.add(id);
+          return m;
+        }
+        const nid = randomUUID();
+        seenMsgIds.add(nid);
+        return { ...m, id: nid };
+      })
+    );
+
+    const hasUserMessage = messages.some((x) => x.role === "user");
+
+    return {
+      ...c,
+      messages,
+      /** Geen geplande “ijsbreker” zolang de user nog niets heeft gestuurd. */
+      pendingInitialAssistantAt: hasUserMessage ? c.pendingInitialAssistantAt : undefined,
+    };
+  });
+}
+
 export async function loadList(): Promise<Conversation[]> {
-  return readJsonBlob<Conversation[]>(FILE, []);
+  const admin = getSupabaseAdmin();
+  if (admin) {
+    /**
+     * Bron van waarheid = Postgres (`conversations` + `messages`).
+     * Geen automatische fallback naar conversations.json / blob — dat gaf gemengde/nep-inbox.
+     * Legacy eenmalig importeren: zet CONVERSATIONS_IMPORT_LEGACY_BLOB=true en deploy één keer.
+     */
+    let raw = await loadConversationsRelational(admin);
+    if (
+      raw.length === 0 &&
+      process.env.CONVERSATIONS_IMPORT_LEGACY_BLOB?.trim() === "true"
+    ) {
+      const blob = await readJsonBlob<Conversation[]>(FILE, []);
+      if (blob.length > 0) {
+        await saveConversationsRelational(admin, normalizeConversationMessages(blob));
+        raw = await loadConversationsRelational(admin);
+      }
+    }
+    return enforceUniqueConversationAvatars(normalizeConversationMessages(raw));
+  }
+  const blob = await readJsonBlob<Conversation[]>(FILE, []);
+  return enforceUniqueConversationAvatars(normalizeConversationMessages(blob));
 }
 
 async function saveList(list: Conversation[]): Promise<void> {
-  await writeJsonBlob(FILE, list);
+  const normalized = normalizeConversationMessages(list);
+  const admin = getSupabaseAdmin();
+  if (admin) {
+    await saveConversationsRelational(admin, normalized);
+    return;
+  }
+  await writeJsonBlob(FILE, normalized);
 }
 
 /** Minstens één user- én één assistant-bericht = er is echt gewisseld in dit gesprek. */
@@ -554,6 +665,11 @@ function hasActiveChatMessages(c: Conversation): boolean {
   return c.messages.length > 0;
 }
 
+/** Inbox toont alleen threads waar jij minstens één keer iets hebt gestuurd (geen alleen-bot spam). */
+function conversationOwnerHasSentUserMessage(c: Conversation): boolean {
+  return c.messages.some((m) => m.role === "user");
+}
+
 function inboxPreviewLastLine(last: ChatMessage | undefined): string {
   if (!last) return "";
   if (last.role === "assistant" && (last.imageFile || last.photoLock)) {
@@ -605,10 +721,13 @@ export async function listSummaries(ownerUserId: string | null): Promise<Convers
   };
 
   if (ownerUserId) {
-    await flushInboxAutomationsForOwner(ownerUserId);
+    /** Geen inbox-automatisering hier: elke GET zette applyNoReplyFollowups op veel threads → oude “ghost” chats. */
     const list = enforceUniqueConversationAvatars(await loadList());
     const mine = list.filter(
-      (c) => c.ownerUserId === ownerUserId && hasActiveChatMessages(c)
+      (c) =>
+        c.ownerUserId === ownerUserId &&
+        hasActiveChatMessages(c) &&
+        conversationOwnerHasSentUserMessage(c)
     );
     return mine
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -628,9 +747,7 @@ export async function getConversation(
   ownerUserId: string | null
 ): Promise<Conversation | null> {
   if (ownerUserId) {
-    // Vóór flush: zo weten we dat iemand dit gesprek opent — geen dubbele mail voor die thread.
     await recordOwnerPolledConversation(id, ownerUserId);
-    await flushInboxAutomationsForOwner(ownerUserId);
   }
   const list = enforceUniqueConversationAvatars(await loadList());
   const c = list.find((x) => x.id === id);
@@ -647,6 +764,15 @@ export type ProfilePortfolioItem = {
   conversationId: string;
   messageId: string;
   createdAt: string;
+};
+
+export type PurchasedPhotoItem = {
+  conversationId: string;
+  messageId: string;
+  createdAt: string;
+  unlockedAt: string;
+  profileId: string;
+  profileName: string;
 };
 
 export async function listProfilePortfolioItems(
@@ -676,36 +802,34 @@ export async function listProfilePortfolioItems(
   return out.slice(0, 80);
 }
 
-/** Startinbox: max 5 profielen; 2-5 starten met openingsbericht binnen de eerste 5 min. */
+export async function listPurchasedPhotosForOwner(ownerUserId: string): Promise<PurchasedPhotoItem[]> {
+  if (!ownerUserId.trim()) return [];
+  const list = await loadList();
+  const out: PurchasedPhotoItem[] = [];
+  for (const c of list) {
+    if (c.ownerUserId !== ownerUserId) continue;
+    for (const m of c.messages) {
+      if (m.role !== "assistant" || !m.imageFile || !m.photoLock?.unlockedAt) continue;
+      out.push({
+        conversationId: c.id,
+        messageId: m.id,
+        createdAt: m.createdAt,
+        unlockedAt: m.photoLock.unlockedAt,
+        profileId: c.profileId,
+        profileName: c.profileName,
+      });
+    }
+  }
+  out.sort((a, b) => new Date(b.unlockedAt).getTime() - new Date(a.unlockedAt).getTime());
+  return out;
+}
+
+/** Startinbox: lege threads aanmaken zonder automatisch eerste bericht — user moet eerst sturen. */
 export async function ensureUserInboxForOwner(ownerUserId: string): Promise<void> {
   const inboxIds = await getInboxProfileIdsForPlatform();
   if (inboxIds.length === 0) return;
 
   const list = await loadList();
-  const existingMine = list.filter((c) => c.ownerUserId === ownerUserId);
-  const existingInitial = new Set(
-    existingMine
-      .filter((c) => c.pendingInitialAssistantAt || c.initialAssistantSentAt)
-      .map((c) => c.profileId)
-  );
-  const selectableIds = inboxIds.filter((id) => !existingInitial.has(id));
-  const targetInitialCount = Math.min(
-    5,
-    Math.max(2, Math.floor(Math.random() * 4) + 2),
-    inboxIds.length
-  );
-  const selectedInitialIds = new Set<string>();
-  for (const pid of shuffleInboxIds(selectableIds)) {
-    if (selectedInitialIds.size >= targetInitialCount) break;
-    selectedInitialIds.add(pid);
-  }
-
-  if (selectedInitialIds.size < 2) {
-    for (const pid of shuffleInboxIds(inboxIds)) {
-      if (selectedInitialIds.size >= Math.min(2, inboxIds.length)) break;
-      selectedInitialIds.add(pid);
-    }
-  }
   let changed = false;
   for (const pid of inboxIds) {
     if (list.some((c) => c.ownerUserId === ownerUserId && c.profileId === pid)) continue;
@@ -720,13 +844,6 @@ export async function ensureUserInboxForOwner(ownerUserId: string): Promise<void
       isOnline: p.isOnline,
       ownerUserId,
       updatedAt: now,
-      ...(selectedInitialIds.has(pid)
-        ? {
-            pendingInitialAssistantAt: new Date(
-              new Date(now).getTime() + randomInitialAssistantDelayMs()
-            ).toISOString(),
-          }
-        : {}),
       messages: [],
     });
     changed = true;
@@ -837,14 +954,13 @@ function stripDataUrlAudioBase64(input: string): string {
  * Inbox-automatisering in één keer (1× loadList + hoogstens 1× saveList).
  * Eerder: 4 aparte passes elk met eigen load/save → merkbaar traag op Supabase app_blobs.
  */
-async function flushInboxAutomationsForOwner(ownerUserId: string): Promise<void> {
+export async function flushInboxAutomationsForOwner(ownerUserId: string): Promise<void> {
   const list = await loadList();
+  const user = await findUserById(ownerUserId);
   let changed = dedupeDuplicateOwnerConversationsInPlace(list, ownerUserId);
-  changed = applyPendingInitialAssistantMessages(list, ownerUserId) || changed;
   changed = applyPendingLockedPhotoDeliveries(list, ownerUserId) || changed;
   changed = applyPendingLockedPhotoNudges(list, ownerUserId) || changed;
   changed = applyNoReplyFollowups(list, ownerUserId) || changed;
-  const user = await findUserById(ownerUserId);
   if (user) {
     changed = applyNoPurchaseGiftForUser(list, ownerUserId, user) || changed;
     changed = applyCreditsExhaustedNudgeForUser(list, ownerUserId, user) || changed;
@@ -1050,147 +1166,264 @@ async function generatePhotoPreferenceQuestion(
   }
 }
 
-async function generatePersonalizedImagePrompt(
-  profile: Profile,
-  conv: Conversation,
-  userText: string,
-  assistantText: string
-): Promise<string> {
-  const BASE_AMATEUR_PROMPT = [
-    "mirror selfie with direct camera flash",
-    "attractive adult blonde woman",
-    "messy bedroom background",
-    "realistic amateur smartphone photo",
-    "candid late night vibe",
-    "unmade bed",
-    "clothes scattered on floor",
-    "dim warm lighting",
-    "strong flash reflection in mirror",
-    "grainy low quality image",
-    "blurry edges",
-    "imperfect focus",
-    "casual oversized t-shirt",
-    "natural pose",
-    "unedited instagram story aesthetic",
-    "realistic skin texture",
-    "messy hair",
-    "raw photo",
-    "accidental composition",
-    "cheap phone camera quality",
-    "overexposed flash",
-    "authentic bedroom atmosphere",
-    "slightly dirty mirror",
-    "realistic shadows",
-    "documentary photography style",
-  ].join(", ");
+/** True when the chat clearly asks for visible writing (name on skin, note, etc.). */
+function conversationWantsVisibleHandwrittenText(
+  mergedIntent: string,
+  assistantLine: string,
+  recentTranscript: string,
+  viewerFirstName?: string | null
+): boolean {
+  const blob = [mergedIntent, assistantLine, recentTranscript]
+    .map((s) => (s || "").toLowerCase())
+    .join("\n");
+  if (
+    /\bnaam\b|schrijf|schrijven|opschrijf|opschrift|tekst|briefje|note|marker|lipstift|lipstick|eyeliner|body writing|op je lijf|op het lijf|op mijn lijf|op je huid|getatoe|tattoo|tatoeage|geschreven|ijschrift/.test(
+      blob
+    )
+  ) {
+    return true;
+  }
+  const n = (viewerFirstName || "").trim().toLowerCase();
+  if (n.length >= 2 && blob.includes(n)) return true;
+  if (/jouw naam|mijn naam|zijn naam|haar naam|name on|write my name|with my name/.test(blob)) return true;
+  return false;
+}
 
-  const intentSource = `${userText}\n${assistantText}\n${conv.messages
-    .slice(-8)
-    .map((m) => `${m.role}:${m.content ?? ""}`)
-    .join("\n")}`.toLowerCase();
-  const explicitIntentBits: string[] = [];
-  if (/\b(naakt|nude|topless|zonder bh|zonder top)\b/i.test(intentSource)) {
-    explicitIntentBits.push("fully nude or topless look as requested");
-  }
-  if (/\b(tieten|borsten|boobs|tits|tepels)\b/i.test(intentSource)) {
-    explicitIntentBits.push("clear visible adult breasts, breast-focused framing");
-  }
-  if (/\b(close-?up|dichtbij)\b/i.test(intentSource)) {
-    explicitIntentBits.push("close-up framing");
-  }
-  if (/\b(lingerie|string|bh)\b/i.test(intentSource)) {
-    explicitIntentBits.push("lingerie styling matching request");
-  }
-
-  try {
-    const recent = conv.messages.slice(-10).map((m) => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content: (m.content ?? "").slice(0, 180),
-    }));
-
-    const wishesSummary = await completeChat([
-      {
-        role: "system",
-        content:
-          "Summarize the user's visual photo wishes into one compact English line (max 170 chars). Keep only visual details (pose, angle, outfit, room, lighting, explicit body focus if requested). Do not sanitize requested visual nudity/topless/breast focus. No app/payment text.",
-      },
-      {
-        role: "user",
-        content: `User wishes: "${userText.slice(0, 450)}"\nAssistant context: "${assistantText.slice(0, 220)}"\nReturn only one line.`,
-      },
-    ]);
-
-    const ai = await completeChat([
-      {
-        role: "system",
-        content:
-          "Write one final English text-to-image prompt under 480 chars. Style must stay raw amateur low-quality smartphone mirror selfie, not polished studio. Follow requested explicit visual details (e.g. nude/topless/breasts) when user asked for them.",
-      },
-      {
-        role: "user",
-        content: [
-          "## Base style prompt (must dominate style)",
-          BASE_AMATEUR_PROMPT,
-          "",
-          "## Profile identity (must match this woman)",
-          `same woman identity as profile ${profile.name}, adult age ${profile.age}, heritage ${profile.heritage || "european"}`,
-          "",
-          "## User wishes (summarized)",
-          wishesSummary.slice(0, 170),
-          "",
-          "## Explicit intent bits (must include when present)",
-          explicitIntentBits.length > 0
-            ? explicitIntentBits.join(", ")
-            : "none",
-          "",
-          "## Chat context",
-          assistantText.slice(0, 220),
-          "",
-          "## Continuity",
-          conv.firstGeneratedPhotoFile
-            ? `keep visual identity continuity with previous generated photo file reference: ${conv.firstGeneratedPhotoFile}`
-            : "no previous generated photo reference yet; define stable identity cues for future consistency",
-          "",
-          "## Recent messages",
-          JSON.stringify(recent),
-          "",
-          "## Output",
-          "Only the final prompt text. No markdown, no explanation.",
-        ].join("\n"),
-      },
-    ]);
-    const clean = ai.replace(/\s+/g, " ").trim();
-    if (clean.length >= 24) return clean.slice(0, 420);
-  } catch {
-    // fallback below
-  }
-  return `${BASE_AMATEUR_PROMPT}, same woman identity as ${profile.name}, adult age ${profile.age}, ${buildNudePrompt(profile.name, profile.heritage, userText)}`.slice(
-    0,
-    420
+/** User explicitly wants to see her face (otherwise we default to no visible face per platform rules). */
+function userExplicitlyRequestsFaceVisible(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  return /\b(gezicht|face\b|hoofd\b|portret|ogen\b|glimlach|smile|headshot|full face|zie je gezicht|laat.*gezicht|show.*face|met gezicht|with face|gezicht laten zien)/i.test(
+    t
   );
 }
 
-function applyPendingInitialAssistantMessages(list: Conversation[], ownerUserId: string): boolean {
-  const now = Date.now();
-  for (const conv of list) {
-    if (conv.ownerUserId !== ownerUserId) continue;
-    if (!conv.pendingInitialAssistantAt || conv.initialAssistantSentAt) continue;
-    if (now < new Date(conv.pendingInitialAssistantAt).getTime()) continue;
-    const msg: ChatMessage = {
-      id: randomUUID(),
-      role: "assistant",
-      content: openerForProfile(conv.profileId),
-      createdAt: new Date().toISOString(),
-    };
-    conv.messages = [...conv.messages, msg];
-    conv.updatedAt = msg.createdAt;
-    conv.initialAssistantSentAt = msg.createdAt;
-    conv.pendingInitialAssistantAt = undefined;
-    scheduleNoReplyReminderAfterAssistant(conv, msg.id);
-    void maybeSendOfflineAssistantEmail(conv.id, msg);
-    return true;
+/** Messy bedroom vibe when the scene is clearly intimate / indoor private. */
+function wantsMessyBedroomSetting(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  return /\b(bed|slaapkamer|bedroom|spiegel|mirror|liggen|op bed|onder de dekens|naakt|lingerie|op je kamer|in je kamer)/i.test(
+    t
+  );
+}
+
+function extractBestConcretePhotoDirective(cycleIntent: string, latestUserRequest: string): string {
+  const latest = (latestUserRequest || "").replace(/\s+/g, " ").trim();
+
+  // If the very last user message is concrete, use it (highest priority)
+  if (latest && !isVagueUserPhotoReply(latest)) {
+    return latest;
   }
-  return false;
+
+  // Otherwise scan the accumulated cycle intent from newest to oldest
+  const lines = (cycleIntent || "")
+    .split(/\n+/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .reverse(); // newest first
+
+  for (const line of lines) {
+    if (CONCRETE_PHOTO_INTENT_REGEX.test(line.toLowerCase())) {
+      return line;
+    }
+  }
+
+  // Fallback: if latest is short and mentions photo/selfie, still use it
+  if (latest && /\b(selfie|foto|naakt|naakte|naaktfoto)\b/i.test(latest)) {
+    return latest;
+  }
+
+  return latest || lines[0] || "";
+}
+
+type PhotoBodyRegionHint = "breasts" | "butt" | "generic";
+
+function inferPhotoBodyRegion(intentBlob: string): PhotoBodyRegionHint {
+  const t = intentBlob.toLowerCase();
+  if (
+    /\b(tieten|borsten|boobs|tits|tepels|borst|decolett|decollet|cleavage|chest|rack\b|meloenen)/i.test(
+      t
+    )
+  ) {
+    return "breasts";
+  }
+  if (
+    /\b(kont|billen|achterkant|doggy|butt\b|ass\b|achterwerk|from behind|rug\b)\b/i.test(t)
+  ) {
+    return "butt";
+  }
+  return "generic";
+}
+
+function buildFramingRuleForPhoto(showFace: boolean, region: PhotoBodyRegionHint): string {
+  if (showFace) {
+    return "Include face only because user asked for face or portrait; one continuous smartphone photograph.";
+  }
+  if (region === "breasts") {
+    return "Do NOT show face unless user asked; FRONT torso or mirror selfie clearly showing bare breasts and chest; NOT a rear-only or butt-focused shot NOT a face-only headshot; one continuous smartphone photograph.";
+  }
+  if (region === "butt") {
+    return "Do NOT show face unless user asked; frame from behind or mirror emphasizing buttocks as requested; one continuous smartphone photograph.";
+  }
+  return "Do NOT show face unless user asked; match the user request with handheld or mirror amateur framing; avoid unrelated head-only portrait; one continuous smartphone photograph.";
+}
+
+/**
+ * Zet laatste chat + user-wens om naar één Engelse regisseurzin voor Z Image — vangt op wat regex mist
+ * (volgorde: eerst rug/billen, nu tieten → expliciet ander shot).
+ */
+async function distillChatIntoPhotoDirective(input: {
+  profileFirstName: string;
+  transcript: string;
+  latestUserMessage: string;
+  heuristicDirective: string;
+}): Promise<string | null> {
+  try {
+    const ai = await completeChat(
+      [
+        {
+          role: "system",
+          content: [
+            `You output ONE English image-generation directive for an adult smartphone photo of ${input.profileFirstName}.`,
+            "Plain text only, max ~380 characters. No markdown, no quotes around the whole line.",
+            "Read the chat: if the user changes request (e.g. already saw nude from behind, now wants breasts), describe a DIFFERENT shot — front or mirror, chest visible — not a repeat headshot or back-only view.",
+            "State mirror vs arm-length, angle, visible body parts, nude vs clothed as implied.",
+            "If breasts/nipples/chest requested: front or mirror showing chest — not only back or ass.",
+            "Exactly one uninterrupted photograph, one woman, one pose.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: [
+            "Chat (oldest to newest):",
+            input.transcript.slice(0, 4500),
+            "",
+            `Latest user message: ${input.latestUserMessage.slice(0, 600)}`,
+            "",
+            `Heuristic summary (may be wrong): ${input.heuristicDirective.slice(0, 450)}`,
+            "",
+            "Reply with ONLY the English directive.",
+          ].join("\n"),
+        },
+      ],
+      { temperature: 0.35, maxTokens: 220 }
+    );
+    const cleaned = ai.replace(/\s+/g, " ").trim().replace(/^["'«»]+|["'«»]+$/g, "");
+    if (cleaned.length < 14 || cleaned.length > 420) return null;
+    return cleaned;
+  } catch (e) {
+    console.warn("[photoPrompt] distillChatIntoPhotoDirective failed:", e);
+    return null;
+  }
+}
+
+async function generatePersonalizedImagePrompt(
+  profile: Profile,
+  conv: Conversation,
+  cycleIntentText: string,
+  latestUserText: string,
+  assistantText: string,
+  viewerFirstName?: string | null
+): Promise<string> {
+  /** Stored at profile creation (random user): exact appearance line used for profile photos. */
+  const referenceAppearance =
+    profile.visualIdentityPrompt?.trim().replace(/\s+/g, " ") ||
+    buildStableVisualIdentityForProfile(profile).replace(/\s+/g, " ");
+
+  const recentMessages = conv.messages
+    .slice(-12)
+    .map((m) => `${m.role}: ${(m.content || "").slice(0, 220)}`)
+    .join("\n");
+  const effectiveViewerName = viewerFirstName?.trim() || "";
+  const mergedIntentText = (cycleIntentText || "").replace(/\s+/g, " ").trim();
+  const latestUserRequest = (latestUserText || "").replace(/\s+/g, " ").trim();
+  const assistantLine = (assistantText || "").replace(/\s+/g, " ").trim();
+  const wantsVisibleWriting = conversationWantsVisibleHandwrittenText(
+    `${mergedIntentText}\n${latestUserRequest}`,
+    assistantLine,
+    recentMessages,
+    effectiveViewerName || undefined
+  );
+
+  let primaryDirective = extractBestConcretePhotoDirective(mergedIntentText, latestUserRequest);
+  if (!primaryDirective) {
+    primaryDirective =
+      "amateur smartphone POV snap matching her profile body type hair and skin exactly what user will ask next";
+  }
+
+  const transcriptForDistill = conv.messages
+    .slice(-18)
+    .map((m) => `${m.role}: ${(m.content || "").slice(0, 300)}`)
+    .join("\n");
+  const distilled = await distillChatIntoPhotoDirective({
+    profileFirstName: profile.name,
+    transcript: transcriptForDistill,
+    latestUserMessage: latestUserRequest,
+    heuristicDirective: primaryDirective,
+  });
+  if (distilled) {
+    primaryDirective = distilled;
+  }
+
+  if (
+    wantsVisibleWriting &&
+    effectiveViewerName &&
+    !primaryDirective.toLowerCase().includes(effectiveViewerName.toLowerCase())
+  ) {
+    primaryDirective = `${primaryDirective}; messy amateur pen or pencil '${effectiveViewerName}' on real torn paper or skin uneven letters clearly readable`;
+  }
+
+  const textRule = wantsVisibleWriting
+    ? "messy natural handwriting on physical paper or skin exact spelling no extra words NOT digital sticker NOT clean typography NOT overlay font"
+    : "NO text, NO watermark, NO logo";
+
+  const faceBlob = `${primaryDirective}\n${latestUserRequest}\n${mergedIntentText}`;
+  const showFace = userExplicitlyRequestsFaceVisible(faceBlob);
+  const messyBed = wantsMessyBedroomSetting(faceBlob);
+  const bodyRegion = inferPhotoBodyRegion(faceBlob);
+  const framingRule = buildFramingRuleForPhoto(showFace, bodyRegion);
+
+  const amateurStyle =
+    "Ultra-realistic amateur smartphone photo grain sensor noise bad uneven lighting warm ugly lamp slight motion blur handheld imperfect framing raw quick pic for chat not studio not catalogue.";
+
+  const settingRule = messyBed
+    ? "Messy real bedroom unmade bed clothes on floor authentic chaos."
+    : "";
+
+  const referenceRule =
+    "Appearance must match her profile reference photos same woman same hair body skin tone proportions.";
+
+  const antiMulti =
+    "Single smartphone photograph one captured moment natural framing continuous image.";
+
+  const parts: string[] = [
+    antiMulti,
+    `User request (follow strictly add nothing else): ${primaryDirective}`,
+    amateurStyle,
+    framingRule,
+    referenceRule,
+    textRule,
+  ];
+  if (settingRule) parts.push(settingRule);
+
+  let identitySnippet = referenceAppearance.trim();
+  const maxBody = zModelMaxUserPromptBodyChars();
+  let core = parts.join(" ");
+
+  const reserveForIdentity = Math.min(320, Math.max(120, Math.floor(maxBody * 0.28)));
+  if (identitySnippet.length > reserveForIdentity) {
+    identitySnippet = `${identitySnippet.slice(0, reserveForIdentity - 1).trimEnd()}…`;
+  }
+  core = `${core} Identity lock: ${identitySnippet}`;
+
+  let finalPrompt = core;
+  if (finalPrompt.length > maxBody) {
+    finalPrompt = finalPrompt.slice(0, maxBody).trimEnd();
+  }
+
+  console.info(
+    `[photoPrompt] conv=${conv.id} len=${finalPrompt.length} face=${showFace} region=${bodyRegion} messyBed=${messyBed} first200="${finalPrompt.slice(0, 200)}"`
+  );
+
+  return finalPrompt;
 }
 
 function applyNoReplyFollowups(list: Conversation[], ownerUserId: string): boolean {
@@ -1212,6 +1445,12 @@ function applyNoReplyFollowups(list: Conversation[], ownerUserId: string): boole
 
   const conv = due[0];
   if (!conv) return false;
+  if (shouldSuppressNoReplyReminder(conv)) {
+    conv.pendingNoReplyFollowUpAt = undefined;
+    conv.pendingNoReplyAfterAssistantId = undefined;
+    conv.pendingNoReplyReminderStage = undefined;
+    return true;
+  }
 
   // Verbeterde check: stuur geen reminder als de AI recent nog iets heeft gestuurd
   // OF als de gebruiker recent heeft gereageerd.
@@ -1384,11 +1623,6 @@ function randomTrustDoubtPlayfulLine(): string {
   return TRUST_DOUBT_PLAYFUL_LINES[i] ?? TRUST_DOUBT_PLAYFUL_LINES[0]!;
 }
 
-function randomInitialAssistantDelayMs(): number {
-  const span = INITIAL_ASSISTANT_MAX_DELAY_MS - INITIAL_ASSISTANT_MIN_DELAY_MS;
-  return INITIAL_ASSISTANT_MIN_DELAY_MS + Math.floor(Math.random() * (span + 1));
-}
-
 function randomCreditsExhaustedLine(): string {
   const i = Math.floor(Math.random() * CREDITS_EXHAUSTED_NUDGE_LINES.length);
   return CREDITS_EXHAUSTED_NUDGE_LINES[i] ?? CREDITS_EXHAUSTED_NUDGE_LINES[0]!;
@@ -1399,18 +1633,18 @@ function randomLockedPhotoTeaseLine(): string {
   return LOCKED_PHOTO_TEASE_LINES[i] ?? LOCKED_PHOTO_TEASE_LINES[0]!;
 }
 
-function randomPhotoEngagementStyle(): PhotoEngagementStyle {
+function randomPhotoEngagementStyle(options?: { allowVoiceReaction?: boolean }): PhotoEngagementStyle {
+  const allowVoiceReaction = options?.allowVoiceReaction ?? true;
   const r = Math.random();
-  if (r < 0.38) return "voice_reaction";
-  if (r < 0.66) return "choose_next_photo";
-  if (r < 0.84) return "daring_prompt";
+  if (allowVoiceReaction) {
+    if (r < 0.38) return "voice_reaction";
+    if (r < 0.66) return "choose_next_photo";
+    if (r < 0.84) return "daring_prompt";
+    return "natural_tease";
+  }
+  if (r < 0.46) return "choose_next_photo";
+  if (r < 0.78) return "daring_prompt";
   return "natural_tease";
-}
-
-function randomLockedPhotoDeliveryDelayMs(): number {
-  const min = 40 * 1000;
-  const max = 120 * 1000;
-  return min + Math.floor(Math.random() * (max - min + 1));
 }
 
 function styleInstructionForPhotoEngagement(style: PhotoEngagementStyle): string {
@@ -1447,7 +1681,21 @@ function enforcePendingPhotoReply(replyText: string): string {
 function containsPhotoPreferenceQuestion(text: string): boolean {
   const t = (text || "").toLowerCase().replace(/\s+/g, " ").trim();
   if (!t.includes("?")) return false;
-  if (/\b(wil je|wat wil je|welke|of wil je|zal ik)\b.*\?/i.test(t)) return true;
+  // NL/EN: "wil je / zou je" en expliciete fotokeuze-vragen
+  if (/\b(wil je|wat wil je|welke|of wil je|zal ik|zou je)\b.*\?/i.test(t)) return true;
+  if (/\b(wat wil je nu zien|wat zou je willen zien|zeg (maar )?wat je|noem maar wat)\b/i.test(t)) {
+    return true;
+  }
+  // "iets straks X of liever Y bloot?" — eerder gemist omdat alleen close-up/pose als tweede helft gold
+  if (/\b(of|of liever|of misschien|of zou je)\b/i.test(t)) {
+    if (
+      /\b(bloot|naakt|nude|lingerie|string|jurk|jurkje|strak|lichaam|uittrek|uit trek|aantrek|bh|borst|borsten|tepel|billen|kont|outfit|kleed|pose|selfie|foto|dress|tight|naked)\b/i.test(
+        t
+      )
+    ) {
+      return true;
+    }
+  }
   if (/\b(of)\b.*\?/i.test(t) && /\b(close-?up|hele lichaam|dichtbij|hoek|pose)\b/i.test(t)) {
     return true;
   }
@@ -1460,7 +1708,7 @@ function containsPhotoPreferenceQuestion(text: string): boolean {
 }
 
 function containsPhotoPromise(text: string): boolean {
-  return /\b(ik ga .*maken|ik maak .*voor je|ik schiet .*voor je|komt eraan|geef me .*minuut|wacht( heel)? even,? ik .*foto)\b/i.test(
+  return /\b(ik ga .*maken|ik ga .*regelen|ik ga .*doen|ik maak .*voor je|ik maak 'm nu|ik maak m nu|ik maak hem nu|ik maak ze nu|ik ben .*aan het maken|ben .*voor je aan het maken|ik schiet .*voor je|ik combineer .*voor je|komt eraan|geef me .*minuut|geef me (heel )?even|wacht( heel)? even,? ik .*foto|ik kom zo terug.*foto|foto.*zo terug|ik stuur.*zo|hier is|check dit|kijk dit|ik ga .*aantrekken|ik ga .*schieten|ik kom zo|ben zo terug|ik ga het doen|ik ga het maken|ik ga 'm nu|ik ga m nu|ik ga nu|ik ga voor je aantrekken)\b/i.test(
     text || ""
   );
 }
@@ -1472,12 +1720,33 @@ function removePhotoPromiseLines(text: string): string {
     .filter(Boolean);
   const kept = lines.filter(
     (l) =>
-      !/\b(ik ga .*maken|ik maak .*voor je|ik schiet .*voor je|komt eraan|geef me .*minuut|wacht( heel)? even,? ik .*foto)\b/i.test(
+      !/\b(ik ga .*maken|ik ga .*regelen|ik ga .*doen|ik maak .*voor je|ik maak 'm nu|ik maak m nu|ik maak hem nu|ik maak ze nu|ik ben .*aan het maken|ben .*voor je aan het maken|ik schiet .*voor je|ik combineer .*voor je|komt eraan|geef me .*minuut|geef me (heel )?even|wacht( heel)? even,? ik .*foto|ik kom zo terug.*foto|foto.*zo terug|ik stuur.*zo|hier is|check dit|kijk dit|ik ga .*aantrekken|ik ga .*schieten|ik kom zo|ben zo terug|ik ga het doen|ik ga het maken|ik ga 'm nu|ik ga m nu|ik ga nu|ik ga voor je aantrekken)\b/i.test(
         l
       )
   );
   if (kept.length > 0) return kept.join("\n\n");
   return "zeg me precies wat je wilt zien schat, dan maak ik die daarna voor je.";
+}
+
+function containsSentPhotoFollowup(text: string): boolean {
+  return /\b(check (je|dit|dat)|wat vind je hier?van|wat denk je hier?van|wat denk je ervan|wat doet deze met je|maakt dit je lekker|heb je die foto al gezien|heb je (deze|hem) al gezien|wat wil je nu met me doen|word je er lekker hard van|de foto is gestuurd|foto is (net )?gestuurd|ik heb de foto gestuurd|de foto heb ik gestuurd)\b/i.test(
+    text || ""
+  );
+}
+
+function removeSentPhotoFollowupLines(text: string): string {
+  const lines = (text || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const kept = lines.filter(
+    (l) =>
+      !/\b(check (je|dit|dat)|wat vind je hier?van|wat denk je hier?van|wat denk je ervan|wat doet deze met je|maakt dit je lekker|heb je die foto al gezien|heb je (deze|hem) al gezien|wat wil je nu met me doen|word je er lekker hard van|de foto is gestuurd|foto is (net )?gestuurd|ik heb de foto gestuurd|de foto heb ik gestuurd)\b/i.test(
+        l
+      )
+  );
+  if (kept.length > 0) return kept.join("\n\n");
+  return "zeg me wat je precies wilt zien, dan maak ik die direct voor je.";
 }
 
 function hasAnyQuestion(text: string): boolean {
@@ -1784,23 +2053,103 @@ export async function appendUserMessagesAndReply(
   // No longer using strict intimacy tiers - AI decides tone and escalation herself
 
   const lastUserTextLower = joinedUserText.toLowerCase();
+  const mergedPhotoCycleIntent = mergePhotoCycleIntent(conv.pendingPhotoCycleIntent, joinedUserText);
+  const recentUserIntentForTrigger = `${joinedUserText}\n${conv.messages
+    .filter((m) => m.role === "user")
+    .slice(-6)
+    .map((m) => m.content ?? "")
+    .join("\n")}`.toLowerCase();
   const asksForPhotoButVague =
     /(wat kan je voor me maken|wat kun je voor me maken|kan je iets maken|kun je iets maken|maak iets voor me|stuur iets leuks|wat kan je sturen|iets spannends voor me)/i.test(
       lastUserTextLower
     );
   const askedForPreferenceEarlier = conv.pendingPhotoPreferenceRequest === true;
-  const hasConcreteVisualPreferenceNow =
-    /lingerie|string|kleur|groen|zwart|rood|standje|positie|knie[eë]n|doggy|missionaris|bovenop|close|close-up|hele lichaam|kont|borsten|boobs|tits|tieten|tepels|kut|nat maken|pijp|neuken|selfie|hoek|camera|jurkje|setje|zonder|met bh|zonder bh|billen|achterkant|vooraanzicht/i.test(
+  const previousUserMessage = conv.messages
+    .filter((m) => m.role === "user")
+    .slice(-1)[0]
+    ?.content?.trim();
+  const concreteVisualPreferenceRegex = CONCRETE_PHOTO_INTENT_REGEX;
+  const hasConcreteVisualPreferenceNow = concreteVisualPreferenceRegex.test(
+    recentUserIntentForTrigger
+  );
+  const currentUserHasConcreteVisualPreference = concreteVisualPreferenceRegex.test(
+    lastUserTextLower
+  );
+  const confirmsPreviousPhotoRequest =
+    /\b(kan je dit doen|kan je dat doen|kun je dit doen|kun je dat doen|doe maar|ja doe maar|ja doe\b|maak (hem|m)|regel maar|graag|ok[eé]?\b|is goed|zeker)\b/i.test(
       lastUserTextLower
     );
+  const userGivesCreativeFreedom =
+    /\b(verzin( jij)? wat|bedenk( jij)? wat|jij mag kiezen|kies jij( maar)?|doe maar iets|surprise me|jij beslist|maak maar wat)\b/i.test(
+      lastUserTextLower
+    );
+  const lastAssistantTextBeforeUser = [...conv.messages]
+    .reverse()
+    .find((m) => m.role === "assistant")
+    ?.content?.toLowerCase();
+  const lastAssistantFullText =
+    [...conv.messages].reverse().find((m) => m.role === "assistant")?.content ?? "";
+  const assistantAskedPhotoChoiceOrPreference = containsPhotoPreferenceQuestion(lastAssistantFullText);
+  const trimmedUserForPhoto = joinedUserText.trim();
+  const userAffirmsPhotoOffer =
+    trimmedUserForPhoto.length > 0 &&
+    trimmedUserForPhoto.length <= 96 &&
+    !/\b(nee|niet|niet doen|liever niet|stop|geen zin|don't|no)\b/i.test(lastUserTextLower) &&
+    (/\b(ja doe|doe maar|ja hoor|ja schat|is goed schat|tuurlijk|natuurlijk|alsjeblieft|jawel|jazeker)\b/i.test(
+      lastUserTextLower
+    ) ||
+      (trimmedUserForPhoto.length <= 36 &&
+        /^(?:\s*(?:ja|graag|prima|ok[eé]?|oke|okay|zeker|yes|doe)\b[\s!.,]*){1,3}\s*$/i.test(
+          trimmedUserForPhoto
+        )));
+  /** "maak hem" / "doe maar" na een zin als "zal ik …?" telt ook als bevestiging. */
+  const photoChoiceConfirmedByUser =
+    !activePhotoPipeline &&
+    assistantAskedPhotoChoiceOrPreference &&
+    (userAffirmsPhotoOffer || confirmsPreviousPhotoRequest);
+  const assistantRecentlyOfferedPhoto = /\b(nog eentje maak|nog een foto|zeg maar wat je .*wil zien|wat wil je dat ik nu doe|wat wil je nu zien|zal ik .*maken|ik kan .*maken)\b/i.test(
+    lastAssistantTextBeforeUser || ""
+  );
+  const forceCreativePhotoNow =
+    !activePhotoPipeline && userGivesCreativeFreedom && assistantRecentlyOfferedPhoto;
+  const previousConcreteUserMessage = [...conv.messages]
+    .filter((m) => m.role === "user")
+    .reverse()
+    .find((m) => concreteVisualPreferenceRegex.test((m.content || "").toLowerCase()))
+    ?.content
+    ?.trim();
+  const shouldCarryForwardConcreteIntent =
+    confirmsPreviousPhotoRequest &&
+    !currentUserHasConcreteVisualPreference &&
+    Boolean(previousConcreteUserMessage);
+  let cycleIntentForPrompt = mergedPhotoCycleIntent.trim();
+  if (askedForPreferenceEarlier && previousUserMessage) {
+    cycleIntentForPrompt = `${previousUserMessage}\n${cycleIntentForPrompt}`.trim();
+  }
+  if (shouldCarryForwardConcreteIntent && previousConcreteUserMessage) {
+    cycleIntentForPrompt = `${previousConcreteUserMessage}\n${cycleIntentForPrompt}`.trim();
+  }
+  if (!cycleIntentForPrompt) cycleIntentForPrompt = joinedUserText;
+  if (photoChoiceConfirmedByUser) {
+    const anchor = lastAssistantFullText.replace(/\s+/g, " ").trim();
+    if (anchor) {
+      cycleIntentForPrompt = `${anchor}\n${cycleIntentForPrompt}`.trim();
+    }
+  }
 
   // Vage fotovraag => eerst doorvragen naar voorkeur, nog geen foto sturen.
-  if ((asksForPhotoButVague || askedForPreferenceEarlier) && !hasConcreteVisualPreferenceNow) {
+  if (
+    (asksForPhotoButVague || askedForPreferenceEarlier) &&
+    !hasConcreteVisualPreferenceNow &&
+    !forceCreativePhotoNow &&
+    !photoChoiceConfirmedByUser
+  ) {
     await updateConversationAtomic(conversationId, (latestConv) => {
       latestConv.messages = [...latestConv.messages, ...userMessages];
       latestConv.updatedAt = userMessages[userMessages.length - 1]!.createdAt;
       latestConv.realismState = realismState;
       latestConv.pendingPhotoPreferenceRequest = true;
+      latestConv.pendingPhotoCycleIntent = mergedPhotoCycleIntent;
     });
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
@@ -1822,6 +2171,7 @@ export async function appendUserMessagesAndReply(
         messagesSinceLastReply: 0,
       };
       latestConv.pendingPhotoPreferenceRequest = true;
+      latestConv.pendingPhotoCycleIntent = mergedPhotoCycleIntent;
       scheduleNoReplyReminderAfterAssistant(latestConv, askMsg.id);
     });
     void maybeSendOfflineAssistantEmail(conversationId, askMsg);
@@ -1837,6 +2187,7 @@ export async function appendUserMessagesAndReply(
       latestConv.messages = [...latestConv.messages, ...userMessages];
       latestConv.updatedAt = userMessages[userMessages.length - 1]!.createdAt;
       latestConv.realismState = realismState;
+      latestConv.pendingPhotoCycleIntent = mergedPhotoCycleIntent;
     });
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
@@ -1928,6 +2279,7 @@ export async function appendUserMessagesAndReply(
     latestConv.messages = [...latestConv.messages, ...userMessages];
     latestConv.updatedAt = userMessages[userMessages.length - 1]!.createdAt;
     latestConv.realismState = realismState;
+    latestConv.pendingPhotoCycleIntent = mergedPhotoCycleIntent;
   });
   if (conv.ownerUserId) {
     await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
@@ -1943,46 +2295,192 @@ export async function appendUserMessagesAndReply(
     replyText = enforcePendingPhotoReply(replyText);
   }
 
-  // === FOTO STUREN: detecteer of de gebruiker een foto wil zien ===
-  const lastUserText = joinedUserText.toLowerCase();
+  // === FOTO STUREN: slimme trigger op basis van user wens + AI erkenning ===
+  // Als de gebruiker een concrete visuele wens heeft gegeven (kleur bh, tieten, etc.)
+  // en de AI die wens erkent in haar antwoord, dan mag er een foto gegenereerd worden.
+  // Dit zorgt dat de AI niet "leeg" belooft zonder te leveren.
+  let shouldSendPhotoNow = false;
 
-  const userWantsPicture =
-    /foto|picture|pic|selfie|kiekje|plaatje|naakt|naked|nude|stuur|sturen|laat zien|laten zien|zien wat|zie je|kan je .*maken|kun je .*maken|maak .*voor me|maak er (een|1)|maak (hem|m) (nu|voor me)|doe .*sturen/i.test(
-      lastUserText
-    ) ||
-    lastUserText.includes("pijp") ||
-    lastUserText.includes("borsten") ||
-    lastUserText.includes("vagina") ||
-    lastUserText.includes("kut") ||
-    lastUserText.includes("send pic");
+  // Sterke leveringsbelofte detectie: als de AI expliciet zegt dat ze NU gaat schieten/aantrekken/maken,
+  // dan moet er een foto gegenereerd worden (ongeacht of ze de kleur herhaalt).
+  const strongDeliveryPromise =
+    /\b(ik ga 'm nu|ik ga m nu|ik ga het nu|ik ga nu\b|ik ga 'm voor je|ik ga m voor je|ik ga het voor je|ik ga voor je aantrekken|ik ga schieten|ik ga het maken|ik ga het doen|ik ga 'm maken|ik ga 'm doen|ik maak 'm nu|ik maak m nu|ik maak hem nu|ik maak ze nu)\b/i.test(
+      replyText
+    );
 
-  // Pas foto sturen als hij ook echt reageert op haar doorvraag/suggesties.
-  const hasExplicitConcretePhotoRequest = userWantsPicture && hasConcreteVisualPreferenceNow;
-  const hasPreferenceReplyAfterQuestion = askedForPreferenceEarlier && hasConcreteVisualPreferenceNow;
-  const directPhotoActionVerb = /\b(stuur|sturen|maak|maken|doe)\b/i.test(lastUserTextLower);
-  let shouldSendPhotoNow =
-    !activePhotoPipeline &&
-    (hasExplicitConcretePhotoRequest ||
-      hasPreferenceReplyAfterQuestion ||
-      (userWantsPicture && directPhotoActionVerb) ||
-      (hasConcreteVisualPreferenceNow && directPhotoActionVerb));
+  /** Zelfde intent als containsPhotoPromise — gebruikt om "zal ik …?" + "ik maak 'm nu" niet te blokkeren. */
+  const assistantCommitsToSendingPhoto =
+    strongDeliveryPromise || containsPhotoPromise(replyText);
 
-  // Hard guard: ask-first means no photo queue in this same turn.
-  if (containsPhotoPreferenceQuestion(replyText)) {
+  // Check of de AI de specifieke wens van de user erkent in haar antwoord (fallback)
+  const aiAcknowledgesSpecificRequest =
+    hasConcreteVisualPreferenceNow &&
+    (replyText.toLowerCase().includes("roze") ||
+      replyText.toLowerCase().includes("oranje") ||
+      replyText.toLowerCase().includes("groen") ||
+      replyText.toLowerCase().includes("geel") ||
+      replyText.toLowerCase().includes("gele") ||
+      replyText.toLowerCase().includes("zwart") ||
+      replyText.toLowerCase().includes("rood") ||
+      replyText.toLowerCase().includes("paars") ||
+      replyText.toLowerCase().includes("blauw") ||
+      replyText.toLowerCase().includes("wit") ||
+      replyText.toLowerCase().includes("bh") ||
+      replyText.toLowerCase().includes("string") ||
+      replyText.toLowerCase().includes("tieten") ||
+      replyText.toLowerCase().includes("borsten") ||
+      replyText.toLowerCase().includes("boobs") ||
+      replyText.toLowerCase().includes("kont") ||
+      replyText.toLowerCase().includes("billen") ||
+      replyText.toLowerCase().includes("naakt") ||
+      replyText.toLowerCase().includes("nude"));
+  const userDirectPhotoCommand =
+    /\b(maak|stuur|doe)\b[^.!?\n]{0,28}\b(foto|selfie|pic|picture|plaatje)\b/i.test(
+      lastUserTextLower
+    ) || /\b(foto|selfie)\b/i.test(lastUserTextLower);
+
+  // Hard guard: echte voorkeursvraag ("wil je roze of zwart?") → nog geen foto.
+  // Geen blok als ze tégelijk levering belooft ("zal ik deze string…? … ik maak 'm nu").
+  if (
+    containsPhotoPreferenceQuestion(replyText) &&
+    !forceCreativePhotoNow &&
+    !assistantCommitsToSendingPhoto
+  ) {
     if (containsPhotoPromise(replyText)) {
       replyText = removePhotoPromiseLines(replyText);
     }
     shouldSendPhotoNow = false;
-  }
-  // Absolute consistency: any question in this turn means no same-turn "ik ga hem maken".
-  if (hasAnyQuestion(replyText) && containsPhotoPromise(replyText)) {
+  } else if (forceCreativePhotoNow) {
+    // User geeft creatieve vrijheid ("verzin jij wat") nadat profiel een foto-offer deed:
+    // direct fotoflow starten i.p.v. opnieuw vragen.
+    replyText = replyText
+      .replace(/\b(wat wil je dat ik nu doe\??|zeg.*wat je nu wil zien.*\??|wil je nog.*\??)\b/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (!replyText) {
+      replyText = "oke schat, ik maak nu iets moois voor je.";
+    }
+    shouldSendPhotoNow = true;
+  } else if (userDirectPhotoCommand && !containsPhotoPreferenceQuestion(replyText)) {
+    // Eenvoudige, directe user-opdracht zoals "maak foto ..." moet altijd triggeren.
+    // Dit voorkomt misses wanneer AI-antwoord geen perfecte beloftezin bevat.
+    replyText = replyText
+      .replace(/\b(hey,?\s*)?check (je|dit|dat)\??\b/gi, "")
+      .replace(/\b(wat vind je hiervan\??|wat denk je hiervan\??)\b/gi, "")
+      .replace(/\b(wat doet deze met je\??|maakt dit je lekker\??)\b/gi, "")
+      .trim();
+    shouldSendPhotoNow = true;
+  } else if (strongDeliveryPromise && hasConcreteVisualPreferenceNow) {
+    // Als de AI een sterke "ik ga nu schieten/aantrekken" belofte doet EN de user een concrete visuele wens heeft,
+    // dan foto sturen. Dit is de belangrijkste trigger.
+    // Verwijder "check je dit?" / "wat vind je hiervan?" zinnen uit replyText.
+    replyText = replyText
+      .replace(/\b(hey,?\s*)?check (je|dit|dat)\??\b/gi, "")
+      .replace(/\b(wat vind je hiervan\??|wat denk je hiervan\??)\b/gi, "")
+      .replace(/\b(wat doet deze met je\??|maakt dit je lekker\??)\b/gi, "")
+      .trim();
+    shouldSendPhotoNow = true;
+  } else if (aiAcknowledgesSpecificRequest && containsPhotoPromise(replyText)) {
+    // Fallback: als de AI de specifieke wens erkent EN een belofte doet → foto sturen.
+    replyText = replyText
+      .replace(/\b(hey,?\s*)?check (je|dit|dat)\??\b/gi, "")
+      .replace(/\b(wat vind je hiervan\??|wat denk je hiervan\??)\b/gi, "")
+      .replace(/\b(wat doet deze met je\??|maakt dit je lekker\??)\b/gi, "")
+      .trim();
+    shouldSendPhotoNow = true;
+  } else if (hasAnyQuestion(replyText) && containsPhotoPromise(replyText)) {
+    // Als er een vraag + belofte in hetzelfde antwoord zit zonder erkenning → belofte verwijderen, geen foto.
     replyText = removePhotoPromiseLines(replyText);
     shouldSendPhotoNow = false;
+  } else {
+    // Fallback: als de AI zelf een duidelijke foto-beloft doet (zonder vraag), dan triggeren.
+    const assistantPromisesPhotoNow =
+      containsPhotoPromise(replyText) && !containsPhotoPreferenceQuestion(replyText);
+    if (!activePhotoPipeline && assistantPromisesPhotoNow) {
+      shouldSendPhotoNow = true;
+    }
   }
-  const assistantPromisesPhotoNow =
-    containsPhotoPromise(replyText) && !containsPhotoPreferenceQuestion(replyText);
-  if (!activePhotoPipeline && assistantPromisesPhotoNow) {
+  // Gebruiker bevestigde kort na een expliciete foto/voorkeursvraag van het profiel → altijd leveren.
+  if (photoChoiceConfirmedByUser && !activePhotoPipeline) {
     shouldSendPhotoNow = true;
+  }
+  if (activePhotoPipeline) {
+    shouldSendPhotoNow = false;
+  }
+
+  /**
+   * Stuur de vergrendelde foto direct in dezelfde server-response.
+   * (Geen wachttimer meer; gebruiker ziet meteen de unlock-bubble.)
+   */
+  let immediateLockedPhotoDelivery:
+    | {
+        messageId: string;
+        prompt: string;
+        width: number;
+        height: number;
+        teaseText: string;
+        delayedNudgeText: string;
+      }
+    | null = null;
+  if (shouldSendPhotoNow) {
+    let viewerFirstName: string | null = null;
+    if (conv.ownerUserId) {
+      try {
+        const owner = await findUserById(conv.ownerUserId);
+        const raw = owner?.naam?.trim().split(/\s+/)[0];
+        if (raw) viewerFirstName = raw[0]!.toUpperCase() + raw.slice(1).toLowerCase();
+      } catch {
+        viewerFirstName = null;
+      }
+    }
+    const hasUserEverSentVoiceInChat =
+      conv.messages.some((m) => m.role === "user" && Boolean(m.voice)) ||
+      userMessages.some((m) => m.role === "user" && Boolean(m.voice));
+    const engagementStyle = randomPhotoEngagementStyle({
+      allowVoiceReaction: hasUserEverSentVoiceInChat,
+    });
+    const photoMsgId = randomUUID();
+    /** Parallel: serialiseren van 3× Grok tot 1× batch voorkomt Vercel/host timeouts (>240s). */
+    const [imagePrompt, immediateLockedTease, delayedLockedNudgeText] = await Promise.all([
+      generatePersonalizedImagePrompt(
+        profile,
+        conv,
+        cycleIntentForPrompt,
+        joinedUserText,
+        replyText,
+        viewerFirstName
+      ),
+      generateLockedPhotoTeaseText(
+        profile.name,
+        joinedUserText,
+        replyText,
+        engagementStyle
+      ),
+      generateLockedPhotoDelayedNudgeText(
+        profile.name,
+        joinedUserText,
+        engagementStyle
+      ),
+    ]);
+    console.info(
+      `[photoPrompt] conv=${conversationId} msg=${photoMsgId} request="${joinedUserText
+        .replace(/\s+/g, " ")
+        .slice(0, 180)}" prompt="${imagePrompt.slice(0, 320)}"`
+    );
+    immediateLockedPhotoDelivery = {
+      messageId: photoMsgId,
+      prompt: imagePrompt,
+      width: 768,
+      height: 1024, // 3:4 portrait (allowed ratio), strongly single vertical shot
+      teaseText: immediateLockedTease,
+      delayedNudgeText: delayedLockedNudgeText,
+    };
+  }
+
+  // Nooit "check je dit / wat vind je hiervan" sturen zonder dat er echt een foto gestuurd is.
+  const sentPhotoThisTurn = Boolean(immediateLockedPhotoDelivery);
+  if (!sentPhotoThisTurn && containsSentPhotoFollowup(replyText)) {
+    replyText = removeSentPhotoFollowupLines(replyText);
   }
 
   // Support for multiple short messages in a row (ultra-realistic texting)
@@ -1995,7 +2493,7 @@ export async function appendUserMessagesAndReply(
     id: randomUUID(),
     role: "assistant",
     content: part,
-    createdAt: new Date(Date.now() + index * 850).toISOString(), // small realistic delay between bubbles
+    createdAt: new Date(Date.now() + index * 850).toISOString(),
     replyToId:
       index === 0
         ? payloads[payloads.length - 1]?.replyToId?.trim() ||
@@ -2005,50 +2503,6 @@ export async function appendUserMessagesAndReply(
           (Math.random() < 0.28 ? userMessages[userMessages.length - 1]?.id : undefined)
         : undefined,
   }));
-
-  /**
-   * Stuur de foto als losse extra bubble nadat ze (in haar tekst) heeft beloofd er
-   * eentje te maken. Foto is altijd vergrendeld; gebruiker betaalt om hem te zien.
-   */
-  let queuedPhotoDelivery:
-    | {
-        messageId: string;
-        prompt: string;
-        width: number;
-        height: number;
-        teaseText: string;
-        delayedNudgeText: string;
-      }
-    | null = null;
-  if (shouldSendPhotoNow) {
-    const engagementStyle = randomPhotoEngagementStyle();
-    const photoMsgId = randomUUID();
-    const imagePrompt = await generatePersonalizedImagePrompt(
-      profile,
-      conv,
-      joinedUserText,
-      replyText
-    );
-    const immediateLockedTease = await generateLockedPhotoTeaseText(
-      profile.name,
-      joinedUserText,
-      replyText,
-      engagementStyle
-    );
-    const delayedLockedNudgeText = await generateLockedPhotoDelayedNudgeText(
-      profile.name,
-      joinedUserText,
-      engagementStyle
-    );
-    queuedPhotoDelivery = {
-      messageId: photoMsgId,
-      prompt: imagePrompt,
-      width: 1024,
-      height: 1024,
-      teaseText: immediateLockedTease,
-      delayedNudgeText: delayedLockedNudgeText,
-    };
-  }
 
   const assistantMessage = assistantMessages[0] ?? {
     id: randomUUID(),
@@ -2066,6 +2520,33 @@ export async function appendUserMessagesAndReply(
 
     const messagesToAdd: ChatMessage[] = [...assistantMessages];
 
+    if (immediateLockedPhotoDelivery) {
+      const baseMs = Date.now() + assistantMessages.length * 850;
+      const lockedPhotoMessage: ChatMessage = {
+        id: immediateLockedPhotoDelivery.messageId,
+        role: "assistant",
+        content: "",
+        createdAt: new Date(baseMs + 250).toISOString(),
+        photoLock: { credits: CREDITS_PER_PHOTO_UNLOCK },
+        photoGeneration: {
+          prompt: immediateLockedPhotoDelivery.prompt,
+          width: immediateLockedPhotoDelivery.width ?? 1024,
+          height: immediateLockedPhotoDelivery.height ?? 1024,
+        },
+      };
+      messagesToAdd.push(lockedPhotoMessage);
+
+      if (immediateLockedPhotoDelivery.teaseText?.trim()) {
+        messagesToAdd.push({
+          id: randomUUID(),
+          role: "assistant",
+          content: immediateLockedPhotoDelivery.teaseText.trim(),
+          createdAt: new Date(baseMs + 1300).toISOString(),
+          replyToId: immediateLockedPhotoDelivery.messageId,
+        });
+      }
+    }
+
     latestConv.messages = [...latestConv.messages, ...messagesToAdd];
     const tail = messagesToAdd[messagesToAdd.length - 1];
     latestConv.updatedAt = tail?.createdAt ?? new Date().toISOString();
@@ -2080,12 +2561,15 @@ export async function appendUserMessagesAndReply(
     scheduleNoReplyReminderAfterAssistant(latestConv, lastAssistantAnchor);
     if (shouldSendPhotoNow) {
       latestConv.pendingPhotoPreferenceRequest = false;
+      latestConv.pendingPhotoCycleIntent = undefined;
     }
-    if (queuedPhotoDelivery) {
-      latestConv.pendingLockedPhotoDeliveryAt = new Date(
-        Date.now() + randomLockedPhotoDeliveryDelayMs()
-      ).toISOString();
-      latestConv.pendingLockedPhotoDelivery = queuedPhotoDelivery;
+    if (immediateLockedPhotoDelivery) {
+      latestConv.pendingLockedPhotoDeliveryAt = undefined;
+      latestConv.pendingLockedPhotoDelivery = undefined;
+      latestConv.pendingLockedPhotoMessageId = immediateLockedPhotoDelivery.messageId;
+      latestConv.pendingLockedPhotoNudgeAt = new Date(Date.now() + 60 * 1000).toISOString();
+      latestConv.pendingLockedPhotoNudgeText =
+        immediateLockedPhotoDelivery.delayedNudgeText ?? LOCKED_PHOTO_DELAYED_NUDGE_FALLBACK;
     }
   });
   void maybeSendOfflineAssistantEmail(conversationId, assistantMessage);
@@ -2139,11 +2623,12 @@ export async function appendUserGiftMessage(
     throw new Error("Geen toegang tot dit gesprek");
   }
 
+  const baseMs = Date.now();
   const msg: ChatMessage = {
     id: randomUUID(),
     role: "user",
     content: note.trim() || `cadeautje voor jou (${giftCredits} credits)`,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(baseMs).toISOString(),
     readByPeer: false,
     gift: {
       credits: giftCredits,
@@ -2157,14 +2642,14 @@ export async function appendUserGiftMessage(
     id: randomUUID(),
     role: "assistant",
     content: randomGiftThanksLine(),
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(baseMs + 900).toISOString(),
     replyToId: msg.id,
   };
   const openedEvent: ChatMessage = {
     id: randomUUID(),
     role: "assistant",
     content: `${conv.profileName} heeft je cadeau geopend`,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(baseMs + 1700).toISOString(),
     replyToId: msg.id,
   };
   await updateConversationAtomic(conversationId, (latestConv) => {
@@ -2436,23 +2921,17 @@ export async function ensureSeedConversations(): Promise<void> {
 
   let a: Profile | null = null;
   let b: Profile | null = null;
-  if (isSupabaseProfilesEnabled()) {
-    const profiles = await listDbProfiles(8);
-    if (profiles.length >= 2) {
-      a = profiles[0]!;
-      b = profiles[1]!;
-    } else if (profiles.length === 1) {
-      a = profiles[0]!;
-      b = profiles[0]!;
-    } else {
-      return;
-    }
+  if (!isSupabaseProfilesEnabled()) return;
+
+  const profiles = await listDbProfiles(8);
+  if (profiles.length >= 2) {
+    a = profiles[0]!;
+    b = profiles[1]!;
+  } else if (profiles.length === 1) {
+    a = profiles[0]!;
+    b = profiles[0]!;
   } else {
-    const emma = await getDbProfileById("3");
-    const lisa = await getDbProfileById("2");
-    if (!emma || !lisa) return;
-    a = emma;
-    b = lisa;
+    return;
   }
 
   const now = new Date().toISOString();

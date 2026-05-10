@@ -13,14 +13,15 @@ type Step =
   | 'q2'
   | 'q3'
   | 'q4'
+  | 'fotoVoorkeur'
   | 'zoekLeeftijd'
   | 'zoekEigenschappen'
   | 'loadingMatches'
   | 'signupForm'
   | 'akkoord';
 
-/** Vier ja/nee-vragen + leeftijdscategorie + eigenschappen */
-const ONBOARDING_VRAAG_TOTAAL = 6;
+/** Vier ja/nee-vragen + foto-voorkeur + leeftijdscategorie + eigenschappen */
+const ONBOARDING_VRAAG_TOTAAL = 7;
 
 const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   { id: 'q1', tekst: 'Ben je ouder dan 27?' },
@@ -60,6 +61,13 @@ const EIGENSCHAP_OPTIES = [
   { id: 'onduigend', label: 'Onduigend' },
 ] as const;
 
+const FOTO_VOORKEUR_OPTIES = [
+  { id: 'naakt', label: 'Naakt' },
+  { id: 'lingerie', label: 'Lingerie' },
+  { id: 'spiegel-selfies', label: 'Spiegel selfies' },
+  { id: 'close-up', label: 'Close-up details' },
+] as const;
+
 type Answers = {
   q1: boolean | null;
   q2: boolean | null;
@@ -69,6 +77,10 @@ type Answers = {
 
 function randomMatchCount(): number {
   return Math.floor(11 + Math.random() * (50 - 11 + 1));
+}
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(min + Math.random() * (max - min + 1));
 }
 
 export default function StartPage() {
@@ -82,6 +94,8 @@ export default function StartPage() {
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [zoekLeeftijdIds, setZoekLeeftijdIds] = useState<Set<string>>(() => new Set());
   const [eigenschapIds, setEigenschapIds] = useState<Set<string>>(() => new Set());
+  const [fotoVoorkeurId, setFotoVoorkeurId] = useState<string | null>(null);
+  const [maandFotoCount, setMaandFotoCount] = useState<number | null>(null);
   const [matchCount, setMatchCount] = useState<number | null>(null);
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
@@ -99,7 +113,7 @@ export default function StartPage() {
         const r = await fetch('/api/auth/me', { credentials: 'include' });
         const d = (await r.json()) as { user?: unknown };
         if (!cancel && d.user) {
-          window.location.replace('/nieuwsfeed');
+          window.location.replace('/profielen');
           return;
         }
       } catch {
@@ -153,8 +167,25 @@ export default function StartPage() {
     if (qIndex < keys.length - 1) {
       setStep(keys[qIndex + 1] as Step);
     } else {
-      setStep('zoekLeeftijd');
+      setStep('fotoVoorkeur');
     }
+  };
+
+  const handleFotoVoorkeurNext = () => {
+    setError(null);
+    if (!fotoVoorkeurId) {
+      setError('Kies minimaal één foto-voorkeur.');
+      return;
+    }
+    const ranges: Record<string, [number, number]> = {
+      naakt: [120, 200],
+      lingerie: [80, 170],
+      'spiegel-selfies': [45, 140],
+      'close-up': [70, 180],
+    };
+    const [min, max] = ranges[fotoVoorkeurId] ?? [30, 200];
+    setMaandFotoCount(randomInt(min, max));
+    setStep('zoekLeeftijd');
   };
 
   const toggleEigenschap = (id: string) => {
@@ -272,7 +303,7 @@ export default function StartPage() {
           completedAt: data.user.createdAt,
         });
       }
-      window.location.assign('/nieuwsfeed');
+      window.location.assign('/profielen');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Opslaan mislukt. Probeer opnieuw.');
     } finally {
@@ -282,6 +313,9 @@ export default function StartPage() {
 
   const showVraagVoettekst =
     step === 'q1' || step === 'q2' || step === 'q3' || step === 'q4';
+
+  const fotoVoorkeurLabel =
+    FOTO_VOORKEUR_OPTIES.find((opt) => opt.id === fotoVoorkeurId)?.label.toLowerCase() ?? null;
 
   const zoekLeeftijdSamenvatting = LEEFTIJD_CATEGORIEEN.filter((c) => zoekLeeftijdIds.has(c.id))
     .map((c) => c.label)
@@ -296,7 +330,7 @@ export default function StartPage() {
               <Logo variant="hero" />
             </div>
             <p className="text-gray-600 mb-10 text-lg leading-relaxed font-medium">
-              Welkom. Een paar korte vragen — discreet, respectvol en zonder gedoe.
+              Welkom op stiekemefotos.nl. Een paar korte vragen en je bent er.
             </p>
             <button
               type="button"
@@ -357,13 +391,81 @@ export default function StartPage() {
           </div>
         )}
 
-        {step === 'zoekLeeftijd' && (
+        {step === 'fotoVoorkeur' && (
           <div className="w-full space-y-6 max-w-md mx-auto">
             <div className="flex justify-center">
               <Logo variant="hero" className="scale-90" />
             </div>
             <p className="text-center text-sm font-semibold text-gray-600">
               Vraag 5 van {ONBOARDING_VRAAG_TOTAAL}
+            </p>
+            <div>
+              <h2 className="text-center text-xl md:text-2xl font-semibold text-gray-900 leading-snug">
+                Wat voor foto's vind jij het geilst?
+              </h2>
+              <p className="text-center text-sm text-gray-600 mt-2">
+                Kies de stijl die jij het liefst ziet.
+              </p>
+            </div>
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 rounded-2xl px-4 py-2 border-2 border-red-100">
+                {error}
+              </p>
+            )}
+            <div className="space-y-2">
+              {FOTO_VOORKEUR_OPTIES.map((opt) => {
+                const on = fotoVoorkeurId === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setFotoVoorkeurId(opt.id)}
+                    className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-all ${
+                      on
+                        ? 'border-primary bg-primary/10'
+                        : 'border-gray-300 bg-[var(--onboarding-card)] hover:bg-gray-50'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${
+                        on ? 'border-primary bg-primary text-white' : 'border-gray-400 bg-white'
+                      }`}
+                    >
+                      {on && <Check className="h-4 w-4" strokeWidth={3} />}
+                    </span>
+                    <span className="font-medium text-gray-900">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setStep('q4')}
+                className="flex-1 py-4 rounded-full border-2 border-gray-300 bg-white font-semibold text-gray-800"
+              >
+                Terug
+              </button>
+              <button
+                type="button"
+                onClick={handleFotoVoorkeurNext}
+                className="flex-1 py-4 rounded-full bg-primary text-white font-semibold shadow-md"
+              >
+                Volgende
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'zoekLeeftijd' && (
+          <div className="w-full space-y-6 max-w-md mx-auto">
+            <div className="flex justify-center">
+              <Logo variant="hero" className="scale-90" />
+            </div>
+            <p className="text-center text-sm font-semibold text-gray-600">
+              Vraag 6 van {ONBOARDING_VRAAG_TOTAAL}
             </p>
             <div>
               <h2 className="text-center text-xl md:text-2xl font-semibold text-gray-900 leading-snug">
@@ -391,7 +493,7 @@ export default function StartPage() {
                     className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-all ${
                       on
                         ? 'border-primary bg-primary/10'
-                        : 'border-gray-300 bg-[var(--surface-card)] hover:bg-gray-50'
+                        : 'border-gray-300 bg-[var(--onboarding-card)] hover:bg-gray-50'
                     }`}
                   >
                     <span
@@ -409,7 +511,7 @@ export default function StartPage() {
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setStep('q4')}
+                onClick={() => setStep('fotoVoorkeur')}
                 className="flex-1 py-4 rounded-full border-2 border-gray-300 bg-white font-semibold text-gray-800"
               >
                 Terug
@@ -431,7 +533,7 @@ export default function StartPage() {
               <Logo variant="hero" className="scale-90" />
             </div>
             <p className="text-center text-sm font-semibold text-gray-600">
-              Vraag 6 van {ONBOARDING_VRAAG_TOTAAL}
+              Vraag 7 van {ONBOARDING_VRAAG_TOTAAL}
             </p>
             <div>
               <h2 className="text-center text-xl md:text-2xl font-semibold text-gray-900 leading-snug">
@@ -459,7 +561,7 @@ export default function StartPage() {
                     className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-all ${
                       on
                         ? 'border-primary bg-primary/10'
-                        : 'border-gray-300 bg-[var(--surface-card)] hover:bg-gray-50'
+                        : 'border-gray-300 bg-[var(--onboarding-card)] hover:bg-gray-50'
                     }`}
                   >
                     <span
@@ -518,6 +620,13 @@ export default function StartPage() {
             </div>
             {matchCount != null ? (
               <>
+                {maandFotoCount != null && fotoVoorkeurLabel ? (
+                  <p className="text-center text-sm md:text-base text-gray-700 leading-relaxed px-2">
+                    Deze maand zijn er al{' '}
+                    <span className="font-bold text-primary tabular-nums">{maandFotoCount}</span>{' '}
+                    {fotoVoorkeurLabel} foto's gestuurd door vrouwen op het platform.
+                  </p>
+                ) : null}
                 <p className="text-center text-lg md:text-xl text-gray-900 leading-relaxed font-medium px-2">
                   We hebben{' '}
                   <span className="text-primary font-bold tabular-nums text-2xl md:text-3xl">
@@ -546,7 +655,7 @@ export default function StartPage() {
                   required
                   value={naam}
                   onChange={(e) => setNaam(e.target.value)}
-                  className="mt-1.5 w-full rounded-2xl border-2 border-gray-300 bg-[var(--surface-card)] px-4 py-4 text-[16px] shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                  className="mt-1.5 w-full rounded-2xl border-2 border-gray-300 bg-[var(--onboarding-card)] px-4 py-4 text-[16px] shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
                   placeholder="Je voornaam of bijnaam"
                   autoComplete="name"
                 />
@@ -558,7 +667,7 @@ export default function StartPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="mt-1.5 w-full rounded-2xl border-2 border-gray-300 bg-[var(--surface-card)] px-4 py-4 text-[16px] shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                  className="mt-1.5 w-full rounded-2xl border-2 border-gray-300 bg-[var(--onboarding-card)] px-4 py-4 text-[16px] shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
                   placeholder="jij@voorbeeld.nl"
                   autoComplete="email"
                 />
@@ -572,7 +681,7 @@ export default function StartPage() {
                   max={99}
                   value={leeftijd}
                   onChange={(e) => setLeeftijd(e.target.value)}
-                  className="mt-1.5 w-full rounded-2xl border-2 border-gray-300 bg-[var(--surface-card)] px-4 py-4 text-[16px] shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                  className="mt-1.5 w-full rounded-2xl border-2 border-gray-300 bg-[var(--onboarding-card)] px-4 py-4 text-[16px] shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
                   placeholder="18+"
                 />
               </label>
@@ -584,7 +693,7 @@ export default function StartPage() {
                   minLength={8}
                   value={wachtwoord}
                   onChange={(e) => setWachtwoord(e.target.value)}
-                  className="mt-1.5 w-full rounded-2xl border-2 border-gray-300 bg-[var(--surface-card)] px-4 py-4 text-[16px] shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
+                  className="mt-1.5 w-full rounded-2xl border-2 border-gray-300 bg-[var(--onboarding-card)] px-4 py-4 text-[16px] shadow-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
                   placeholder="Minimaal 8 tekens"
                   autoComplete="new-password"
                 />
@@ -611,7 +720,7 @@ export default function StartPage() {
                 {error}
               </p>
             )}
-            <label className="flex gap-3 items-start cursor-pointer rounded-2xl bg-[var(--surface-card)] p-4 border-2 border-gray-300 shadow-sm">
+            <label className="flex gap-3 items-start cursor-pointer rounded-2xl bg-[var(--onboarding-card)] p-4 border-2 border-gray-300 shadow-sm">
               <input
                 type="checkbox"
                 checked={discreetVink}
@@ -622,7 +731,7 @@ export default function StartPage() {
                 Ik ga discreet omgaan en respecteer de privacy van de vrouwen.
               </span>
             </label>
-            <label className="flex gap-3 items-start cursor-pointer rounded-2xl bg-[var(--surface-card)] p-4 border-2 border-gray-300 shadow-sm">
+            <label className="flex gap-3 items-start cursor-pointer rounded-2xl bg-[var(--onboarding-card)] p-4 border-2 border-gray-300 shadow-sm">
               <input
                 type="checkbox"
                 checked={voorwaardenVink}
@@ -649,8 +758,8 @@ export default function StartPage() {
         )}
       </div>
 
-      <footer className="py-6 text-center text-xs text-gray-500 px-4 border-t-2 border-gray-300/60 bg-[#cfd3dc]">
-        discreetemeisjes.nl · 18+ · Vertrouwen &amp; discretie
+      <footer className="py-6 text-center text-xs text-gray-600 px-4 border-t border-primary/15 bg-[var(--onboarding-footer-bg)]">
+        stiekemefotos.nl · 18+ · Vertrouwen &amp; discretie
       </footer>
     </div>
   );

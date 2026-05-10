@@ -5,6 +5,7 @@ export const en: Messages = {
     feed: "Requests",
     messages: "Messages",
     profiles: "Profiles",
+    gallery: "Gallery",
     credits: "Credits",
   },
   common: {

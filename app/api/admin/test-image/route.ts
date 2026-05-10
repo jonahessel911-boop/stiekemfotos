@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     const profile = await getDbProfileById(profileId);
     if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
 
-    const prompt = buildNudePrompt(profile.name, profile.heritage, userRequest);
+    const prompt = buildNudePrompt(profile, userRequest);
 
     // Use a test conversation ID for admin testing
     const testConvId = "admin-test";

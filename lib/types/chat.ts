@@ -122,6 +122,8 @@ export interface Conversation {
   };
   /** Assistant asked user what kind of photo he wants; wait for concrete visual details. */
   pendingPhotoPreferenceRequest?: boolean;
+  /** Geaccumuleerde user-intent binnen één foto-cyclus (trigger + details); wordt gewist na versturen locked foto. */
+  pendingPhotoCycleIntent?: string;
   /** First generated assistant photo in this conversation; used as identity reference for future images. */
   firstGeneratedPhotoMessageId?: string;
   firstGeneratedPhotoFile?: string;

@@ -1,9 +1,15 @@
 import { randomUUID } from "crypto";
 import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
+import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
+import {
+  loadPhotoRequestsRelational,
+  savePhotoRequestsRelational,
+} from "@/lib/server/photoRequestsRelational";
 import type { PhotoRequest, PhotoRequestComment } from "@/lib/types/photo-request";
 import { listDbProfiles } from "@/lib/server/profilesDb";
 import { appendAssistantOutboundForOwner } from "@/lib/server/conversations";
 import { findUserById } from "@/lib/server/users";
+import { completeChat } from "@/lib/grok";
 
 const FILE = "photo-requests.json";
 
@@ -21,17 +27,50 @@ function clampCredits(n: number): number {
   return Math.max(5, Math.min(500, Math.round(n)));
 }
 
-export async function listPhotoRequests(): Promise<PhotoRequest[]> {
-  const all = await readJsonBlob<PhotoRequest[]>(FILE, []);
-  return all
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+async function loadAllPhotoRequests(): Promise<PhotoRequest[]> {
+  const admin = getSupabaseAdmin();
+  if (admin) {
+    try {
+      let all = await loadPhotoRequestsRelational(admin);
+      if (all.length === 0) {
+        const blob = await readJsonBlob<PhotoRequest[]>(FILE, []);
+        if (blob.length > 0) {
+          await savePhotoRequestsRelational(admin, blob);
+          all = blob;
+        }
+      }
+      return all.sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+    } catch (e) {
+      console.error("[photoRequests] relationele load mislukt, fallback blob:", e);
+    }
+  }
+  const blob = await readJsonBlob<PhotoRequest[]>(FILE, []);
+  return blob.sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
 }
 
 async function savePhotoRequests(next: PhotoRequest[]): Promise<void> {
+  const admin = getSupabaseAdmin();
+  if (admin) {
+    try {
+      await savePhotoRequestsRelational(admin, next);
+      return;
+    } catch (e) {
+      console.error("[photoRequests] relationele save mislukt, fallback blob:", e);
+    }
+  }
   await writeJsonBlob(FILE, next);
 }
 
+export async function listPhotoRequests(): Promise<PhotoRequest[]> {
+  return loadAllPhotoRequests();
+}
+
 async function createAutoComments(ownerUserId: string): Promise<PhotoRequestComment[]> {
+  void ownerUserId;
   const profiles = await listDbProfiles(18);
   if (profiles.length === 0) return [];
   const shuffled = [...profiles].sort(() => Math.random() - 0.5);
@@ -40,8 +79,6 @@ async function createAutoComments(ownerUserId: string): Promise<PhotoRequestComm
   for (let i = 0; i < selected.length; i++) {
     const p = selected[i]!;
     const template = COMMENT_TEMPLATES[Math.floor(Math.random() * COMMENT_TEMPLATES.length)]!;
-    const sentInboxMessage =
-      /bericht gestuurd|check je inbox|dm/i.test(template) || Math.random() < 0.35;
     const comment: PhotoRequestComment = {
       id: randomUUID(),
       authorType: "profile",
@@ -50,18 +87,42 @@ async function createAutoComments(ownerUserId: string): Promise<PhotoRequestComm
       profileAvatar: p.photo,
       text: template,
       createdAt: new Date(Date.now() + i * 800).toISOString(),
-      sentInboxMessage,
+      sentInboxMessage: false,
     };
     out.push(comment);
-    if (sentInboxMessage) {
-      await appendAssistantOutboundForOwner({
-        ownerUserId,
-        profileId: p.id,
-        content: `hey schat, ik zag je foto-aanvraag en ik wil deze graag voor je maken 😘`,
-      });
-    }
   }
   return out;
+}
+
+async function generateAutoCommentText(input: {
+  profileName: string;
+  requestDescription: string;
+  photoType: string;
+}): Promise<string> {
+  try {
+    const ai = await completeChat([
+      {
+        role: "system",
+        content:
+          "Schrijf 1 korte Nederlandse reactie (max 16 woorden) op een foto-aanvraag. Natuurlijk, speels, geen expliciete prijzen.",
+      },
+      {
+        role: "user",
+        content: [
+          `Profielnaam: ${input.profileName}`,
+          `Type aanvraag: ${input.photoType}`,
+          `Omschrijving: ${input.requestDescription.slice(0, 200)}`,
+          "Soms mag je subtiel zeggen dat je een bericht hebt gestuurd of dat hij inbox mag checken.",
+          "Geef alleen de reactie-zin.",
+        ].join("\n"),
+      },
+    ]);
+    const cleaned = ai.replace(/\s+/g, " ").trim();
+    if (cleaned.length >= 8) return cleaned.slice(0, 180);
+  } catch {
+    // fallback below
+  }
+  return COMMENT_TEMPLATES[Math.floor(Math.random() * COMMENT_TEMPLATES.length)]!;
 }
 
 export async function createPhotoRequest(input: {
@@ -93,8 +154,31 @@ export async function createPhotoRequest(input: {
     comments: [],
   };
 
-  const all = await readJsonBlob<PhotoRequest[]>(FILE, []);
+  const all = await loadAllPhotoRequests();
   const autoComments = await createAutoComments(ownerUserId);
+  for (let i = 0; i < autoComments.length; i++) {
+    const c = autoComments[i]!;
+    if (c.authorType !== "profile") continue;
+    c.text = await generateAutoCommentText({
+      profileName: c.profileName ?? "schat",
+      requestDescription: description,
+      photoType,
+    });
+    const textSuggestsDm = /bericht gestuurd|check je inbox|dm|inbox/i.test(c.text);
+    // Zorg dat elke aanvraag direct lead-berichten krijgt in inbox.
+    c.sentInboxMessage = i < 2 || textSuggestsDm;
+    if (c.sentInboxMessage && c.profileId) {
+      try {
+        await appendAssistantOutboundForOwner({
+          ownerUserId,
+          profileId: c.profileId,
+          content: "ik zag je aanvraag net, stuur me een berichtje en ik maak hem voor je 😘",
+        });
+      } catch (e) {
+        console.error("[photoRequests] auto inbox message failed:", e);
+      }
+    }
+  }
   created.comments = autoComments;
   created.updatedAt = autoComments[autoComments.length - 1]?.createdAt ?? now;
   all.unshift(created);
@@ -109,7 +193,7 @@ export async function addPhotoRequestComment(input: {
   text: string;
   sendInboxMessage?: boolean;
 }): Promise<PhotoRequest> {
-  const all = await readJsonBlob<PhotoRequest[]>(FILE, []);
+  const all = await loadAllPhotoRequests();
   const idx = all.findIndex((r) => r.id === input.requestId);
   if (idx < 0) throw new Error("Aanvraag niet gevonden.");
   const req = all[idx]!;
@@ -150,7 +234,7 @@ export async function addUserCommentToPhotoRequest(input: {
   if (!actorUserId) throw new Error("Log in om te reageren.");
   if (!text) throw new Error("Reactie is leeg.");
 
-  const all = await readJsonBlob<PhotoRequest[]>(FILE, []);
+  const all = await loadAllPhotoRequests();
   const idx = all.findIndex((r) => r.id === input.requestId);
   if (idx < 0) throw new Error("Aanvraag niet gevonden.");
   const req = all[idx]!;

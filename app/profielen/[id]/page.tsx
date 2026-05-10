@@ -3,17 +3,20 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { Cake, Heart, Briefcase } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { Cake, Heart, Briefcase, MapPin, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Profile } from '@/lib/types/profile';
 import { profilePhotoSrc } from '@/lib/profile-image-url';
 import { isProfileDisplayedOnline } from '@/lib/profile-display-online';
-import { ProfileInlineChat } from '@/components/ProfileInlineChat';
 import { getCreditsBalance } from '@/lib/credits-client';
+import {
+  DEFAULT_PHOTO_REQUEST_DRAFT,
+  PROFILE_PHOTO_REQUEST_NAV_KEY,
+  type ProfilePhotoRequestNavPayload,
+} from '@/lib/profile-photo-request';
 
 const DEFAULT_PHOTO_UNLOCK_CREDITS = 100;
-const PHOTO_REQUEST_SUGGESTION = 'kan je een nieuwe foto voor me maken schat?';
 
 type PortfolioItem = {
   conversationId: string;
@@ -38,18 +41,16 @@ function CreditsCornerPill() {
 }
 
 export default function ProfielDetailPage() {
+  const router = useRouter();
   const params = useParams();
   const id = String(params.id ?? '');
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [convLoading, setConvLoading] = useState(false);
-  const [convError, setConvError] = useState<string | null>(null);
   const [liked, setLiked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
-  const loginRedirect = `/inloggen?next=${encodeURIComponent(`/profielen/${id}`)}`;
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
   React.useEffect(() => {
     let cancel = false;
@@ -70,43 +71,6 @@ export default function ProfielDetailPage() {
       cancel = true;
     };
   }, [id]);
-
-  React.useEffect(() => {
-    if (!profile) return;
-    let cancel = false;
-    (async () => {
-      setConvLoading(true);
-      setConvError(null);
-      try {
-        const res = await fetch('/api/conversations', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profileId: profile.id }),
-        });
-        const data = (await res.json()) as { conversation?: { id: string }; error?: string };
-        if (res.status === 401) {
-          window.location.assign(loginRedirect);
-          return;
-        }
-        if (!res.ok) throw new Error(data.error ?? 'Chat openen mislukt');
-        if (!cancel) {
-          setConversationId(String(data.conversation?.id ?? ''));
-          setConvError(null);
-        }
-      } catch (e) {
-        if (!cancel) {
-          setConversationId(null);
-          setConvError(e instanceof Error ? e.message : 'Chat openen mislukt');
-        }
-      } finally {
-        if (!cancel) setConvLoading(false);
-      }
-    })();
-    return () => {
-      cancel = true;
-    };
-  }, [profile?.id]);
 
   React.useEffect(() => {
     if (!profile) return;
@@ -165,15 +129,16 @@ export default function ProfielDetailPage() {
   };
 
   const requestPhotoCta = () => {
-    if (!conversationId) return;
-    window.dispatchEvent(
-      new CustomEvent('dm-request-photo', {
-        detail: {
-          conversationId,
-          text: PHOTO_REQUEST_SUGGESTION,
-        },
-      })
-    );
+    try {
+      const payload: ProfilePhotoRequestNavPayload = {
+        profileId: profile.id,
+        draft: DEFAULT_PHOTO_REQUEST_DRAFT,
+      };
+      sessionStorage.setItem(PROFILE_PHOTO_REQUEST_NAV_KEY, JSON.stringify(payload));
+    } catch {
+      /* best effort */
+    }
+    router.push(`/berichten?profile=${encodeURIComponent(profile.id)}`);
   };
 
   const idSeed = Array.from(profile.id).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
@@ -185,27 +150,21 @@ export default function ProfielDetailPage() {
     typeof profile.photoUnlockCredits === 'number' && Number.isFinite(profile.photoUnlockCredits)
       ? Math.max(1, Math.floor(profile.photoUnlockCredits))
       : DEFAULT_PHOTO_UNLOCK_CREDITS;
-
-  const chatBlock = (
-    <>
-      {convError ? (
-        <div className="px-4 py-8 text-center text-sm text-red-700">{convError}</div>
-      ) : convLoading && !conversationId ? (
-        <div className="flex flex-1 items-center justify-center py-12 text-sm text-gray-500">
-          Chat wordt geopend…
-        </div>
-      ) : (
-        <ProfileInlineChat
-          conversationId={conversationId}
-          profileName={profile.name}
-          profileAvatar={avatarUrl}
-        />
-      )}
-    </>
-  );
+  const profilePhotos = (() => {
+    const raw = [profile.photo, ...(profile.photoGallery ?? [])].filter(Boolean) as string[];
+    const unique = [...new Set(raw)];
+    return unique.length > 0 ? unique : [avatarUrl];
+  })();
+  const activePhoto = profilePhotos[Math.min(activePhotoIndex, profilePhotos.length - 1)] ?? avatarUrl;
+  const nextPhoto = () =>
+    setActivePhotoIndex((prev) => (profilePhotos.length <= 1 ? 0 : (prev + 1) % profilePhotos.length));
+  const prevPhoto = () =>
+    setActivePhotoIndex((prev) =>
+      profilePhotos.length <= 1 ? 0 : (prev - 1 + profilePhotos.length) % profilePhotos.length
+    );
 
   return (
-    <div className="flex min-h-[100dvh] min-h-screen flex-col bg-[var(--surface)] pb-28 md:min-h-screen md:pb-10">
+    <div className="flex min-h-[100dvh] min-h-screen flex-col bg-[var(--surface)] pb-10 md:min-h-screen md:pb-10">
       <Navbar />
 
       <div className="pointer-events-none fixed right-3 top-14 z-[45] md:hidden">
@@ -214,89 +173,103 @@ export default function ProfielDetailPage() {
         </div>
       </div>
 
-      {/* ——— Mobile: verticale stack, chat vult resterende hoogte ——— */}
+      {/* ——— Mobile: Tinder-like stack ——— */}
       <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-3 pt-14 md:hidden">
-        <div className="mb-2 shrink-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-conv">
-          <button
-            type="button"
-            onClick={() => setExpanded((e) => !e)}
-            className="flex w-full min-h-[44px] items-center gap-3 text-left transition-conv active:opacity-90"
-          >
-            <img
-              src={avatarUrl}
-              alt=""
-              width={60}
-              height={60}
-              className="h-[60px] w-[60px] shrink-0 rounded-2xl object-cover object-top ring-2 ring-gray-200/80"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-base font-bold text-gray-900">
+        <div className="mb-3 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition-conv">
+          <div className="relative aspect-[3/4] bg-gray-100">
+            <img src={activePhoto} alt="" className="h-full w-full object-cover object-top" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 flex gap-1 p-2">
+              {profilePhotos.map((_, idx) => (
+                <span
+                  key={`m-dot-${idx}`}
+                  className={`h-1.5 flex-1 rounded-full ${
+                    idx === activePhotoIndex ? 'bg-white' : 'bg-white/40'
+                  }`}
+                />
+              ))}
+            </div>
+            {profilePhotos.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={prevPhoto}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/35 p-1.5 text-white"
+                  aria-label="Vorige foto"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={nextPhoto}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/35 p-1.5 text-white"
+                  aria-label="Volgende foto"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </>
+            ) : null}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 to-transparent p-4 text-white">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold">
                   {profile.name}, {profile.age}
-                </span>
+                </h1>
                 {showOnlineUi ? (
-                  <span
-                    className="online-dot-pulse inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500 ring-2 ring-white"
-                    aria-label="Online"
-                  />
+                  <span className="online-dot-pulse inline-block h-2.5 w-2.5 rounded-full bg-primary/70" />
                 ) : null}
               </div>
-              {showOnlineUi ? (
-                <p className="text-sm font-medium text-emerald-800">
-                  Reageert meestal binnen enkele minuten
-                </p>
-              ) : (
-                <p className="text-sm text-gray-500">Laatst actief onlangs</p>
-              )}
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-800">
-                  Vrijgezel
-                </span>
-                <span className="max-w-[160px] truncate rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-800">
-                  {interestTag}
-                </span>
-                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
-                  {tag1}
-                </span>
-                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-                  {unlockCredits} credits per foto
-                </span>
-              </div>
+              <p className="mt-1 flex items-center gap-1 text-sm text-white/90">
+                <MapPin className="h-3.5 w-3.5" />
+                {profile.location}
+              </p>
             </div>
-            <span className="shrink-0 text-gray-400">{expanded ? '▲' : '▼'}</span>
-          </button>
-
-          {expanded ? (
-            <div className="mt-3 space-y-3 border-t border-gray-100 pt-3 text-[15px] leading-relaxed text-gray-800 transition-conv">
-              {profile.bio ? <p>{profile.bio}</p> : null}
-              {profile.interests.length > 1 ? (
-                <p className="text-sm text-gray-600">
-                  Interesses: {profile.interests.slice(0, 6).join(' · ')}
+          </div>
+          <div className="space-y-3 p-4">
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-800">
+                Vrijgezel
+              </span>
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-800">
+                {interestTag}
+              </span>
+              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                {unlockCredits} credits per foto
+              </span>
+            </div>
+            {profile.bio ? <p className="text-sm leading-relaxed text-gray-700">{profile.bio}</p> : null}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-gray-300"
+                onClick={handleProfileLike}
+              >
+                <Heart className={`mr-2 h-4 w-4 ${liked ? 'fill-primary text-primary' : 'text-gray-600'}`} />
+                Like
+              </Button>
+              <Button type="button" onClick={requestPhotoCta} className="h-11 rounded-xl text-sm font-semibold">
+                Vraag om foto
+              </Button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="text-xs font-semibold text-gray-500"
+            >
+              {expanded ? 'Minder tonen' : 'Meer info tonen'}
+            </button>
+            {expanded ? (
+              <div className="space-y-2 border-t border-gray-100 pt-3 text-xs text-gray-600">
+                <p className="flex items-center gap-1.5">
+                  <Cake className="h-3.5 w-3.5" /> Geboren: {tag1}
                 </p>
-              ) : null}
-              {conversationId ? (
-                <Link
-                  href={`/berichten?chat=${conversationId}`}
-                  className="inline-flex min-h-[44px] items-center text-base font-semibold text-gray-900 underline decoration-primary decoration-2 underline-offset-4"
-                >
+                <p className="flex items-center gap-1.5">
+                  <Briefcase className="h-3.5 w-3.5" /> Interesses: {profile.interests.slice(0, 6).join(' · ')}
+                </p>
+                <Link href="/berichten" className="inline-flex items-center text-xs font-semibold text-primary">
                   Open volledige inbox →
                 </Link>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="mt-3 rounded-2xl border border-gray-100 bg-gray-50/90 p-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 min-h-[48px] w-full rounded-2xl border-2 border-gray-300 bg-white text-base font-semibold text-gray-900 transition-conv hover:bg-gray-50"
-              onClick={handleProfileLike}
-            >
-              <Heart
-                className={`mr-2 h-5 w-5 ${liked ? 'fill-primary text-primary' : 'text-gray-600'}`}
-              />
-              Like
-            </Button>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -307,14 +280,14 @@ export default function ProfielDetailPage() {
           </div>
           <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(portfolioItems.length > 0 ? portfolioItems : Array.from({ length: 6 }).map((_, i) => ({
-              conversationId: conversationId ?? `placeholder-${i}`,
+              conversationId: `placeholder-${i}`,
               messageId: `placeholder-${i}`,
               createdAt: new Date().toISOString(),
               imageUrl: avatarUrl,
             }))).map((item) => (
               <div
                 key={`${item.conversationId}:${item.messageId}`}
-                className="relative h-40 w-28 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
+                className="relative h-52 w-36 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
               >
                 <img
                   src={item.imageUrl}
@@ -327,110 +300,152 @@ export default function ProfielDetailPage() {
               </div>
             ))}
           </div>
-          <Button
-            type="button"
-            onClick={requestPhotoCta}
-            disabled={!conversationId}
-            className="mt-3 h-11 w-full rounded-2xl text-sm font-semibold"
-          >
-            Vraag om foto
-          </Button>
           {portfolioLoading ? (
             <p className="mt-2 text-[11px] text-gray-500">Portfolio laden…</p>
           ) : null}
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-conv">
-          <div className="shrink-0 border-b border-gray-100 px-3 py-2.5">
-            <span className="text-sm font-bold text-gray-900">Chat</span>
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col">{chatBlock}</div>
-        </div>
       </div>
 
-      {/* ——— Desktop: bestaand grid ——— */}
-      <div className="mx-auto hidden max-w-6xl grid-cols-12 gap-6 px-4 py-6 md:grid lg:px-6">
-        <div className="space-y-4 lg:col-span-5">
-          <div className="mx-auto w-full max-w-[112px] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md ring-1 ring-black/5 sm:max-w-[128px] lg:mx-0">
-            <img
-              src={avatarUrl}
-              alt=""
-              width={128}
-              height={160}
-              className="aspect-[4/5] h-auto w-full object-cover object-top"
-              decoding="async"
-            />
+      {/* ——— Desktop: balanced two-column layout ——— */}
+      <div className="mx-auto hidden w-full max-w-7xl grid-cols-12 items-start gap-6 px-6 py-8 md:grid lg:px-8">
+        {/* Left: large photo (responsive, constrained height) */}
+        <div className="space-y-4 lg:col-span-5 xl:col-span-5">
+          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+            <div className="relative aspect-[3/4] max-h-[82vh] bg-gray-100">
+              <img src={activePhoto} alt="" className="h-full w-full object-cover object-top" decoding="async" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 flex gap-1 p-3">
+                {profilePhotos.map((_, idx) => (
+                  <span
+                    key={`d-dot-${idx}`}
+                    className={`h-1.5 flex-1 rounded-full ${
+                      idx === activePhotoIndex ? 'bg-white' : 'bg-white/40'
+                    }`}
+                  />
+                ))}
+              </div>
+              {profilePhotos.length > 1 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={prevPhoto}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white backdrop-blur-sm transition hover:bg-black/60"
+                    aria-label="Vorige foto"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={nextPhoto}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white backdrop-blur-sm transition hover:bg-black/60"
+                    aria-label="Volgende foto"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </>
+              ) : null}
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent p-6 text-white">
+                <h1 className="text-4xl font-bold tracking-tight">
+                  {profile.name}, {profile.age}
+                </h1>
+                <p className="mt-1.5 flex items-center gap-2 text-[15px] text-white/90">
+                  <MapPin className="h-4 w-4" />
+                  {profile.location}
+                </p>
+              </div>
+            </div>
           </div>
-          <div className="max-w-xs">
+
+          <div className="grid grid-cols-2 gap-3">
             <Button
               variant="outline"
-              className="flex w-full flex-col gap-1 rounded-2xl py-6 transition-conv"
+              className="h-12 rounded-2xl border-gray-300 text-base transition-conv active:scale-[0.985]"
               onClick={handleProfileLike}
             >
-              <Heart className={`h-6 w-6 ${liked ? 'fill-primary text-primary' : 'text-primary'}`} />
-              <span className="text-xs">Like</span>
+              <Heart className={`mr-2 h-5 w-5 ${liked ? 'fill-primary text-primary' : 'text-primary'}`} />
+              Like
+            </Button>
+            <Button
+              type="button"
+              onClick={requestPhotoCta}
+              className="h-12 rounded-2xl text-base font-semibold shadow-sm"
+            >
+              Vraag om foto
             </Button>
           </div>
         </div>
 
-        <div className="space-y-6 lg:col-span-7">
-          <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-start justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-white">
-                  i
+        {/* Right: info + portfolio + chat (fills remaining height) */}
+        <div className="flex h-full flex-col space-y-6 lg:col-span-7 xl:col-span-7">
+          {/* Profile info card */}
+          <div className="rounded-3xl border border-gray-100 bg-white p-7 shadow-sm">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white shadow">
+                  <Sparkles className="h-5 w-5" />
                 </span>
                 <div>
-                  <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
+                  <h1 className="flex items-center gap-2 text-3xl font-bold text-gray-900">
                     {profile.name}, {profile.age}
                     {showOnlineUi ? (
-                      <span className="online-dot-pulse inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                      <span className="online-dot-pulse ml-1 inline-block h-3 w-3 rounded-full bg-primary" />
                     ) : null}
                   </h1>
-                  <p className="text-xs font-medium text-emerald-700">
-                    Reageert meestal binnen enkele minuten
-                  </p>
+                  <p className="text-sm font-medium text-primary-deep">Reageert meestal binnen enkele minuten</p>
                 </div>
               </div>
-              <Button variant="ghost" size="sm" className="text-gray-500">
+              <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700">
                 Meer ▾
               </Button>
             </div>
 
             <div className="mb-6 flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-sm text-gray-700">
-                <Cake className="h-4 w-4" />
-                {tag1}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-1.5 text-sm text-gray-700">
+                <Cake className="h-4 w-4" /> {tag1}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-sm text-gray-700">
-                <Heart className="h-4 w-4" />
-                Vrijgezel
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-1.5 text-sm text-gray-700">
+                <Heart className="h-4 w-4" /> Vrijgezel
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-sm text-gray-700">
-                <Briefcase className="h-4 w-4" />
-                {interestTag}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-1.5 text-sm text-gray-700">
+                <Briefcase className="h-4 w-4" /> {interestTag}
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">
                 {unlockCredits} credits per foto
               </span>
             </div>
+
+            {profile.bio ? <p className="text-[15px] leading-relaxed text-gray-700">{profile.bio}</p> : null}
+
+            {profile.interests.length > 0 ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {profile.interests.slice(0, 10).map((interest) => (
+                  <span
+                    key={interest}
+                    className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-sm text-gray-700"
+                  >
+                    {interest}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
 
+          {/* Portfolio */}
           <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Portfolio</h2>
-              <span className="text-xs font-medium text-gray-500">Intieme foto’s · 30 dagen</span>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">Portfolio</h2>
+              <span className="text-xs font-medium text-gray-500">Intieme foto’s · laatste 30 dagen</span>
             </div>
             <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {(portfolioItems.length > 0 ? portfolioItems : Array.from({ length: 8 }).map((_, i) => ({
-                conversationId: conversationId ?? `placeholder-${i}`,
+              {(portfolioItems.length > 0 ? portfolioItems : Array.from({ length: 6 }).map((_, i) => ({
+                conversationId: `placeholder-${i}`,
                 messageId: `placeholder-${i}`,
                 createdAt: new Date().toISOString(),
                 imageUrl: avatarUrl,
               }))).map((item) => (
                 <div
                   key={`${item.conversationId}:${item.messageId}`}
-                  className="relative h-56 w-40 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
+                  className="relative h-80 w-56 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
                 >
                   <img
                     src={item.imageUrl}
@@ -443,27 +458,9 @@ export default function ProfielDetailPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-4">
-              <Button
-                type="button"
-                onClick={requestPhotoCta}
-                disabled={!conversationId}
-                className="h-11 rounded-2xl px-6 text-sm font-semibold"
-              >
-                Vraag om foto
-              </Button>
-              {portfolioLoading ? (
-                <p className="mt-2 text-xs text-gray-500">Portfolio laden…</p>
-              ) : null}
-            </div>
+            {portfolioLoading ? <p className="mt-2 text-xs text-gray-500">Portfolio laden…</p> : null}
           </div>
 
-          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
-            <div className="flex items-center border-b border-gray-100 px-4 py-3">
-              <span className="font-semibold">Chat</span>
-            </div>
-            {chatBlock}
-          </div>
         </div>
       </div>
     </div>

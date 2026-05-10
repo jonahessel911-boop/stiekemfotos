@@ -3,6 +3,7 @@ export type Messages = {
     feed: string;
     messages: string;
     profiles: string;
+    gallery: string;
     credits: string;
   };
   common: {

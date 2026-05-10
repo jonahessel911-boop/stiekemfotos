@@ -13,7 +13,7 @@ export default function VoorwaardenPage() {
           juridische tekst voordat je live gaat.
         </p>
         <p>
-          Door discreetemeisjes.nl te gebruiken, bevestig je dat je minimaal 18 jaar
+          Door stiekemefotos.nl te gebruiken, bevestig je dat je minimaal 18 jaar
           bent en akkoord gaat met respectvol en discreet gedrag ten opzichte van
           anderen.
         </p>

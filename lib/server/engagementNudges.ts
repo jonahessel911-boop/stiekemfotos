@@ -3,7 +3,14 @@ import {
   loadList,
 } from "@/lib/server/conversations";
 import {
+  appendEngagementOutboundEntry,
+  canSendAutomatedProfileOutreach,
+  ENGAGEMENT_DEFER_MS,
+  pruneEngagementOutboundLog,
+} from "@/lib/server/engagementWeeklyCap";
+import {
   findUserById,
+  updateUserEngagementOutboundLog,
   updateUserEngagementSlots,
   updateUserReactionNudges,
 } from "@/lib/server/users";
@@ -87,6 +94,8 @@ export async function maybeSendEngagementNudges(userId: string): Promise<void> {
 
   const slots = (user.engagementSlots ?? []).map((s) => ({ ...s }));
   let changedSlots = false;
+  let outboundLog = pruneEngagementOutboundLog(user.engagementOutboundLog);
+  let changedOutboundLog = false;
 
   for (let i = 0; i < slots.length; i++) {
     const s = slots[i]!;
@@ -109,9 +118,17 @@ export async function maybeSendEngagementNudges(userId: string): Promise<void> {
       continue;
     }
 
+    if (!canSendAutomatedProfileOutreach(outboundLog, s.profileId)) {
+      s.fireAt = new Date(Date.now() + ENGAGEMENT_DEFER_MS).toISOString();
+      changedSlots = true;
+      continue;
+    }
+
     await appendSystemAssistantMessage(conv.id, pickLine());
     s.sentAt = new Date().toISOString();
     changedSlots = true;
+    outboundLog = appendEngagementOutboundEntry(outboundLog, s.profileId);
+    changedOutboundLog = true;
   }
 
   if (changedSlots) await updateUserEngagementSlots(userId, slots);
@@ -132,11 +149,22 @@ export async function maybeSendEngagementNudges(userId: string): Promise<void> {
       continue;
     }
 
+    if (!canSendAutomatedProfileOutreach(outboundLog, n.profileId)) {
+      n.fireAt = new Date(Date.now() + ENGAGEMENT_DEFER_MS).toISOString();
+      changedReactionNudges = true;
+      continue;
+    }
+
     await appendSystemAssistantMessage(conv.id, pickLikeNudgeLine(n.source));
     n.sentAt = new Date().toISOString();
     changedReactionNudges = true;
+    outboundLog = appendEngagementOutboundEntry(outboundLog, n.profileId);
+    changedOutboundLog = true;
   }
   if (changedReactionNudges) {
     await updateUserReactionNudges(userId, reactionNudges);
+  }
+  if (changedOutboundLog) {
+    await updateUserEngagementOutboundLog(userId, outboundLog);
   }
 }

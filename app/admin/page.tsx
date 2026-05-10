@@ -2,8 +2,27 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 
+type DailyBucket = { date: string; value: number };
+
+type AdminAnalytics = {
+  uniqueChatConversations: number;
+  totalLockedImagesSent: number;
+  totalUserImagesSent: number;
+  totalImagesUnlocked: number;
+  unlockConversionPercent: number | null;
+  firstUserMessageToFirstLockedImagePercent: number | null;
+  firstUnlockToSecondUnlockPercent: number | null;
+  revenueEurTotal: number;
+  totalCreditsPurchased: number;
+  revenueByDay: DailyBucket[];
+  purchasesByDay: DailyBucket[];
+  signupsByDay: DailyBucket[];
+  chartDays: number;
+};
+
 type AdminData = {
   stats: { users: number; signups: number; purchases: number; conversations: number };
+  analytics?: AdminAnalytics;
   signups: Array<{ naam: string; email: string; leeftijd: number; createdAt: string }>;
   users: Array<{
     id: string;
@@ -93,6 +112,7 @@ export default function AdminPage() {
   }, []);
 
   const stats = useMemo(() => data?.stats, [data]);
+  const ax = useMemo(() => data?.analytics, [data]);
 
   if (!authorized) {
     return (
@@ -186,9 +206,61 @@ export default function AdminPage() {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat label="Users" value={stats.users} />
             <Stat label="Signups" value={stats.signups} />
-            <Stat label="Aankopen" value={stats.purchases} />
-            <Stat label="Gesprekken" value={stats.conversations} />
+            <Stat label="Aankopen (orders)" value={stats.purchases} />
+            <Stat label="Gesprekken (rows)" value={stats.conversations} />
           </div>
+        ) : null}
+
+        {ax ? (
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+              <StatMoney label="Omzet (betaald)" value={ax.revenueEurTotal} suffix=" €" />
+              <Stat label="Credits verkocht" value={ax.totalCreditsPurchased} hint="Som uit Stripe-checkouts" />
+              <Stat label="Unieke chats" value={ax.uniqueChatConversations} hint="Gesprekken met ownerUserId" />
+              <Stat label="Locked foto’s (AI)" value={ax.totalLockedImagesSent} hint="Assistant photoLock" />
+              <Stat label="User foto-uploads" value={ax.totalUserImagesSent} hint="Gebruiker stuurt foto" />
+              <Stat label="Ontgrendeld" value={ax.totalImagesUnlocked} hint="Credits uitgegeven" />
+              <StatPct label="Unlock-rate" value={ax.unlockConversionPercent} hint="Ontgrendeld ÷ locked verstuurd" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <ConversionCard
+                title="Eerste bericht → eerste foto"
+                subtitle="Van chats met user-bericht: % met ≥1 locked foto daarna"
+                percent={ax.firstUserMessageToFirstLockedImagePercent}
+              />
+              <ConversionCard
+                title="Unlock-rate (betaling)"
+                subtitle="Van alle verstuurde locked foto’s: % daadwerkelijk ontgrendeld"
+                percent={ax.unlockConversionPercent}
+              />
+              <ConversionCard
+                title="1e → 2e ontgrendeling"
+                subtitle="Van users met ≥1 unlock: % met ≥2 ontgrendelde foto’s"
+                percent={ax.firstUnlockToSecondUnlockPercent}
+              />
+            </div>
+
+            <Section title={`Trend laatste ${ax.chartDays} dagen`}>
+              <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+                <DailyBarChart
+                  title="Signups per dag"
+                  data={ax.signupsByDay}
+                  format="int"
+                />
+                <DailyBarChart
+                  title="Omzet per dag (EUR)"
+                  data={ax.revenueByDay}
+                  format="eur"
+                />
+                <DailyBarChart
+                  title="Aankopen per dag (# orders)"
+                  data={ax.purchasesByDay}
+                  format="int"
+                />
+              </div>
+            </Section>
+          </>
         ) : null}
 
         <Section title="Signups">
@@ -359,11 +431,92 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
       <div className="text-xs uppercase text-gray-500">{label}</div>
       <div className="mt-1 text-2xl font-bold text-gray-900">{value}</div>
+      {hint ? <p className="mt-1 text-[11px] leading-snug text-gray-400">{hint}</p> : null}
+    </div>
+  );
+}
+
+function StatMoney({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+      <div className="text-xs uppercase text-gray-500">{label}</div>
+      <div className="mt-1 text-2xl font-bold text-primary-deep">
+        {value.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        {suffix ?? ''}
+      </div>
+    </div>
+  );
+}
+
+function StatPct({ label, value, hint }: { label: string; value: number | null; hint?: string }) {
+  const display = value === null ? '—' : `${value}%`;
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+      <div className="text-xs uppercase text-gray-500">{label}</div>
+      <div className="mt-1 text-2xl font-bold text-gray-900">{display}</div>
+      {hint ? <p className="mt-1 text-[11px] leading-snug text-gray-400">{hint}</p> : null}
+    </div>
+  );
+}
+
+function ConversionCard({
+  title,
+  subtitle,
+  percent,
+}: {
+  title: string;
+  subtitle: string;
+  percent: number | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/5 to-white p-5 shadow-sm">
+      <p className="text-sm font-bold text-gray-900">{title}</p>
+      <p className="mt-1 text-xs leading-relaxed text-gray-600">{subtitle}</p>
+      <p className="mt-4 text-4xl font-bold tabular-nums text-primary-deep">
+        {percent === null ? '—' : `${percent}%`}
+      </p>
+    </div>
+  );
+}
+
+function DailyBarChart({
+  title,
+  data,
+  format,
+}: {
+  title: string;
+  data: DailyBucket[];
+  format: 'int' | 'eur';
+}) {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const fmt = (v: number) =>
+    format === 'eur'
+      ? `${v.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`
+      : String(Math.round(v));
+
+  return (
+    <div className="min-w-0">
+      <p className="mb-3 text-sm font-semibold text-gray-900">{title}</p>
+      <div className="flex h-36 items-end gap-px rounded-lg border border-gray-100 bg-gray-50/80 px-1 pb-1 pt-2">
+        {data.map((d) => (
+          <div key={d.date} className="flex min-w-0 flex-1 flex-col justify-end h-full">
+            <div
+              className="mx-px w-full min-h-[3px] rounded-t bg-primary/90 transition-colors hover:bg-primary-hover"
+              style={{ height: `${Math.max(4, (d.value / max) * 100)}%` }}
+              title={`${d.date}: ${fmt(d.value)}`}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex justify-between text-[10px] text-gray-500">
+        <span>{data[0]?.date?.slice(5) ?? ''}</span>
+        <span>vandaag</span>
+      </div>
     </div>
   );
 }

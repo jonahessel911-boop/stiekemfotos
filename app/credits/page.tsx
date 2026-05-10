@@ -62,8 +62,23 @@ export default function CreditsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Credits</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Overzicht van je saldo. Ieder bericht kost 10 credits.
+              Overzicht van je saldo. Chatten is gratis.
             </p>
+          </div>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Mijn foto&apos;s</p>
+              <p className="text-xs text-gray-600">Bekijk al je gekochte / ontgrendelde foto&apos;s.</p>
+            </div>
+            <Link
+              href="/mijn-fotos"
+              className="inline-flex items-center rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary-hover"
+            >
+              Open galerij
+            </Link>
           </div>
         </div>
 
@@ -77,7 +92,7 @@ export default function CreditsPage() {
           </p>
           <p className="text-sm text-gray-500 mt-1">credits over</p>
           <p className="text-xs text-gray-400 mt-6">
-            Iedere verstuurde bericht kost 10 credits
+            Chatberichten kosten 0 credits
           </p>
         </div>
 
@@ -97,13 +112,13 @@ export default function CreditsPage() {
             <ul className="divide-y divide-gray-100 max-h-[min(420px,50vh)] overflow-y-auto">
               {purchases.map((p) => (
                 <li key={p.id} className="px-4 py-4 flex gap-3 items-start">
-                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-700">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary-deep">
                     <ArrowUpRight className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between">
                       <span className="font-medium text-gray-900">Credits gekocht</span>
-                      <span className="text-emerald-600 font-bold tabular-nums">
+                      <span className="text-primary font-bold tabular-nums">
                         +{p.credits}
                       </span>
                     </div>
@@ -119,7 +134,7 @@ export default function CreditsPage() {
         <section className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-5 md:p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900 mb-1">Credits bijkopen</h2>
           <p className="text-sm text-gray-600 mb-6">
-            Koop credits om te blijven chatten. Ieder bericht kost 10 credits.
+            Koop credits voor foto-unlocks en extra&apos;s. Chatten blijft gratis.
           </p>
           <div className="mb-5 rounded-xl border border-dashed border-primary/35 bg-primary/[0.05] p-4">
             <p className="text-sm font-semibold text-gray-900">Testmodus</p>

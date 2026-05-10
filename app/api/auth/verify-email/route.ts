@@ -6,7 +6,7 @@ export async function GET(req: Request) {
   const token = url.searchParams.get("token") ?? "";
   const user = await verifyUserEmailByToken(token);
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? url.origin;
-  const redirect = new URL("/nieuwsfeed", base);
+  const redirect = new URL("/profielen", base);
   if (user) {
     redirect.searchParams.set("verified", "1");
   } else {

@@ -12,8 +12,8 @@ export type CreditPurchaseRecord = {
   priceLabel: string;
 };
 
-/** Eén verstuurd bericht (per stuk in een batch) kost dit veel credits. */
-export const CREDITS_PER_MESSAGE = 10;
+/** Chatten is gratis; alleen unlocks/foto's kosten credits. */
+export const CREDITS_PER_MESSAGE = 0;
 export const CREDITS_PER_PHOTO_UNLOCK = 100;
 
 /** Startbalans: eerste credits gratis. */

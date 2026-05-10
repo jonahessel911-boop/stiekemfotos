@@ -11,9 +11,9 @@ export default function InloggenPage() {
     return new URLSearchParams(window.location.search).get(key)?.trim() ?? '';
   };
   const getNextUrl = () => {
-    if (typeof window === 'undefined') return '/nieuwsfeed';
+    if (typeof window === 'undefined') return '/profielen';
     const raw = new URLSearchParams(window.location.search).get('next')?.trim();
-    if (!raw || !raw.startsWith('/')) return '/nieuwsfeed';
+    if (!raw || !raw.startsWith('/')) return '/profielen';
     return raw;
   };
   const [email, setEmail] = useState('');
@@ -87,7 +87,7 @@ export default function InloggenPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--surface)] pb-24">
+    <div className="min-h-screen bg-[var(--auth-shell-bg)] pb-24">
       <div className="pt-10 max-w-md mx-auto px-4">
         <div className="flex justify-center mb-6">
           <Logo variant="hero" className="scale-90" />
@@ -96,7 +96,10 @@ export default function InloggenPage() {
         <p className="text-sm text-gray-600 text-center mb-8">
           Gebruik het e-mailadres en wachtwoord van je account.
         </p>
-        <form onSubmit={submit} className="space-y-4 bg-[var(--surface-card)] rounded-2xl border border-gray-200 p-6 shadow-sm">
+        <form
+          onSubmit={submit}
+          className="space-y-4 rounded-2xl border border-primary/15 bg-[var(--onboarding-card)] p-6 shadow-md shadow-primary/5"
+        >
           {notice && (
             <p className="text-sm text-blue-700 bg-blue-50 rounded-xl px-4 py-2 border border-blue-100">
               {notice}

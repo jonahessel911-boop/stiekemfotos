@@ -3,6 +3,8 @@ export type PersonaStyle = "dutch" | "east_european";
 
 export interface Profile {
   id: string;
+  /** Supabase slug; gebruikt voor stabiele image-identity (zelfde als profielfoto-seed). */
+  slug?: string;
   name: string;
   age: number;
   location: string;
@@ -12,6 +14,11 @@ export interface Profile {
   cupMaat?: string;
   /** Woont in NL; heritage = herkomst voor persona (bijv. "Oekraïne"). */
   heritage?: string;
+  /**
+   * Exacte visuele referentie zoals bij profielfoto-generatie (Engels).
+   * Gezet bij admin "random user"; chat image generation gebruikt dit i.p.v. alleen hash-based identity.
+   */
+  visualIdentityPrompt?: string;
   personaStyle: PersonaStyle;
   /** xAI TTS: nl | ru | uk | pl | ro | bg, etc. */
   voiceLanguage: string;

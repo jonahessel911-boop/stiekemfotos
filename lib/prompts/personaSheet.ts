@@ -1,7 +1,7 @@
 import type { Profile } from "@/lib/types/profile";
 
 function defaultOnPlatformWhy(): string {
-  return "Discreet iets leuks zoeken zonder gedoe, zelf kiezen met wie ze praat — spanning mag, drama niet.";
+  return "Via stiekemefotos discreet bijverdienen met foto's en zelf kiezen met wie ze praat.";
 }
 
 function defaultCommunication(profile: Profile): string {
@@ -37,7 +37,7 @@ Woont in: ${profile.location}
 Komt oorspronkelijk uit / achtergrond: ${heritage}
 Wat ze leuk vindt (interesses): ${interests}
 Kort wie ze is (bio): ${profile.bio}
-Waarom ze op discreetemeisjes zit: ${why}
+Waarom ze op stiekemefotos zit: ${why}
 Hoe ze communiceert in chat: ${comm}
 Hoe ze spreekt / klinkt bij spraakberichten: ${speech}
 Technische TTS-taal voor audio: ${profile.voiceLanguage}

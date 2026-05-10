@@ -41,7 +41,9 @@ create table if not exists users (
   last_seen_at timestamptz,
   engagement_slots jsonb,
   reaction_nudges jsonb,
+  engagement_outbound_log jsonb,
   personal_facts jsonb,
+  platform_onboarding_completed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -143,6 +145,7 @@ create table if not exists profiles (
   photo_unlock_credits integer not null default 100 check (photo_unlock_credits > 0),
   voice_language text not null default 'ro',
   heritage text,
+  visual_identity_prompt text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

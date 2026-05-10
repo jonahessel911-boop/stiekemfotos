@@ -4,6 +4,11 @@ import { readJsonBlob } from "@/lib/server/blobJson";
 import { readJson } from "@/lib/server/store";
 import { ADMIN_SESSION_COOKIE_NAME, parseAdminCookieValue } from "@/lib/server/adminAuth";
 import type { Conversation } from "@/lib/types/chat";
+import {
+  computeConversationAnalytics,
+  revenueAndPurchasesByDay,
+  signupsByDay,
+} from "@/lib/server/adminAnalytics";
 
 type SignupRow = {
   naam: string;
@@ -104,12 +109,31 @@ export async function GET() {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
+  const conversationAnalytics = computeConversationAnalytics(conversations);
+  const chartDays = 30;
+  const signupDaily = signupsByDay(signups, chartDays);
+  const {
+    revenueByDay,
+    purchasesByDay,
+    revenueEurTotal,
+    totalCreditsPurchased,
+  } = revenueAndPurchasesByDay(paid, chartDays);
+
   return NextResponse.json({
     stats: {
       users: users.length,
       signups: signups.length,
       purchases: purchasesTable.length,
       conversations: conversations.length,
+    },
+    analytics: {
+      ...conversationAnalytics,
+      revenueEurTotal,
+      totalCreditsPurchased,
+      revenueByDay,
+      purchasesByDay,
+      signupsByDay: signupDaily,
+      chartDays,
     },
     signups: signupsTable,
     users: usersSummary,

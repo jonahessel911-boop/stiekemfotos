@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { appendUserGiftMessage, recordOwnerPolledConversation } from "@/lib/server/conversations";
+import {
+  appendUserGiftMessage,
+  flushInboxAutomationsForOwner,
+  recordOwnerPolledConversation,
+} from "@/lib/server/conversations";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
 import { isUserEmailVerified, touchUserSeen } from "@/lib/server/users";
 
@@ -34,6 +38,7 @@ export async function POST(
       String(body.packageLabel ?? ""),
       userId
     );
+    await flushInboxAutomationsForOwner(userId);
     return NextResponse.json({ giftMessage });
   } catch (e) {
     return NextResponse.json(

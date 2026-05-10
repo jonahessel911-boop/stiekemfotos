@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       .join("\n\n---\n\n");
 
     const prompt = [
-      "Je bent een admin intelligence assistent voor discreetemeisjes.",
+      "Je bent een admin intelligence assistent voor stiekemefotos.",
       "Geef precies antwoord op de vraag op basis van de data hieronder.",
       "Als iets niet zeker is, zeg dat expliciet.",
       "",

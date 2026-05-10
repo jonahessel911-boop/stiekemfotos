@@ -40,7 +40,7 @@ export async function POST(
   }
 
   try {
-    const pathname = `discreetemeisjes/animations/${key}`;
+    const pathname = `stiekemefotos/animations/${key}`;
     const blob = await put(pathname, file, {
       access: "public",
       addRandomSuffix: false,
