@@ -635,7 +635,7 @@ export default function StartPage() {
                   vrouwen gevonden die bij je wensen passen.
                 </p>
                 <p className="text-center text-sm text-gray-600">
-                  Maak hieronder gratis een account om verder te gaan.
+                  Maak hieronder een account om verder te gaan.
                 </p>
               </>
             ) : (

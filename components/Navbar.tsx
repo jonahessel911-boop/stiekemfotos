@@ -6,6 +6,7 @@ import Logo from './Logo';
 import { Home, MessageCircle, Users, CreditCard, Bell, LogOut, Images } from 'lucide-react';
 import { clearStoredUser, getStoredUser } from '@/lib/onboarding-client';
 import { useI18n } from '@/components/I18nProvider';
+import { usePlatformOnboardingBlocking } from '@/components/PlatformOnboardingContext';
 
 const navItems = [
   { icon: Users, key: 'profiles', href: '/profielen' },
@@ -38,6 +39,7 @@ export default function Navbar() {
   const { t, locale } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
+  const platformOnboardingBlocking = usePlatformOnboardingBlocking();
   /** Lege initiële staat: voorkomt hydration mismatch (SSR heeft geen localStorage). */
   const [activeItem, setActiveItem] = useState<NavKey>(() => keyForPathname(pathname) ?? 'profiles');
   const [naamKort, setNaamKort] = useState('');
@@ -78,7 +80,7 @@ export default function Navbar() {
 
   const mobileBar = (
     <div
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[100] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(198,0,63,0.35)]"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-[90] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(198,0,63,0.35)]"
       role="navigation"
       aria-label="Hoofdmenu mobiel"
     >
@@ -112,6 +114,10 @@ export default function Navbar() {
       </div>
     </div>
   );
+
+  if (platformOnboardingBlocking) {
+    return null;
+  }
 
   return (
     <>

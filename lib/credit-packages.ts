@@ -1,19 +1,21 @@
 /** Teksten voor AI / server wanneer credits ter sprake komen. */
 
-export const CREDIT_PACKAGES_DISPLAY = `Aanbevolen pakket (tijdelijk 60% korting):
-• 250 credits — €13,99
+export const CREDIT_PACKAGES_DISPLAY = `100 credits = €10 per foto.
 
-Andere opties:
-• 125 credits — €9,99
-• 75 credits — €5,99
+Tijdelijke actie — 3 foto's (300 credits): €19,99 (adviesprijs €29,99).
 
-Koop via de prijzen-popup in de app.`;
+Andere pakketten:
+• 100 credits — €10,00
+• 200 credits — €20,00
+
+Koop via de prijzen in de app.`;
 
 export const CREDITS_VOICE_LINE_NL =
-  "Chatten is gratis. Credits gebruik je voor foto’s ontgrendelen en extra’s — open de prijzen om bij te kopen.";
+  "Chatten kost geen credits. Credits gebruik je voor foto's ontgrendelen — open de prijzen om bij te kopen.";
 
-/** Demo-pakket na „betaling”. */
-export const FEATURED_DEAL_CREDITS = 250;
-export const FEATURED_DEAL_PRICE_LABEL = "€13,99";
-export const FEATURED_DEAL_WAS_PRICE_LABEL = "€13,99";
-export const FEATURED_DEAL_DISCOUNT_PERCENT = 0;
+/** Actiebundel (popup / stemteksten): 300 credits, promo vs adviesprijs. */
+export const FEATURED_DEAL_CREDITS = 300;
+export const FEATURED_DEAL_PRICE_LABEL = "€19,99";
+export const FEATURED_DEAL_WAS_PRICE_LABEL = "€29,99";
+/** Grof: (29,99 − 19,99) / 29,99 */
+export const FEATURED_DEAL_DISCOUNT_PERCENT = 33;

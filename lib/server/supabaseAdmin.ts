@@ -5,7 +5,8 @@ let cachedAdmin: SupabaseClient | undefined;
 
 let warnedMissingEnv = false;
 
-function stripEnvSecret(raw: string | undefined): string {
+/** Trim + verwijder per ongeluk geplakte aanhalingstekens rond secrets in Vercel/.env. */
+export function stripEnvSecret(raw: string | undefined): string {
   if (!raw) return "";
   let s = raw.trim().replace(/^\uFEFF/, "");
   if (
@@ -37,15 +38,16 @@ export function getSupabaseAdmin(): SupabaseClient | null {
   if (cachedAdmin) return cachedAdmin;
 
   const url = normalizeSupabaseUrl(
-    process.env.SUPABASE_URL?.trim() || process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    stripEnvSecret(process.env.SUPABASE_URL) ||
+      stripEnvSecret(process.env.NEXT_PUBLIC_SUPABASE_URL)
   );
   const key = resolveServiceRoleKey();
 
   if (!url || !key) {
-    if (process.env.NODE_ENV === "development" && !warnedMissingEnv) {
+    if (!warnedMissingEnv) {
       warnedMissingEnv = true;
       console.warn(
-        "[supabaseAdmin] Service role niet beschikbaar:",
+        "[supabaseAdmin] Service role niet beschikbaar — server valt terug op anon (RLS kan reads blokkeren):",
         [!url && "SUPABASE_URL (of NEXT_PUBLIC_SUPABASE_URL)", !key && "SUPABASE_SERVICE_ROLE_KEY"]
           .filter(Boolean)
           .join(", ") || "(onbekend)"

@@ -12,12 +12,12 @@ export type CreditPurchaseRecord = {
   priceLabel: string;
 };
 
-/** Chatten is gratis; alleen unlocks/foto's kosten credits. */
+/** Chatten verbruikt geen credits; ontgrendelen van foto's wel (zie CREDITS_PER_PHOTO_UNLOCK). */
 export const CREDITS_PER_MESSAGE = 0;
 export const CREDITS_PER_PHOTO_UNLOCK = 100;
 
-/** Startbalans: eerste credits gratis. */
-export const INITIAL_FREE_CREDITS = 100;
+/** Startbalans voor elk nieuw account (eenmalig, voor foto-unlocks). */
+export const INITIAL_FREE_CREDITS = 200;
 
 export function notifyCreditsUpdated() {
   if (typeof window !== "undefined") {

@@ -2,16 +2,19 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles } from 'lucide-react';
-import {
-  addCredits,
-  CREDITS_PER_MESSAGE,
-  INITIAL_FREE_CREDITS,
-} from '@/lib/credits-client';
+import { addCredits } from '@/lib/credits-client';
 
 const PACKAGES = [
-  { id: 'left', credits: 125, priceLabel: '€9,99', title: 'Starter', featured: false },
-  { id: 'middle', credits: 250, priceLabel: '€13,99', title: 'Beste deal', featured: true },
-  { id: 'right', credits: 75, priceLabel: '€5,99', title: 'Mini', featured: false },
+  { id: 'left', credits: 100, priceLabel: '€10,00', title: '1 foto', featured: false as const },
+  {
+    id: 'middle',
+    credits: 300,
+    priceLabel: '€19,99',
+    wasPriceLabel: '€29,99',
+    title: "3 foto's",
+    featured: true as const,
+  },
+  { id: 'right', credits: 200, priceLabel: '€20,00', title: "2 foto's", featured: false as const },
 ] as const;
 
 type Props = {
@@ -110,11 +113,10 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
     <div className="space-y-5">
       {showIntro ? (
         <p className="text-sm text-gray-600 leading-relaxed">
-          Je eerste <strong>{INITIAL_FREE_CREDITS} credits</strong> waren gratis. Chatten is
-          <strong> gratis</strong>. Credits gebruik je vooral voor foto&apos;s ontgrendelen en extra&apos;s.
-          Kies hieronder een pakket als je wilt opwaarderen.{' '}
+          <strong>100 credits = €10</strong> per ontgrendelde foto. Chatten kost geen credits. Kies
+          een pakket om op te waarderen.{' '}
           <span className="font-semibold text-primary">
-            Tijdelijke actie: Beste deal €13,99 met 60% korting.
+            Actie: 3 foto&apos;s (300 credits) voor €19,99 — adviesprijs €29,99.
           </span>
         </p>
       ) : null}
@@ -142,18 +144,25 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
             {pkg.featured ? (
               <span className="absolute -top-2.5 left-4 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                 <Sparkles className="h-3 w-3" />
-                Beste deal
+                Actie
               </span>
             ) : null}
             {pkg.featured ? (
               <span className="absolute right-4 top-4 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-deep">
-                60% korting
+                Was €29,99
               </span>
             ) : null}
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
               {pkg.title}
             </p>
-            <div className="mt-2 text-3xl font-bold text-gray-900">{pkg.priceLabel}</div>
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0">
+              <span className="text-3xl font-bold text-gray-900">{pkg.priceLabel}</span>
+              {'wasPriceLabel' in pkg ? (
+                <span className="text-lg font-semibold text-gray-400 line-through">
+                  {pkg.wasPriceLabel}
+                </span>
+              ) : null}
+            </div>
             <div className="mt-1 text-sm font-semibold text-primary">
               {pkg.credits.toLocaleString('nl-NL')} credits
             </div>

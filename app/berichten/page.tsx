@@ -32,7 +32,6 @@ import Link from 'next/link';
 import type { ConversationSummary, Conversation, ChatMessage } from '@/lib/types/chat';
 import {
   getCreditsBalance,
-  addCredits,
   spendChatCredit,
   refundChatCredit,
   spendPhotoUnlock,
@@ -43,12 +42,6 @@ import {
   INITIAL_FREE_CREDITS,
 } from '@/lib/credits-client';
 import { useCreditsPricing } from '@/components/CreditsPricingProvider';
-import {
-  FEATURED_DEAL_PRICE_LABEL,
-  FEATURED_DEAL_CREDITS,
-  FEATURED_DEAL_WAS_PRICE_LABEL,
-  FEATURED_DEAL_DISCOUNT_PERCENT,
-} from '@/lib/credit-packages';
 import {
   MAX_OUTGOING_BATCH_SIZE,
   MAX_USER_MESSAGE_CHARS,
@@ -333,10 +326,6 @@ function BerichtenInner() {
   const swipeStartRef = useRef<{ messageId: string; x: number; y: number } | null>(null);
   const [swipeOffsetByMessageId, setSwipeOffsetByMessageId] = useState<Record<string, number>>({});
   const [liveNotifications, setLiveNotifications] = useState<LiveNotification[]>([]);
-
-  const handleAddDebugCredits = useCallback(() => {
-    addCredits(1000, 'Debug +1000');
-  }, []);
 
   /** Vergrendelde foto's per bericht-id; key = messageId, value = busy/unlocking. */
   const [unlockingByMessageId, setUnlockingByMessageId] = useState<Record<string, boolean>>({});
@@ -1866,13 +1855,6 @@ function BerichtenInner() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-bold text-2xl text-gray-900">Berichten</h2>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddDebugCredits}
-                  className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary hover:bg-primary/15"
-                >
-                  credits +1000
-                </button>
                 <div className="bg-primary text-white text-xs font-semibold px-2.5 py-1 rounded-full min-w-[28px] text-center">
                   {list.length > 0 ? totalUnread || list.length : totalUnread}
                 </div>
@@ -2990,28 +2972,32 @@ function CreditsSidebar({
               Foto’s ontgrendelen
             </div>
             <p className="text-xs opacity-85 mt-2 leading-snug">
-              Chatten is gratis · 1 foto = {CREDITS_PER_PHOTO_UNLOCK} credits (≈ €19,99)
+              Chatten kost geen credits · 1 foto = {CREDITS_PER_PHOTO_UNLOCK} credits (€10) · actie 3
+              foto&apos;s €19,99 i.p.v. €29,99
             </p>
           </div>
           <CreditCard className="w-8 h-8 opacity-80" />
         </div>
         <ul className="space-y-3 text-sm border-t border-white/20 pt-4">
           <li className="flex justify-between gap-2 font-semibold">
-            <span>1 foto</span>
-            <span>€19,99</span>
+            <span>1 foto (100 credits)</span>
+            <span>€10,00</span>
           </li>
           <li className="flex justify-between gap-2 text-sm opacity-95">
-            <span>3 foto’s</span>
-            <span>€49,99 · populair</span>
+            <span>2 foto&apos;s (200 credits)</span>
+            <span>€20,00</span>
           </li>
           <li className="flex justify-between gap-2 text-sm opacity-90">
-            <span>5 foto’s</span>
-            <span>€74,99</span>
+            <span>3 foto&apos;s (300 credits)</span>
+            <span>
+              <span className="mr-1.5 line-through opacity-75">€29,99</span>
+              €19,99 actie
+            </span>
           </li>
         </ul>
         <ul className="space-y-4 text-sm mt-4">
           <li className="flex gap-3">
-            <span className="text-lg">💬</span> Onbeperkt en gratis chatten
+            <span className="text-lg">💬</span> Chatten zonder credits
           </li>
           <li className="flex gap-3">
             <span className="text-lg">📸</span> Custom foto’s op aanvraag
@@ -3033,7 +3019,7 @@ function CreditsSidebar({
             balance < CREDITS_PER_PHOTO_UNLOCK ? (
               <span>
                 Nog {balance} credits. Voor het ontgrendelen van een foto heb je {CREDITS_PER_PHOTO_UNLOCK}{' '}
-                credits nodig. <span className="font-semibold">Chatten is gratis.</span>
+                credits nodig (tarief: €10 per foto).
               </span>
             ) : (
               <>Je hebt {balance} credits voor foto&apos;s.</>

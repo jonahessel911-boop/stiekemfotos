@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Profile } from "@/lib/types/profile";
-import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
+import { getSupabaseAdmin, stripEnvSecret } from "@/lib/server/supabaseAdmin";
 
 type DbProfileRow = {
   id: string;
@@ -9,9 +9,10 @@ type DbProfileRow = {
   first_name: string;
   age: number;
   city: string;
-  lengte_cm: number | null;
-  gewicht_kg: number | null;
-  cup_maat: string | null;
+  /** Ontbreken op oudere DB’s; niet in elke .select() opnemen i.v.m. schema-drift. */
+  lengte_cm?: number | null;
+  gewicht_kg?: number | null;
+  cup_maat?: string | null;
   country: string;
   bio: string;
   interests: string[] | null;
@@ -34,15 +35,15 @@ function normalizeSupabaseUrl(raw: string | undefined): string {
 
 export function isSupabaseProfilesEnabled(): boolean {
   const url = normalizeSupabaseUrl(
-    process.env.SUPABASE_URL?.trim() || process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+    stripEnvSecret(process.env.SUPABASE_URL) ||
+      stripEnvSecret(process.env.NEXT_PUBLIC_SUPABASE_URL)
   );
   const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    process.env.SUPABASE_ANON_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
-  return Boolean(
-    url && key
-  );
+    stripEnvSecret(process.env.SUPABASE_SERVICE_ROLE_KEY) ||
+    stripEnvSecret(process.env.SUPABASE_SECRET_KEY) ||
+    stripEnvSecret(process.env.SUPABASE_ANON_KEY) ||
+    stripEnvSecret(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  return Boolean(url && key);
 }
 
 let cachedProfilesClient: SupabaseClient | null | undefined;
@@ -53,13 +54,13 @@ function getSupabaseProfilesClient(): SupabaseClient | null {
     cachedProfilesClient = admin;
     return cachedProfilesClient;
   }
-  const url =
-    normalizeSupabaseUrl(
-      process.env.SUPABASE_URL?.trim() || process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-    );
+  const url = normalizeSupabaseUrl(
+    stripEnvSecret(process.env.SUPABASE_URL) ||
+      stripEnvSecret(process.env.NEXT_PUBLIC_SUPABASE_URL)
+  );
   const key =
-    process.env.SUPABASE_ANON_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+    stripEnvSecret(process.env.SUPABASE_ANON_KEY) ||
+    stripEnvSecret(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   if (!url || !key) {
     cachedProfilesClient = null;
     return null;
@@ -68,12 +69,23 @@ function getSupabaseProfilesClient(): SupabaseClient | null {
   return cachedProfilesClient;
 }
 
-function mapDbProfile(row: DbProfileRow): Profile {
-  const photos = Array.isArray(row.photo_urls) ? row.photo_urls.filter(Boolean) : [];
-  const ordered = [row.avatar_url, ...photos].filter(Boolean) as string[];
+function mapDbProfile(row: DbProfileRow, profileMediaUrls?: string[]): Profile {
+  const jsonPhotos = Array.isArray(row.photo_urls) ? row.photo_urls.filter(Boolean) : [];
+  const jsonOrdered = [row.avatar_url, ...jsonPhotos]
+    .filter(Boolean)
+    .map((u) => sanitizeStoredProfileImageUrl(String(u), row.id));
+  const mediaOrdered = (profileMediaUrls ?? []).map((u) =>
+    sanitizeStoredProfileImageUrl(String(u), row.id)
+  );
+  let ordered: string[];
+  if (mediaOrdered.length > 0) {
+    const seen = new Set(mediaOrdered);
+    ordered = [...mediaOrdered, ...jsonOrdered.filter((u) => !seen.has(u))];
+  } else {
+    ordered = jsonOrdered;
+  }
   const unique = [...new Set(ordered)];
-  const primary =
-    unique[0] ?? photos[0] ?? "https://randomuser.me/api/portraits/women/1.jpg";
+  const primary = unique[0] ?? fallbackAvatarForProfile(row.id);
   return {
     id: row.id,
     slug: row.slug,
@@ -93,7 +105,12 @@ function mapDbProfile(row: DbProfileRow): Profile {
         ? Math.max(1, Math.floor(row.photo_unlock_credits))
         : 100,
     photoGallery: unique.length > 0 ? unique : undefined,
-    photosCount: Math.max(photos.length, unique.length, 1),
+    photosCount: Math.max(
+      profileMediaUrls?.length ?? 0,
+      jsonPhotos.length,
+      unique.length,
+      1
+    ),
     videoCount: 0,
     isOnline: (row.age + row.first_name.length) % 2 === 0,
     bio: row.bio,
@@ -121,6 +138,54 @@ function canonicalPhotoKey(url: string): string {
 function fallbackAvatarForProfile(profileId: string): string {
   const seed = encodeURIComponent(`dm-${profileId}`);
   return `https://api.dicebear.com/9.x/notionists/svg?seed=${seed}&backgroundColor=fce7f3`;
+}
+
+function sanitizeStoredProfileImageUrl(raw: string | null | undefined, profileId: string): string {
+  const s = (raw ?? "").trim();
+  if (!s) return fallbackAvatarForProfile(profileId);
+  return s;
+}
+
+/** Haalt publieke foto-URL's uit `profile_media` (bron van waarheid na admin-seed). */
+async function fetchProfileMediaUrlsByProfileIds(
+  supabase: SupabaseClient,
+  profileIds: string[]
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (profileIds.length === 0) return map;
+  const client = getSupabaseAdmin();
+  if (!client) {
+    console.warn("[profilesDb] profile_media: geen SUPABASE_SERVICE_ROLE_KEY — kan geen media ophalen");
+    return map;
+  }
+  const { data, error } = await client
+    .from("profile_media")
+    .select("profile_id, url, sort_order")
+    .in("profile_id", profileIds);
+  if (error) {
+    console.warn("[profilesDb] profile_media:", error.message);
+    return map;
+  }
+  type Row = { profile_id: string; url: string | null; sort_order: number | null };
+  const grouped = new Map<string, Array<{ url: string; sort: number }>>();
+  for (const raw of data ?? []) {
+    const row = raw as Row;
+    const pid = row.profile_id?.trim();
+    const url = String(row.url ?? "").trim();
+    if (!pid || !url) continue;
+    const sort = typeof row.sort_order === "number" ? row.sort_order : 0;
+    const arr = grouped.get(pid) ?? [];
+    arr.push({ url, sort });
+    grouped.set(pid, arr);
+  }
+  for (const [pid, arr] of grouped) {
+    arr.sort((a, b) => a.sort - b.sort);
+    map.set(
+      pid,
+      arr.map((x) => x.url)
+    );
+  }
+  return map;
 }
 
 /** Zorgt dat de hoofdprofielfoto (avatar) nooit dubbel is tussen accounts. */
@@ -158,27 +223,36 @@ function enforceUniquePrimaryPhoto(profiles: Profile[]): Profile[] {
 async function listDbProfilesFromSupabase(limit: number): Promise<Profile[]> {
   const supabase = getSupabaseProfilesClient();
   if (!supabase) return [];
+  // `select('*')`: voorkomt lege lijst op productie als oude DB’s nog geen lengte_cm e.d. hebben
+  // (expliciete kolomlijst geeft dan PostgREST-fout PGRST204 / column does not exist).
   const { data, error } = await supabase
     .from("profiles")
-    .select(
-      "id, slug, first_name, age, city, lengte_cm, gewicht_kg, cup_maat, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, visual_identity_prompt, photo_unlock_credits, is_active"
-    )
+    .select("*")
     .eq("is_active", true)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) {
-    console.error("[profilesDb] list profiles failed:", error.message);
+    console.error(
+      "[profilesDb] list profiles failed:",
+      error.message,
+      "code" in error ? (error as { code?: string }).code : "",
+      "hint" in error ? (error as { hint?: string }).hint : ""
+    );
     return [];
   }
   if (!data) return [];
   const rows = data as DbProfileRow[];
-  const mapped = rows.map(mapDbProfile);
+  const mediaMap = await fetchProfileMediaUrlsByProfileIds(
+    supabase,
+    rows.map((r) => r.id)
+  );
+  const mapped = rows.map((row) => mapDbProfile(row, mediaMap.get(row.id)));
   return enforceUniquePrimaryPhoto(mapped);
 }
 
 const listDbProfiles100Cached = unstable_cache(
   async () => listDbProfilesFromSupabase(100),
-  ["supabase-profiles-active-100"],
+  ["supabase-profiles-active-100", "v2-profile-media"],
   { revalidate: 45 }
 );
 
@@ -205,18 +279,22 @@ export async function getDbProfileById(id: string): Promise<Profile | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("profiles")
-    .select(
-      "id, slug, first_name, age, city, lengte_cm, gewicht_kg, cup_maat, country, bio, interests, personality, system_prompt, avatar_url, photo_urls, voice_language, heritage, visual_identity_prompt, photo_unlock_credits, is_active"
-    )
+    .select("*")
     .eq("id", id)
     .eq("is_active", true)
     .maybeSingle();
   if (error) {
-    console.error("[profilesDb] get profile failed:", error.message);
+    console.error(
+      "[profilesDb] get profile failed:",
+      error.message,
+      "code" in error ? (error as { code?: string }).code : ""
+    );
     return null;
   }
   if (!data) {
     return null;
   }
-  return mapDbProfile(data as DbProfileRow);
+  const row = data as DbProfileRow;
+  const mediaMap = await fetchProfileMediaUrlsByProfileIds(supabase, [row.id]);
+  return mapDbProfile(row, mediaMap.get(row.id));
 }

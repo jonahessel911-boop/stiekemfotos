@@ -49,8 +49,6 @@ import {
 } from "@/lib/chat-message-order";
 import { extractPersonalFactsFromText, formatPersonalFactsForPrompt } from "@/lib/user-personal-facts";
 
-const FILE = "conversations.json";
-
 /** User-tekst die telt als concrete visuele fotowens (trigger + details). Ook: naakt/nude. */
 const CONCRETE_PHOTO_INTENT_REGEX =
   /lingerie|string|kleur|groen|zwart|rood|blauw|wit|paars|roze|geel|oranje|standje|positie|knie[eë]n|doggy|missionaris|bovenop|close|close-up|hele lichaam|kont|borsten|boobs|tits|tieten|tepels|kut|nat maken|pijp|neuken|selfie|hoek|camera|jurkje|setje|shirt|trui|pakje|sport|sportpak|trainingspak|outfit|zonder|met bh|zonder bh|billen|achterkant|vooraanzicht|gezicht|naam erop|naam op|briefje|papier|naakt|nude|naktfoto|naaktfoto|bloot|helemaal|ontkleed/i;
@@ -137,25 +135,37 @@ function uniqueFallbackAvatar(profileId: string): string {
   return `https://api.dicebear.com/9.x/notionists/svg?seed=${seed}&backgroundColor=fce7f3`;
 }
 
+/** Oude data: previewAvatar wijst naar /api/conversations/.../image/... (alleen lokaal op schijf). */
+function sanitizePreviewAvatarForRuntime(raw: string | undefined, profileId: string): string {
+  const u = (raw ?? "").trim();
+  if (!u) return uniqueFallbackAvatar(profileId);
+  if (u.startsWith("/api/conversations/")) return uniqueFallbackAvatar(profileId);
+  return u;
+}
+
 /** Forceert unieke avatar per profiel in gesprekken/inbox (ook voor legacy data). */
 function enforceUniqueConversationAvatars(list: Conversation[]): Conversation[] {
   const usedByProfile = new Map<string, string>();
   const usedByAvatar = new Map<string, string>();
   return list.map((c) => {
-    const profileId = c.profileId;
+    const c0 = {
+      ...c,
+      previewAvatar: sanitizePreviewAvatarForRuntime(c.previewAvatar, c.profileId),
+    };
+    const profileId = c0.profileId;
     const existingForProfile = usedByProfile.get(profileId);
     if (existingForProfile) {
-      return existingForProfile === c.previewAvatar
-        ? c
-        : { ...c, previewAvatar: existingForProfile };
+      return existingForProfile === c0.previewAvatar
+        ? c0
+        : { ...c0, previewAvatar: existingForProfile };
     }
 
-    const key = canonicalAvatarKey(c.previewAvatar);
+    const key = canonicalAvatarKey(c0.previewAvatar);
     if (!key) {
       const fallback = uniqueFallbackAvatar(profileId);
       usedByProfile.set(profileId, fallback);
       usedByAvatar.set(canonicalAvatarKey(fallback), profileId);
-      return { ...c, previewAvatar: fallback };
+      return { ...c0, previewAvatar: fallback };
     }
 
     const owner = usedByAvatar.get(key);
@@ -163,12 +173,12 @@ function enforceUniqueConversationAvatars(list: Conversation[]): Conversation[] 
       const fallback = uniqueFallbackAvatar(profileId);
       usedByProfile.set(profileId, fallback);
       usedByAvatar.set(canonicalAvatarKey(fallback), profileId);
-      return { ...c, previewAvatar: fallback };
+      return { ...c0, previewAvatar: fallback };
     }
 
-    usedByProfile.set(profileId, c.previewAvatar);
+    usedByProfile.set(profileId, c0.previewAvatar);
     usedByAvatar.set(key, profileId);
-    return c;
+    return c0;
   });
 }
 
@@ -197,7 +207,7 @@ async function getInboxProfileIdsForPlatform(): Promise<string[]> {
   }
   return [];
 }
-const FREE_START_CREDITS = 100;
+const FREE_START_CREDITS = 200;
 
 /** Max. trede 3 = vierde herinnering (~3 dagen); daarna geen verdere auto-nudges. */
 const NO_REPLY_REMINDER_LAST_STAGE = 3;
@@ -550,37 +560,21 @@ function normalizeConversationMessages(list: Conversation[]): Conversation[] {
 
 export async function loadList(): Promise<Conversation[]> {
   const admin = getSupabaseAdmin();
-  if (admin) {
-    /**
-     * Bron van waarheid = Postgres (`conversations` + `messages`).
-     * Geen automatische fallback naar conversations.json / blob — dat gaf gemengde/nep-inbox.
-     * Legacy eenmalig importeren: zet CONVERSATIONS_IMPORT_LEGACY_BLOB=true en deploy één keer.
-     */
-    let raw = await loadConversationsRelational(admin);
-    if (
-      raw.length === 0 &&
-      process.env.CONVERSATIONS_IMPORT_LEGACY_BLOB?.trim() === "true"
-    ) {
-      const blob = await readJsonBlob<Conversation[]>(FILE, []);
-      if (blob.length > 0) {
-        await saveConversationsRelational(admin, normalizeConversationMessages(blob));
-        raw = await loadConversationsRelational(admin);
-      }
-    }
-    return enforceUniqueConversationAvatars(normalizeConversationMessages(raw));
+  if (!admin) {
+    console.warn("[conversations] Supabase admin client ontbreekt — conversations worden niet geladen.");
+    return [];
   }
-  const blob = await readJsonBlob<Conversation[]>(FILE, []);
-  return enforceUniqueConversationAvatars(normalizeConversationMessages(blob));
+  const raw = await loadConversationsRelational(admin);
+  return enforceUniqueConversationAvatars(normalizeConversationMessages(raw));
 }
 
 async function saveList(list: Conversation[]): Promise<void> {
   const normalized = normalizeConversationMessages(list);
   const admin = getSupabaseAdmin();
-  if (admin) {
-    await saveConversationsRelational(admin, normalized);
-    return;
+  if (!admin) {
+    throw new Error("Conversations kunnen niet worden opgeslagen: Supabase admin client ontbreekt.");
   }
-  await writeJsonBlob(FILE, normalized);
+  await saveConversationsRelational(admin, normalized);
 }
 
 /** Minstens één user- én één assistant-bericht = er is echt gewisseld in dit gesprek. */
@@ -866,6 +860,12 @@ export async function findOrCreateConversation(
   if (!ownerUserId.trim()) throw new Error("Log in om te chatten.");
   const profile = await resolveProfileById(profileId);
   if (!profile) throw new Error("Profiel niet gevonden");
+
+  const ownerRecord = await findUserById(ownerUserId);
+  if (!ownerRecord) {
+    throw new Error("Je sessie is verlopen — log opnieuw in.");
+  }
+  await upsertAppUserToSupabaseUsers(ownerRecord);
 
   await ensureUserInboxForOwner(ownerUserId);
   const list = await loadList();

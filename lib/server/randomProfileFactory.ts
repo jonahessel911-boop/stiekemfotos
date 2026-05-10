@@ -1,8 +1,10 @@
 import { randomInt, randomUUID } from "crypto";
+import { readFile } from "fs/promises";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { generateRealisticImageDetailed, zModelMaxUserPromptBodyChars } from "@/lib/server/imageGen";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
+import { convImageDir } from "@/lib/server/convImageStore";
 import type { PersonaStyle, Profile } from "@/lib/types/profile";
 import {
   type PhenotypeKey,
@@ -37,6 +39,44 @@ type CreatedRandomProfile = {
 };
 
 const LOCAL_RANDOM_PROFILES_FILE = "random-profiles.json";
+
+async function persistConversationImageAsPublicUrl(
+  conversationId: string,
+  messageId: string
+): Promise<string> {
+  const legacyRouteUrl = `/api/conversations/${conversationId}/image/${messageId}`;
+  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  if (!token) return legacyRouteUrl;
+
+  const dir = convImageDir(conversationId);
+  const candidates = [
+    { ext: "jpg", mime: "image/jpeg" },
+    { ext: "jpeg", mime: "image/jpeg" },
+    { ext: "png", mime: "image/png" },
+  ] as const;
+
+  for (const candidate of candidates) {
+    try {
+      const filePath = `${dir}/${messageId}.${candidate.ext}`;
+      const buf = await readFile(filePath);
+      const { put } = await import("@vercel/blob");
+      const blob = await put(
+        `stiekemefotos/profile-media/${conversationId}/${messageId}.${candidate.ext}`,
+        buf,
+        {
+          access: "public",
+          addRandomSuffix: false,
+          allowOverwrite: true,
+          contentType: candidate.mime,
+        }
+      );
+      return blob.url;
+    } catch {
+      // Probeer volgende extensie.
+    }
+  }
+  return legacyRouteUrl;
+}
 
 /** Fallback-pool als Grok faalt of een verboden naam teruggeeft. */
 const RAW_FIRST_NAMES = [
@@ -888,7 +928,7 @@ const USER_STORY_CLOSERS = [
   "Als je respectvol en speels bent, match ik daar graag op.",
   "Geen drama — wel chemie en een beetje spanning.",
   "Ik antwoord het liefst op iets persoonlijks dan op standaard copy-paste.",
-  "Foto's zijn extra; chatten met mij is gratis en eerlijk.",
+  "Foto's zijn extra; chatten met mij kost geen credits en is eerlijk.",
   "Laat weten waar je aan denkt — ik bijt niet (tenzij je dat leuk vindt).",
   "Ben je nieuw hier? Vertel kort wie je bent — ik lees alles.",
   "Ik haat ghosting in het echte leven; hier probeer ik ook gewoon eerlijk te zijn.",
@@ -1181,14 +1221,14 @@ export async function createRandomProfileWithPhotos(
         `Foto ${i + 1} genereren mislukt: ${generated?.errorDetail || "onbekend"}`
       );
     }
-    photoUrls.push(`/api/conversations/${conversationId}/image/${messageId}`);
+    photoUrls.push(await persistConversationImageAsPublicUrl(conversationId, messageId));
   }
 
   const avatarUrl = photoUrls[0]!;
   const systemPrompt = [
     `Je bent ${firstName}, ${age} jaar, woont in ${city} (Nederland). Je achtergrond: ${heritageNl}.`,
     "Korte, speelse Nederlandse chatstijl (je praat Nederlands met de gebruiker).",
-    "Chatten is gratis; foto's zijn premium.",
+    "Chatten kost geen credits; foto's zijn premium.",
   ].join(" ");
 
   const localProfileId = `local-random-${randomUUID().slice(0, 12)}`;

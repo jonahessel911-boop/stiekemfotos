@@ -184,7 +184,7 @@ export async function sendGiftReceivedEmail(input: {
 }): Promise<void> {
   const t = shellTemplate(
     `Cadeautje ontvangen van ${input.profileName} 🎁`,
-    "Je hebt gratis credits gekregen in een chat.",
+    "Je hebt credits cadeau gekregen in een chat.",
     "Ga naar het gesprek",
     `${APP_URL}/berichten?chat=${encodeURIComponent(input.conversationId)}`,
     `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">

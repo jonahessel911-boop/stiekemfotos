@@ -39,23 +39,46 @@ function pickRandomCardPreviewPhoto(profile: Profile, cache: Map<string, string>
   return picked;
 }
 
+type ProfilesApiMeta = {
+  configured?: boolean;
+  count?: number;
+  vercelEnv?: string;
+  serviceRole?: boolean;
+  hint?: 'supabase_env_missing' | 'empty_database' | 'empty_uncertain';
+};
+
 export default function ProfielenPage() {
   const cardPreviewPickRef = React.useRef<Map<string, string>>(new Map());
   const [activeTab, setActiveTab] = useState<'all' | 'online' | 'following'>('all');
   const [likedProfiles, setLikedProfiles] = useState<string[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [profilesMeta, setProfilesMeta] = useState<ProfilesApiMeta | null>(null);
+  const [profilesFetchError, setProfilesFetchError] = useState<string | null>(null);
   React.useEffect(() => {
     let cancel = false;
     (async () => {
       try {
-        const res = await fetch('/api/profiles', { credentials: 'include' });
-        const data = (await res.json()) as { profiles?: Profile[] };
-        if (!cancel && Array.isArray(data.profiles)) {
-          setProfiles(data.profiles);
+        const res = await fetch('/api/profiles', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const data = (await res.json()) as {
+          profiles?: Profile[];
+          meta?: ProfilesApiMeta;
+          error?: string;
+        };
+        if (!cancel) {
+          setProfilesFetchError(!res.ok && data.error ? data.error : null);
+          setProfilesMeta(data.meta ?? null);
+          setProfiles(Array.isArray(data.profiles) ? data.profiles : []);
         }
       } catch {
-        if (!cancel) setProfiles([]);
+        if (!cancel) {
+          setProfiles([]);
+          setProfilesMeta(null);
+          setProfilesFetchError('Netwerkfout bij laden van profielen.');
+        }
       } finally {
         if (!cancel) setLoaded(true);
       }
@@ -134,6 +157,47 @@ export default function ProfielenPage() {
           {!loaded ? (
             <div className="col-span-full rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500">
               Profielen laden…
+            </div>
+          ) : profilesFetchError ? (
+            <div className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-8 text-center text-red-900">
+              <p className="font-semibold">Profielen konden niet worden geladen.</p>
+              <p className="mt-2 text-sm text-red-800">{profilesFetchError}</p>
+            </div>
+          ) : profilesMeta?.configured === false ? (
+            <div className="col-span-full space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-left text-amber-950">
+              <p className="font-semibold">Database niet gekoppeld op deze deployment</p>
+              <p className="text-sm leading-relaxed">
+                Supabase-omgevingsvariabelen ontbreken voor dit Vercel-deployment
+                {profilesMeta.vercelEnv ? (
+                  <>
+                    {' '}
+                    (<span className="font-mono">{profilesMeta.vercelEnv}</span>)
+                  </>
+                ) : null}
+                . Voeg in Vercel onder <strong>Settings → Environment Variables</strong> dezelfde
+                waarden toe als lokaal (minimaal <span className="font-mono">SUPABASE_URL</span> en{' '}
+                <span className="font-mono">SUPABASE_SERVICE_ROLE_KEY</span>, of de anon key + RLS)
+                — ook voor <strong>Preview</strong> als je custom domein aan een preview-branch koppelt.
+              </p>
+            </div>
+          ) : filteredProfiles.length === 0 && profilesMeta?.hint === 'empty_uncertain' ? (
+            <div className="col-span-full space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-left text-amber-950">
+              <p className="font-semibold">Geen profielen opgehaald</p>
+              <p className="text-sm leading-relaxed">
+                Dit kan een lege database zijn, of je gebruikt alleen de anon-key en blokkeert RLS lezen.
+                Zet op Vercel <span className="font-mono">SUPABASE_SERVICE_ROLE_KEY</span> (zelfde project
+                als dev) of voer <span className="font-mono">supabase/grant-profiles-read-to-anon.sql</span>{' '}
+                uit. Controleer ook of dit domein aan de <strong>Production</strong>-deployment hangt met
+                dezelfde env-vars als <span className="font-mono">*.vercel.app</span>.
+              </p>
+            </div>
+          ) : filteredProfiles.length === 0 && profilesMeta?.hint === 'empty_database' ? (
+            <div className="col-span-full rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-600">
+              <p>Er staan nog geen actieve profielen in de gekoppelde database.</p>
+              <p className="mt-2 text-sm text-gray-500">
+                Seed je Supabase-project (bijv. <span className="font-mono">seed-50-test-profiles.sql</span>)
+                of kopieer profielen van je dev-project.
+              </p>
             </div>
           ) : filteredProfiles.length === 0 ? (
             <div className="col-span-full rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-600">

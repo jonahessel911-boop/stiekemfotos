@@ -10,18 +10,23 @@ export async function GET() {
     const messages = await listUserMessageCreditUsage(userId);
     const totalSpent = messages.reduce((s, m) => s + m.credits, 0);
 
-    // Simple formula as requested: every user starts with 100 credits, deduct 10 per message.
-    // (purchases add on top; ledger can be extended later for authoritative balance)
-    const computedBalance = 100 + 0 - totalSpent; // extend with purchase total from ledger/purchases table as needed
+    const START_BALANCE = 200;
+    const computedBalance = START_BALANCE - totalSpent;
 
-    return NextResponse.json({ 
-      messages, 
-      totalSpent, 
+    return NextResponse.json({
+      messages,
+      totalSpent,
       balance: Math.max(0, computedBalance),
-      initialFree: 100,
-      perMessage: 10 
+      initialFree: START_BALANCE,
+      perMessage: 0,
     });
   } catch {
-    return NextResponse.json({ messages: [], totalSpent: 0, balance: 100, initialFree: 100, perMessage: 10 });
+    return NextResponse.json({
+      messages: [],
+      totalSpent: 0,
+      balance: 200,
+      initialFree: 200,
+      perMessage: 0,
+    });
   }
 }

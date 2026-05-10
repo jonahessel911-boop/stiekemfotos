@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { usePlatformOnboardingControls } from "@/components/PlatformOnboardingContext";
 
 type MeUser = {
   needsPlatformOnboarding?: boolean;
@@ -26,6 +27,7 @@ export default function PlatformOnboardingGate() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [busy, setBusy] = useState(false);
+  const { setPlatformOnboardingActive } = usePlatformOnboardingControls();
 
   useEffect(() => {
     if (skip) {
@@ -55,6 +57,10 @@ export default function PlatformOnboardingGate() {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, [skip]);
+
+  useEffect(() => {
+    setPlatformOnboardingActive(Boolean(open && !skip));
+  }, [open, skip, setPlatformOnboardingActive]);
 
   useEffect(() => {
     if (!open || skip) return;
@@ -89,7 +95,7 @@ export default function PlatformOnboardingGate() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex flex-col bg-[var(--surface)]"
+      className="fixed inset-0 z-[200] flex flex-col bg-[var(--surface)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="platform-onboarding-title"
@@ -118,8 +124,8 @@ export default function PlatformOnboardingGate() {
             </h1>
             <p className="mb-3 text-base leading-relaxed text-gray-600">
               Hier chat je privé met echte profielen: onbeperkt praten, flirten en foto&apos;s
-              ontgrendelen die ze speciaal voor jou maken. Credits gebruik je alleen voor
-              persoonlijke plaatjes — chatten zelf blijft gratis.
+              ontgrendelen die ze speciaal voor jou maken. Credits gebruik je voor persoonlijke
+              plaatjes — chatten zelf kost geen credits.
             </p>
             <p className="mb-10 text-sm leading-relaxed text-gray-500">
               Even door deze korte intro, daarna zie je wat je allemaal kunt verwachten op het
@@ -144,14 +150,15 @@ export default function PlatformOnboardingGate() {
 
             <div className="space-y-5 text-gray-800">
               <p className="text-lg font-bold leading-snug">
-                🌶️ 100% Gratis Chatten – Voor Altijd!
+                🌶️ Onbeperkt chatten — zonder credits
               </p>
               <p className="leading-relaxed">
-                Chat onbeperkt en helemaal gratis met hete meiden die écht zin hebben om met jou
-                te praten.
+                Chat onbeperkt met hete meiden die écht zin hebben om met jou te praten (chatten
+                kost geen credits).
               </p>
               <p className="leading-relaxed">
-                Ontvang direct 2 gratis foto&apos;s helemaal naar jouw wens
+                Je account bevat 200 credits om mee te beginnen — genoeg om je eerste foto&apos;s te
+                ontgrendelen.
               </p>
               <p className="leading-relaxed">
                 Vraag haar om lingerie, een strak outfitje, naakt op bed, in de douche… of laat haar

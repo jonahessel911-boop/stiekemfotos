@@ -5,7 +5,6 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CreditsPricingOffers } from '@/components/CreditsPricingOffers';
 import {
-  addCredits,
   getCreditsBalance,
   getCreditPurchaseHistory,
   INITIAL_FREE_CREDITS,
@@ -31,7 +30,6 @@ function formatWhen(iso: string) {
 export default function CreditsPage() {
   const [balance, setBalance] = useState(INITIAL_FREE_CREDITS);
   const [purchases, setPurchases] = useState<CreditPurchaseRecord[]>([]);
-  const [claimingFreeCredits, setClaimingFreeCredits] = useState(false);
 
   const refresh = useCallback(async () => {
     setBalance(getCreditsBalance());
@@ -45,12 +43,6 @@ export default function CreditsPage() {
     return () => window.removeEventListener('dm-credits-updated', onUp);
   }, [refresh]);
 
-  const claimFreeCredits = useCallback(() => {
-    setClaimingFreeCredits(true);
-    addCredits(100, 'Test: 100 free credits');
-    void refresh().finally(() => setClaimingFreeCredits(false));
-  }, [refresh]);
-
   return (
     <div className="min-h-screen bg-[var(--surface)] pb-28 md:pb-10">
       <Navbar />
@@ -62,7 +54,7 @@ export default function CreditsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Credits</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Overzicht van je saldo. Chatten is gratis.
+              Overzicht van je saldo. Chatten kost geen credits.
             </p>
           </div>
         </div>
@@ -105,8 +97,9 @@ export default function CreditsPage() {
           </div>
           {purchases.length === 0 ? (
             <p className="px-4 py-16 text-center text-sm text-gray-500">
-              Nog geen aankopen.<br />
-              Koop credits hieronder om te chatten.
+              Nog geen aankopen.
+              <br />
+              Koop hieronder credits bij voor meer foto&apos;s.
             </p>
           ) : (
             <ul className="divide-y divide-gray-100 max-h-[min(420px,50vh)] overflow-y-auto">
@@ -134,22 +127,8 @@ export default function CreditsPage() {
         <section className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-5 md:p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900 mb-1">Credits bijkopen</h2>
           <p className="text-sm text-gray-600 mb-6">
-            Koop credits voor foto-unlocks en extra&apos;s. Chatten blijft gratis.
+            Koop credits voor foto-unlocks en extra&apos;s. Chatten kost geen credits.
           </p>
-          <div className="mb-5 rounded-xl border border-dashed border-primary/35 bg-primary/[0.05] p-4">
-            <p className="text-sm font-semibold text-gray-900">Testmodus</p>
-            <p className="mt-1 text-xs text-gray-600">
-              Voor development kun je gratis 100 credits toevoegen.
-            </p>
-            <button
-              type="button"
-              onClick={claimFreeCredits}
-              disabled={claimingFreeCredits}
-              className="mt-3 inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {claimingFreeCredits ? 'Bezig…' : '100 free credits'}
-            </button>
-          </div>
           <CreditsPricingOffers showIntro={false} onAfterPurchase={() => void refresh()} />
         </section>
       </main>
