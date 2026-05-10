@@ -3,8 +3,8 @@ import { cookies } from "next/headers";
 import { parseAdminCookieValue, ADMIN_SESSION_COOKIE_NAME } from "@/lib/server/adminAuth";
 import { createRandomProfileWithPhotos } from "@/lib/server/randomProfileFactory";
 
-/** Image-gen kan lang duren op cold starts; bij batch op de client = opeenvolgende requests. */
-export const maxDuration = 900;
+/** Image-gen kan lang duren op cold starts; Vercel Hobby max = 300s. */
+export const maxDuration = 300;
 
 /**
  * Één random profiel per POST — hetzelfde pad als "Maak random profiel aan".
