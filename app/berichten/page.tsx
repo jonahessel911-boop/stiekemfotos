@@ -759,7 +759,8 @@ function BerichtenInner() {
         focusComposerAfterProfileOpenRef.current = true;
         router.replace(`/berichten?chat=${encodeURIComponent(conv.id)}`, { scroll: false });
 
-        void fetchList({ silent: true });
+        // Do NOT call fetchList here — it would overwrite the optimistic conversation we just added.
+        // Background refresh will pick up the new chat later.
       } catch (e) {
         setLoadingList(false);
         setError(e instanceof Error ? e.message : 'Chat openen mislukt');
