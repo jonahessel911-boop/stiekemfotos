@@ -677,8 +677,9 @@ function BerichtenInner() {
 
   useEffect(() => {
     const pid = profileOpenParam?.trim();
-    if (!pid || chatParam) return;
+    if (!pid) return;
 
+    // Always handle profile deep link, even if chatParam is already present
     void (async () => {
       let draft = DEFAULT_PHOTO_REQUEST_DRAFT;
       try {
@@ -730,7 +731,6 @@ function BerichtenInner() {
           /* */
         }
 
-        /** Gesprek uit POST — chat kan direct tonen; GEEN wachten op GET inbox (die kan 403/hangen). */
         conversationCacheRef.current[conv.id] = conv;
 
         const summary: ConversationSummary = {
@@ -766,7 +766,7 @@ function BerichtenInner() {
         router.replace('/berichten', { scroll: false });
       }
     })();
-  }, [profileOpenParam, chatParam, router, fetchList]);
+  }, [profileOpenParam, router]);
 
   useEffect(() => {
     if (selectedId) {
