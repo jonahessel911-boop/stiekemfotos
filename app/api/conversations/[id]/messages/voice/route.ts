@@ -7,23 +7,11 @@ import {
 } from "@/lib/server/conversations";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
 import { isUserEmailVerified, touchUserSeen } from "@/lib/server/users";
-import { xaiSpeechToText } from "@/lib/xai-voice-server";
+import { transcribeUserVoiceMemoWithGrokChat } from "@/lib/grok";
 import { isXaiConfigErrorMessage } from "@/lib/xai-env";
 
 export const maxDuration = 240;
 export const runtime = "nodejs";
-
-const VOICE_FALLBACK_EMOJIS = ["😏", "😈", "😜", "😘", "😮‍💨", "🥵", "🍑", "🍆", "💦", "❤️‍🔥"] as const;
-
-function randomVoiceEmojiLine(): string {
-  const count = 3 + Math.floor(Math.random() * 4); // 3..6 emojis
-  const picked: string[] = [];
-  for (let i = 0; i < count; i += 1) {
-    const emoji = VOICE_FALLBACK_EMOJIS[Math.floor(Math.random() * VOICE_FALLBACK_EMOJIS.length)];
-    picked.push(emoji ?? "😏");
-  }
-  return picked.join(" ");
-}
 
 export async function POST(
   req: Request,
@@ -64,22 +52,20 @@ export async function POST(
     const audioArrayBuffer = await audioFile.arrayBuffer();
     let transcript = "";
     try {
-      transcript = await xaiSpeechToText(audioArrayBuffer, {
+      transcript = await transcribeUserVoiceMemoWithGrokChat(audioArrayBuffer, {
         mimeType: audioFile.type || "audio/webm",
         filename: audioFile.name || "voice.webm",
         language: String(form.get("language") ?? "nl"),
+        browserDraftTranscript: fallbackText || undefined,
       });
-    } catch (e) {
-      // Nooit blokken op transcriptie: gebruik browsertekst of emoji-fallback.
-      if (fallbackText) {
-        transcript = fallbackText;
-      }
+    } catch {
+      transcript = fallbackText;
     }
 
     const transcriptForAi =
       transcript.trim() ||
-      fallbackText ||
-      randomVoiceEmojiLine();
+      fallbackText.trim() ||
+      "[Spraakbericht — niet verstaanbaar. Reageer vriendelijk en vraag hem om hetzelfde kort in tekst te typen.]";
 
     const audioBuffer = Buffer.from(audioArrayBuffer);
     const audioBase64 = audioBuffer.toString("base64");

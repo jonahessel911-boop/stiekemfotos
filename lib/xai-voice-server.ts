@@ -1,6 +1,13 @@
 /**
- * Server-side xAI voice helpers — gebruikt XAI_API_KEY uit omgeving.
- * Nooit vanuit de browser aanroepen met je echte key.
+ * Server-side xAI voice (STT/TTS) — **dezelfde key als Grok-chat**:
+ * `requireXaiApiKey()` → vooral `XAI_API_KEY` in `.env.local`.
+ *
+ * STT: `POST https://api.x.ai/v1/stt` (officiële endpoint, zie
+ *      https://docs.x.ai/developers/model-capabilities/audio/speech-to-text).
+ * TTS: `POST https://api.x.ai/v1/tts`.
+ *
+ * Nooit vanuit de browser aanroepen met je echte key — gebruik altijd een
+ * server route (zoals `/api/conversations/[id]/messages/voice`) als proxy.
  */
 
 import { requireXaiApiKey } from "@/lib/xai-env";
@@ -49,32 +56,68 @@ export async function xaiTextToSpeech(
   return res.arrayBuffer();
 }
 
+/**
+ * Spraak → tekst via xAI **`POST /v1/stt`** (de officiële STT-endpoint,
+ * https://docs.x.ai/developers/model-capabilities/audio/speech-to-text).
+ *
+ * Multipart-form velden (let op: `file` moet als laatste worden toegevoegd):
+ *  - `format`   — `"true"` voor natuurlijk geformatteerde tekst
+ *  - `language` — taalcode (bijv. `"nl"`); standaard `XAI_STT_LANGUAGE` of `"nl"`
+ *  - `file`     — audio (WAV, MP3, WebM, OGG, M4A, MP4) — **laatste veld**
+ *
+ * Respons: `{ "text": "..." }`. Max 500MB per file (HTTP 413 anders).
+ */
 export async function xaiSpeechToText(
   audio: ArrayBuffer,
-  options?: { mimeType?: string; filename?: string; language?: string }
+  options?: {
+    mimeType?: string;
+    filename?: string;
+    language?: string;
+    /** `true` (default) → geformatteerde, natuurlijke tekst van xAI. */
+    format?: boolean;
+  }
 ): Promise<string> {
   const key = requireXaiApiKey();
-  const blob = new Blob([audio], {
-    type: options?.mimeType || "audio/webm",
-  });
-  const form = new FormData();
-  form.append("file", blob, options?.filename || "voice.webm");
-  form.append("model", process.env.XAI_STT_MODEL || "grok-2-audio-transcribe");
-  if (options?.language?.trim()) {
-    form.append("language", options.language.trim());
-  }
 
-  const res = await fetch("https://api.x.ai/v1/audio/transcriptions", {
+  const language =
+    options?.language?.trim() ||
+    process.env.XAI_STT_LANGUAGE?.trim() ||
+    "nl";
+  const formatted = options?.format ?? true;
+
+  const filename = options?.filename || "voice.webm";
+  const mime = options?.mimeType || "audio/webm";
+  const blob = new Blob([audio], { type: mime });
+
+  // xAI vereist dat `file` het LAATSTE veld is in de multipart-form.
+  const form = new FormData();
+  form.append("format", formatted ? "true" : "false");
+  form.append("language", language);
+  form.append("file", blob, filename);
+
+  const res = await fetch("https://api.x.ai/v1/stt", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-    },
+    headers: { Authorization: `Bearer ${key}` },
     body: form,
   });
+
   const raw = await res.text();
   if (!res.ok) {
-    throw new Error(`STT (${res.status}): ${raw.slice(0, 400)}`);
+    const snippet = raw.slice(0, 400);
+    if (res.status === 401) {
+      throw new Error(
+        `STT 401: ongeldige of ontbrekende XAI_API_KEY (zie console.x.ai → API Keys). ${snippet}`
+      );
+    }
+    if (res.status === 413) {
+      throw new Error(`STT 413: audio is te groot (max 500MB). ${snippet}`);
+    }
+    if (res.status === 429) {
+      throw new Error(`STT 429: rate limited door xAI. ${snippet}`);
+    }
+    throw new Error(`STT (${res.status}): ${snippet}`);
   }
+
   try {
     const json = JSON.parse(raw) as { text?: string; transcript?: string };
     return (json.text || json.transcript || "").trim();

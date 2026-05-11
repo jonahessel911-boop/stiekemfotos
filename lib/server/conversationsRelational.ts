@@ -65,8 +65,11 @@ function conversationFromRow(row: ConversationRow, messages: ChatMessage[]): Con
 
 function messageFromRow(row: MessageRow): ChatMessage {
   const meta = row.metadata as { chatMessage?: ChatMessage } | null | undefined;
-  if (meta?.chatMessage && typeof meta.chatMessage === "object" && meta.chatMessage.id === row.id) {
-    return meta.chatMessage;
+  const cm = meta?.chatMessage;
+  if (cm && typeof cm === "object") {
+    /** Postgres `messages.id` is bron van waarheid; nested kan verouderd zijn na migraties/edits. */
+    if (cm.id === row.id) return cm;
+    return { ...cm, id: row.id };
   }
   const role = row.role === "user" ? "user" : "assistant";
   return {
@@ -147,9 +150,106 @@ export async function loadConversationsRelational(
   return rows.map((r) => conversationFromRow(r, byConv.get(r.id) ?? []));
 }
 
+export async function loadConversationById(
+  supabase: SupabaseClient,
+  conversationId: string
+): Promise<Conversation | null> {
+  const { data: row, error: ce } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .maybeSingle();
+  if (ce) {
+    throw new Error(`[conversationsRelational] load conversation ${conversationId}: ${ce.message}`);
+  }
+  if (!row) return null;
+  const convRow = row as ConversationRow;
+  const { data: msgRows, error: me } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+  if (me) {
+    throw new Error(`[conversationsRelational] load messages ${conversationId}: ${me.message}`);
+  }
+  const messages = (msgRows ?? []).map((raw) => messageFromRow(raw as MessageRow));
+  return conversationFromRow(convRow, messages);
+}
+
+async function upsertConversationAndMessages(
+  supabase: SupabaseClient,
+  c: Conversation,
+  ownerFkCache: Map<string, string | null>
+): Promise<void> {
+  const rawOwner = c.ownerUserId?.trim();
+  let ownerFk: string | null = null;
+  if (rawOwner) {
+    if (ownerFkCache.has(rawOwner)) {
+      ownerFk = ownerFkCache.get(rawOwner)!;
+    } else {
+      ownerFk = await resolveUserIdForSupabaseFk(rawOwner);
+      ownerFkCache.set(rawOwner, ownerFk);
+    }
+  }
+  if (c.ownerUserId?.trim() && !ownerFk) {
+    throw new Error(
+      `[conversationsRelational] owner ${c.ownerUserId} kan niet naar Postgres voor gesprek ${c.id}`
+    );
+  }
+  const { error: ue } = await supabase.from("conversations").upsert(
+    {
+      id: c.id,
+      owner_user_id: ownerFk,
+      profile_id: c.profileId,
+      profile_name: c.profileName,
+      profile_avatar: c.previewAvatar || null,
+      updated_at: c.updatedAt,
+      metadata: extractConversationMetadata(c),
+    },
+    { onConflict: "id" }
+  );
+  if (ue) {
+    throw new Error(`[conversationsRelational] upsert conversation ${c.id}: ${ue.message}`);
+  }
+
+  const { error: de } = await supabase.from("messages").delete().eq("conversation_id", c.id);
+  if (de) {
+    throw new Error(`[conversationsRelational] clear messages ${c.id}: ${de.message}`);
+  }
+
+  const inserts = dedupeMessageInsertRows(c.messages.map((m) => messageToInsertRow(m, c.id)));
+  for (let i = 0; i < inserts.length; i += MESSAGE_INSERT_CHUNK) {
+    const chunk = dedupeMessageInsertRows(inserts.slice(i, i + MESSAGE_INSERT_CHUNK));
+    if (chunk.length === 0) continue;
+    /**
+     * Upsert i.p.v. insert: overlappende message-uuid’s (merge/retry/orphan rows) breken
+     * anders `messages_pkey`. ON CONFLICT werkt alleen als er geen dubbele ids *in dezelfde batch* zitten.
+     */
+    const { error: ie } = await supabase.from("messages").upsert(chunk, {
+      onConflict: "id",
+    });
+    if (ie) {
+      throw new Error(`[conversationsRelational] upsert messages ${c.id}: ${ie.message}`);
+    }
+  }
+}
+
+/** Alleen dit gesprek — voor chat hot path (geen volledige inbox-load + geen andere threads herschrijven). */
+export async function saveSingleConversationRelational(
+  supabase: SupabaseClient,
+  c: Conversation
+): Promise<void> {
+  const ownerFkCache = new Map<string, string | null>();
+  await upsertConversationAndMessages(supabase, c, ownerFkCache);
+}
+
 export async function saveConversationsRelational(
   supabase: SupabaseClient,
-  list: Conversation[]
+  list: Conversation[],
+  opts?: {
+    /** Optionele per-conv mutex zodat parallelle upsert+delete-message flows niet over elkaar heen schrijven. */
+    withConversationLock?: <T>(conversationId: string, fn: () => Promise<T>) => Promise<T>;
+  }
 ): Promise<void> {
   const keepIds = new Set(list.map((c) => c.id));
 
@@ -163,58 +263,13 @@ export async function saveConversationsRelational(
   }
 
   const ownerFkCache = new Map<string, string | null>();
+  const lock = opts?.withConversationLock;
 
   for (const c of list) {
-    const rawOwner = c.ownerUserId?.trim();
-    let ownerFk: string | null = null;
-    if (rawOwner) {
-      if (ownerFkCache.has(rawOwner)) {
-        ownerFk = ownerFkCache.get(rawOwner)!;
-      } else {
-        ownerFk = await resolveUserIdForSupabaseFk(rawOwner);
-        ownerFkCache.set(rawOwner, ownerFk);
-      }
-    }
-    if (c.ownerUserId?.trim() && !ownerFk) {
-      throw new Error(
-        `[conversationsRelational] owner ${c.ownerUserId} kan niet naar Postgres voor gesprek ${c.id}`
-      );
-    }
-    const { error: ue } = await supabase.from("conversations").upsert(
-      {
-        id: c.id,
-        owner_user_id: ownerFk,
-        profile_id: c.profileId,
-        profile_name: c.profileName,
-        profile_avatar: c.previewAvatar || null,
-        updated_at: c.updatedAt,
-        metadata: extractConversationMetadata(c),
-      },
-      { onConflict: "id" }
-    );
-    if (ue) {
-      throw new Error(`[conversationsRelational] upsert conversation ${c.id}: ${ue.message}`);
-    }
-
-    const { error: de } = await supabase.from("messages").delete().eq("conversation_id", c.id);
-    if (de) {
-      throw new Error(`[conversationsRelational] clear messages ${c.id}: ${de.message}`);
-    }
-
-    const inserts = dedupeMessageInsertRows(c.messages.map((m) => messageToInsertRow(m, c.id)));
-    for (let i = 0; i < inserts.length; i += MESSAGE_INSERT_CHUNK) {
-      const chunk = dedupeMessageInsertRows(inserts.slice(i, i + MESSAGE_INSERT_CHUNK));
-      if (chunk.length === 0) continue;
-      /**
-       * Upsert i.p.v. insert: overlappende message-uuid’s (merge/retry/orphan rows) breken
-       * anders `messages_pkey`. ON CONFLICT werkt alleen als er geen dubbele ids *in dezelfde batch* zitten.
-       */
-      const { error: ie } = await supabase.from("messages").upsert(chunk, {
-        onConflict: "id",
-      });
-      if (ie) {
-        throw new Error(`[conversationsRelational] upsert messages ${c.id}: ${ie.message}`);
-      }
+    if (lock) {
+      await lock(c.id, () => upsertConversationAndMessages(supabase, c, ownerFkCache));
+    } else {
+      await upsertConversationAndMessages(supabase, c, ownerFkCache);
     }
   }
 }

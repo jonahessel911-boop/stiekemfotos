@@ -62,7 +62,10 @@ export async function POST(
       requesterUserId: userId,
     });
 
-    await flushInboxAutomationsForOwner(userId);
+    // Do not block the HTTP response on other threads’ inbox automations (loadList + saves).
+    void flushInboxAutomationsForOwner(userId).catch(() => {
+      /* best effort */
+    });
 
     return NextResponse.json({
       ...result,

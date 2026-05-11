@@ -68,9 +68,8 @@ export function updateConversationState(
 /** Realistic reply delay — skewed toward fast replies, occasional long pauses */
 export function getRealisticReplyDelay(state: ConversationState): number {
   void state;
-  // Product focus: snappy chat UX over realism pauses.
-  // Keep a tiny delay so typing indicators still feel natural.
-  return 900 + Math.random() * 1800; // 0.9s - 2.7s
+  // Product focus: snappy chat UX — typing indicator runs client-side; server must not add multi-second waits.
+  return 120 + Math.random() * 380; // ~0.12s - 0.5s (parallel with Grok where used)
 }
 
 /** Decide whether to reply immediately or wait for a reminder */

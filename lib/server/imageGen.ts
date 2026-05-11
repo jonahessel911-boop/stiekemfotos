@@ -20,7 +20,7 @@ export const ZMODEL_PROMPT_MAX_CHARS = 1000;
  * Geen woorden grid/raster (prikkelen het model).
  */
 const ZMODEL_SINGLE_FRAME_PREFIX =
-  "Photorealistic amateur smartphone photograph, single exposure, handheld candid composition, natural messy indoor lighting, entire frame is one continuous shot of one woman. ";
+  "Photorealistic amateur smartphone photograph, single exposure of exactly one woman, one body, captured in one continuous unbroken frame from one camera angle, handheld candid composition, natural messy indoor lighting, like a normal iPhone snap sent in a chat. ";
 
 export type GenerationStatus = "success" | "nsfw_blocked" | "failed";
 
@@ -111,6 +111,65 @@ function gcd(a: number, b: number): number {
 /** Max lengte van user prompt vóór server-side prefix (ZModel max 1000). */
 export function zModelMaxUserPromptBodyChars(): number {
   return ZMODEL_PROMPT_MAX_CHARS - ZMODEL_SINGLE_FRAME_PREFIX.length;
+}
+
+/**
+ * Voor chat-foto's: strip de poetische, gezicht-zware bijzinnen uit de visual identity
+ * (bv. "cascading over her shoulders", "glows softly in natural light", "with a gentle gaze")
+ * en hard cap op ~MAX_CHARS chars. Anders concurreert de identity met de daadwerkelijke fotowens
+ * en valt Z Image terug op een face-portrait, ongeacht de framing/nudity/region rules.
+ *
+ * We behouden: naam, leeftijd, heritage, basis-haarkleur, basis-oogkleur, body-type, "same person as profile photos".
+ * We verwijderen: lange adjectief-strings, sensorische beschrijvingen, narratieve face-omschrijvingen.
+ */
+export function compactIdentityForChatPhotoPrompt(identity: string, maxChars = 180): string {
+  let s = identity.replace(/\s+/g, " ").trim();
+
+  // Verwijder narratieve hair-/skin-/eye-bijzinnen (alles vanaf "with/that/featuring" tot komma/punt).
+  s = s
+    .replace(/\b(?:cascading|flowing|tumbling|falling|framing|wavy[- ]ish|softly\s*waving)\s+[^,.;]*[,.;]/gi, "")
+    .replace(/\bthat\s+(?:glows?|shines?|catches?|reflects?|frames?|highlights?)[^,.;]*[,.;]/gi, "")
+    .replace(/\bwith\s+(?:a\s+)?(?:gentle|warm|soft|piercing|striking|alluring|sultry|seductive|innocent)\s+(?:gaze|look|expression|smile|stare|grin)[^,.;]*[,.;]/gi, "")
+    .replace(/\b(?:rich|deep|luxurious|silky|glossy|glowing|radiant|porcelain|flawless|smooth|delicate)\s+/gi, "")
+    .replace(/\b(?:softly|gently|naturally|warmly|beautifully|gorgeously|effortlessly)\s+/gi, "")
+    .replace(/\bin\s+natural\s+light[^,.;]*[,.;]/gi, "")
+    .replace(/\b(?:striking|stunning|captivating|alluring|seductive|piercing|gorgeous|beautiful|breathtaking)\s+/gi, "");
+
+  s = s.replace(/\s+/g, " ").replace(/\s*,\s*,+/g, ", ").replace(/\s*([,.;])\s*/g, "$1 ").trim();
+
+  // Hard cap — snij netjes op woordgrens.
+  if (s.length > maxChars) {
+    const cut = s.slice(0, maxChars);
+    const lastBreak = Math.max(cut.lastIndexOf(", "), cut.lastIndexOf(". "), cut.lastIndexOf("; "), cut.lastIndexOf(" "));
+    s = (lastBreak > maxChars * 0.6 ? cut.slice(0, lastBreak) : cut).trimEnd().replace(/[,.;]+$/g, "");
+  }
+
+  return s;
+}
+
+/** Zelfde sanering als admin random profile → ZModel: geen grid/collage-termen die het model triggeren. */
+export function sanitizeIdentityForZImagePrompt(identity: string): string {
+  return (
+    identity
+      // Verwijder anti-collage instructies — die laten we elders staan
+      .replace(/\b(?:never|no|not)\s+[^.,;]*(?:grid|collage|raster|multi[- ]?panel|contact sheet|filmstrip)[^.]*\./gi, "")
+      .replace(/\b(?:grid|collage|raster|contact sheets?|filmstrips?|multi[- ]?panels?|9[- ]?panels?|thumbnail\s*strips?)\b/gi, "")
+      // Verwijder framing/setup instructies uit identity — die mag de chat-prompt zelf bepalen.
+      // Zonder dit forceert "filling the frame edge to edge" + "smartphone in mirror"
+      // het model standaard naar een face-only mirror selfie, ongeacht onze framing rule.
+      .replace(/,?\s*black smartphone[^,.;]*?(?:in|in the)\s*mirror[^,.;]*/gi, "")
+      .replace(/,?\s*dark phone case[^,.;]*?(?:in|in the)\s*reflection[^,.;]*/gi, "")
+      .replace(/,?\s*(?:black|dark)?\s*smartphone[^,.;]*?(?:in|in the)\s*(?:mirror|reflection)[^,.;]*/gi, "")
+      .replace(/;?\s*one\s+candid\s+uncropped\s+snapshot\s+filling\s+the\s+frame\s+edge\s+to\s+edge\b/gi, "")
+      .replace(/\bfilling\s+the\s+frame\s+edge\s+to\s+edge\b/gi, "")
+      .replace(/\buncropped\s+snapshot\b/gi, "snapshot")
+      .replace(/\b(?:edge\s+to\s+edge|face\s*filling|face[- ]?filling|portrait\s+fills?\s+the\s+frame)\b/gi, "")
+      .replace(/\s*—\s*$/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\s*,\s*,+/g, ", ")
+      .replace(/\s*([,.;])\s*/g, "$1 ")
+      .trim()
+  );
 }
 
 export function finalizePromptForZModel(userPrompt: string): string {
@@ -323,9 +382,11 @@ export async function generateRealisticImageDetailed(
 }
 
 export function buildNudePrompt(profile: Profile, userRequest: string): string {
-  const identity =
+  const identityRaw =
     profile.visualIdentityPrompt?.trim().replace(/\s+/g, " ") ||
     buildStableVisualIdentityForProfile(profile);
+  const identity = sanitizeIdentityForZImagePrompt(identityRaw);
   const scene = userRequest.trim() || "amateur smartphone photo realistic lighting same woman as profile";
-  return `${identity}, scene: ${scene}`;
+  /** Identiteit vooraan — zie `finalizePromptForZModel` (knipt het einde af bij overflow). */
+  return `${identity}. Scene: ${scene}`;
 }

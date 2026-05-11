@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ConversationSummary, Conversation, ChatMessage } from '@/lib/types/chat';
+import { profilePhotoSrc } from '@/lib/profile-image-url';
 import {
   getCreditsBalance,
   spendChatCredit,
@@ -96,10 +97,10 @@ function formatRecordingDuration(totalSeconds: number): string {
   return `${mins}:${secs}`;
 }
 
-/** Keep typing indicator snappy so replies feel immediate. */
-function typingIndicatorDelayMs(approxServerMessageCount: number): number {
-  if (approxServerMessageCount <= 0) return 250 + Math.floor(Math.random() * 450);
-  return 350 + Math.floor(Math.random() * 850); // 0.35s - 1.2s
+/** Typing-indicator meteen na verzenden; server-latency is al genoeg “wachttijd”. */
+function typingIndicatorDelayMs(_approxServerMessageCount: number): number {
+  void _approxServerMessageCount;
+  return 0;
 }
 
 function isEmailVerificationError(message: string | null): boolean {
@@ -529,13 +530,16 @@ function BerichtenInner() {
       }
     } catch (e) {
       if (selectedIdRef.current !== id) return;
-      const msg =
-        e instanceof Error && e.name === 'TimeoutError'
-          ? 'Gesprek laden duurt te lang. Probeer opnieuw.'
-          : e instanceof Error
-            ? e.message
-            : 'Fout';
-      setError(msg);
+      // Only surface hard-load timeouts/errors to the user; soft polls should fail silently.
+      if (!soft) {
+        const msg =
+          e instanceof Error && e.name === 'TimeoutError'
+            ? 'Gesprek laden duurt te lang. Probeer opnieuw.'
+            : e instanceof Error
+              ? e.message
+              : 'Fout';
+        setError(msg);
+      }
     } finally {
       if (
         !soft &&
@@ -694,13 +698,20 @@ function BerichtenInner() {
         /* ignore */
       }
 
+      // Timeout guard: voorkomt dat de pagina eeuwig op "Laden..." blijft hangen als de server traag is.
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+
       try {
         const createRes = await fetch('/api/conversations', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ profileId: pid }),
+          signal: controller.signal,
         });
+        window.clearTimeout(timeoutId);
+
         const createData = (await createRes.json()) as {
           conversation?: Conversation;
           error?: string;
@@ -762,9 +773,15 @@ function BerichtenInner() {
         // Do NOT call fetchList here — it would overwrite the optimistic conversation we just added.
         // Background refresh will pick up the new chat later.
       } catch (e) {
+        window.clearTimeout(timeoutId);
         setLoadingList(false);
-        setError(e instanceof Error ? e.message : 'Chat openen mislukt');
-        router.replace('/berichten', { scroll: false });
+        if ((e as any)?.name === 'AbortError') {
+          setError('Chat openen duurt te lang. Probeer het opnieuw.');
+          router.replace('/berichten', { scroll: false });
+        } else {
+          setError(e instanceof Error ? e.message : 'Chat openen mislukt');
+          router.replace('/berichten', { scroll: false });
+        }
       }
     })();
   }, [profileOpenParam, router]);
@@ -1013,7 +1030,7 @@ function BerichtenInner() {
     async (blob: Blob) => {
       const sid = selectedIdRef.current;
       if (!sid) return;
-      const localVoiceId = `local-voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const localVoiceId = crypto.randomUUID();
       const nowIso = new Date().toISOString();
       const localVoiceUrl = URL.createObjectURL(blob);
       const durationMs = await new Promise<number | undefined>((resolve) => {
@@ -1085,25 +1102,25 @@ function BerichtenInner() {
 
         const u = data.userMessages ?? [];
         const a = data.assistantMessage;
-        if (u.some((msg) => msg.id === localVoiceId)) {
+        const serverSlice = [...u, ...(a ? [a] : [])];
+        if (serverSlice.length > 0) {
           setLocalVoiceUrlById((prev) => {
             const current = prev[localVoiceId];
             if (current) URL.revokeObjectURL(current);
             const { [localVoiceId]: _omit, ...rest } = prev;
             return rest;
           });
-        }
-        if (u.length > 0 || a) {
           setConversation((c) => {
             if (!c || c.id !== sid) return c;
-            const add = [...u, ...(a ? [a] : [])];
-            const existingIds = new Set(c.messages.map((m) => m.id));
-            const newOnly = add.filter((m) => !existingIds.has(m.id));
-            if (newOnly.length === 0) return c;
+            const withoutOptimistic = c.messages.filter((m) => m.id !== localVoiceId);
+            const merged = sortChatMessagesChronologically(
+              deduplicateMessages([...withoutOptimistic, ...serverSlice])
+            );
+            const tail = merged[merged.length - 1];
             return {
               ...c,
-              messages: sortChatMessagesChronologically([...c.messages, ...newOnly]),
-              updatedAt: newOnly[newOnly.length - 1]?.createdAt ?? c.updatedAt,
+              messages: merged,
+              updatedAt: tail?.createdAt ?? c.updatedAt,
             };
           });
         }
@@ -1234,9 +1251,8 @@ function BerichtenInner() {
     if (!selectedId || list.length === 0 || loadingList) return;
     const row = list.find((c) => c.id === selectedId);
     if (!row) {
-      setSelectedId(null);
-      setConversation(null);
-      router.replace('/berichten', { scroll: false });
+      // Transient (e.g. just-created deep link not yet in a concurrent list fetch). Refresh instead of nuking selection.
+      void fetchList({ silent: true });
       return;
     }
     const same = list.filter((c) => c.profileId === row.profileId);
@@ -1888,7 +1904,7 @@ function BerichtenInner() {
                 >
                   <div className="relative flex-shrink-0">
                     <img
-                      src={chat.previewAvatar}
+                      src={profilePhotoSrc(chat.previewAvatar || '', { widthCss: 48, heightCss: 48 })}
                       alt=""
                       className="w-12 h-12 rounded-2xl object-cover ring-2 ring-white shadow-sm"
                     />
@@ -1972,7 +1988,7 @@ function BerichtenInner() {
                 >
                   <div className="relative shrink-0">
                     <img
-                      src={activeConversation.previewAvatar}
+                      src={profilePhotoSrc(activeConversation.previewAvatar || '', { widthCss: 56, heightCss: 56 })}
                       alt=""
                       className="h-14 w-14 rounded-2xl object-cover ring-2 ring-white shadow-sm"
                     />
@@ -2782,7 +2798,7 @@ function BerichtenInner() {
                         disabled={isRecordingVoice || !voiceDraftBlob}
                         className="h-10 min-w-[7rem] rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
                       >
-                        Verzend voice
+                        Verzend spraakbericht
                       </Button>
                       {!isRecordingVoice && (
                         <button

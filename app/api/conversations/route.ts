@@ -23,6 +23,12 @@ export async function GET() {
         );
       }
       await ensureUserInboxForOwner(userId);
+
+      // Definitief opruimen van legacy "local" / seed chats (zonder ownerUserId)
+      // zodat de inbox alleen echte, door de gebruiker gestarte gesprekken bevat.
+      const { purgeLegacySeedConversations } = await import("@/lib/server/conversations");
+      await purgeLegacySeedConversations(userId);
+
       /**
        * Belangrijk:
        * We sturen GEEN engagement-nudges meer tijdens inbox-laden.

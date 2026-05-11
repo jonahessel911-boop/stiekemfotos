@@ -1,7 +1,11 @@
 import { randomInt, randomUUID } from "crypto";
 import { readFile } from "fs/promises";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { generateRealisticImageDetailed, zModelMaxUserPromptBodyChars } from "@/lib/server/imageGen";
+import {
+  generateRealisticImageDetailed,
+  sanitizeIdentityForZImagePrompt,
+  zModelMaxUserPromptBodyChars,
+} from "@/lib/server/imageGen";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
 import { convImageDir } from "@/lib/server/convImageStore";
@@ -761,16 +765,6 @@ function pickFramingHint(identitySeed: string, photoIndex: number): string {
     "wider angle further from face mirror or timer shot",
     "over-shoulder partial face plus room depth",
   ]);
-}
-
-/** Verwijdert oude layout-termen uit opgeslagen identity zodat ze niet mee naar het model gaan. */
-function sanitizeIdentityForZImagePrompt(identity: string): string {
-  return identity
-    .replace(/\b(?:never|no|not)\s+[^.,;]*(?:grid|collage|raster|multi[- ]?panel|contact sheet|filmstrip)[^.]*\./gi, "")
-    .replace(/\b(?:grid|collage|raster|contact sheets?|filmstrips?|multi[- ]?panels?|9[- ]?panels?|thumbnail\s*strips?)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .replace(/\s*([,.;])\s*/g, "$1 ")
-    .trim();
 }
 
 /**
