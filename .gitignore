@@ -38,5 +38,7 @@ yarn-error.log*
 /data/qualifications.json
 /data/onboarding-signups.json
 /data/users.json
+/data/credit-ledger.json
+/data/stripe-checkouts.json
 /data/conv-images/
 .vercel
