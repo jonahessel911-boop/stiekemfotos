@@ -159,7 +159,12 @@ export default function Navbar() {
       </aside>
 
       <nav className="fixed top-0 left-0 right-0 bg-[var(--surface-card)] border-b border-gray-200/80 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-8 h-12 sm:h-14 md:h-16 flex items-center justify-between gap-2">
+        {/*
+          Mobiel: max-w-7xl + mx-auto (gecentreerde container).
+          Desktop (md+): full-width zodat het logo helemaal links uitlijnt met de
+          fixed sidebar (die ook op left-0 zit). Geen mx-auto meer op md+.
+        */}
+        <div className="max-w-7xl mx-auto md:max-w-none md:mx-0 px-3 sm:px-4 md:px-6 h-12 sm:h-14 md:h-16 flex items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center pr-1 md:flex-initial md:pr-0">
             <Logo />
           </div>
