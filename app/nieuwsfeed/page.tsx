@@ -6,6 +6,7 @@ import { MessageCircle, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WelcomeHouseRulesModal } from '@/components/WelcomeHouseRulesModal';
 import type { PhotoRequest } from '@/lib/types/photo-request';
+import { resolveProfileImageUrl } from '@/lib/profile-image-url';
 
 const PHOTO_TYPE_OPTIONS = [
   { id: 'naakt' as const, label: 'Naakt foto' },
@@ -313,11 +314,14 @@ export default function NieuwsfeedPage() {
                   {r.comments.length === 0 ? (
                     <p className="text-sm text-gray-500">Nog geen reacties.</p>
                   ) : (
-                    r.comments.map((c) => (
+                    r.comments.map((c) => {
+                      const imageUrl =
+                        c.authorType === 'profile' ? resolveProfileImageUrl(c.profileAvatar) : '';
+                      return (
                       <div key={c.id} className="flex items-start gap-2">
                         {c.authorType === 'profile' ? (
                           <img
-                            src={c.profileAvatar}
+                            src={imageUrl}
                             alt=""
                             className="h-8 w-8 rounded-full object-cover"
                           />
@@ -333,7 +337,8 @@ export default function NieuwsfeedPage() {
                           {c.text}
                         </p>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
 

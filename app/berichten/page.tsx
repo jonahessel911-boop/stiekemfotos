@@ -30,7 +30,7 @@ import { Button } from '@/components/ui/button';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ConversationSummary, Conversation, ChatMessage } from '@/lib/types/chat';
-import { profilePhotoSrc } from '@/lib/profile-image-url';
+import { profilePhotoSrc, resolveProfileImageUrl } from '@/lib/profile-image-url';
 import {
   getCreditsBalance,
   spendChatCredit,
@@ -2848,13 +2848,15 @@ function BerichtenInner() {
       </div>
       {/* Desktop live notifications (right-bottom) */}
       <div className="pointer-events-none fixed bottom-6 right-6 z-[90] hidden w-[320px] max-w-[92vw] flex-col gap-3 md:flex">
-        {liveNotifications.map((n) => (
+        {liveNotifications.map((n) => {
+          const imageUrl = resolveProfileImageUrl(n.avatar);
+          return (
           <div
             key={n.id}
             className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-gray-200/80 bg-white px-3 py-3 shadow-lg"
           >
             <img
-              src={n.avatar}
+              src={imageUrl}
               alt=""
               className="h-11 w-11 shrink-0 rounded-xl object-cover ring-2 ring-white shadow-sm"
             />
@@ -2863,7 +2865,8 @@ function BerichtenInner() {
               <p className="truncate text-xs text-gray-600">{n.text}</p>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {lightboxSrc ? (

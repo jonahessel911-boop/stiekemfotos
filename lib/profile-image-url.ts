@@ -1,8 +1,35 @@
 import { resolveMediaUrl } from "./utils/resolveMediaUrl";
 
 /**
- * Zorgt dat relatieve media-URL's (zoals /api/conversations/...) absolute URLs worden
- * zodat ze in browser én op Vercel correct ophalen.
+ * Zet ALLEEN `/api/...` paden om naar een absolute URL (via NEXT_PUBLIC_APP_URL of
+ * window.location.origin). Logo's, andere statische assets (bv. `/logo-mark.png`)
+ * en externe `https://` URLs blijven ongemoeid.
+ *
+ * Specifiek voor profielafbeeldingen — gebruik dit i.p.v. de generieke
+ * `resolveMediaUrl` zodat we niet per ongeluk relatieve static-asset paden gaan
+ * vervolledigen.
+ */
+export function resolveProfileImageUrl(url: string | null | undefined): string {
+  const raw = (url ?? "").trim();
+  if (!raw) return "";
+
+  /** Absolute URLs: gewoon doorgeven (externe Unsplash/Supabase/etc). */
+  if (raw.startsWith("http://") || raw.startsWith("https://")) {
+    return raw;
+  }
+
+  /** Alleen onze server image proxy (`/api/...`) moet absoluut worden. */
+  if (raw.startsWith("/api/")) {
+    return resolveMediaUrl(raw) ?? raw;
+  }
+
+  /** Static assets onder /public (`/logo.png`, `/animations/...`) blijven relatief. */
+  return raw;
+}
+
+/**
+ * @deprecated Gebruik `resolveProfileImageUrl` voor profielafbeeldingen.
+ * Behouden voor backwards-compat met andere call-sites.
  */
 export function resolveProfileMediaUrl(url: string | null | undefined): string | null {
   return resolveMediaUrl(url);
@@ -16,7 +43,8 @@ export function profilePhotoSrc(
   url: string,
   opts: { widthCss: number; heightCss?: number }
 ): string {
-  const resolved = resolveProfileMediaUrl(url) ?? url;
+  /** Stricte resolver: alleen `/api/...` wordt absoluut, rest blijft. */
+  const resolved = resolveProfileImageUrl(url) || url;
   if (!resolved?.trim()) return resolved || "";
 
   const dpr = 2;

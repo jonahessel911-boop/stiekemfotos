@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Cake, Heart, Briefcase, MapPin, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Profile } from '@/lib/types/profile';
-import { profilePhotoSrc } from '@/lib/profile-image-url';
+import { profilePhotoSrc, resolveProfileImageUrl } from '@/lib/profile-image-url';
 import { isProfileDisplayedOnline } from '@/lib/profile-display-online';
 import { getCreditsBalance } from '@/lib/credits-client';
 import {
@@ -156,6 +156,8 @@ export default function ProfielDetailPage() {
     return unique.length > 0 ? unique : [avatarUrl];
   })();
   const activePhoto = profilePhotos[Math.min(activePhotoIndex, profilePhotos.length - 1)] ?? avatarUrl;
+  /** Profielfoto image-source: rewrite alleen `/api/...` naar absoluut, externe https blijft, static assets blijven. */
+  const activePhotoImageUrl = resolveProfileImageUrl(activePhoto);
   const nextPhoto = () =>
     setActivePhotoIndex((prev) => (profilePhotos.length <= 1 ? 0 : (prev + 1) % profilePhotos.length));
   const prevPhoto = () =>
@@ -177,7 +179,7 @@ export default function ProfielDetailPage() {
       <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col px-3 pt-14 md:hidden">
         <div className="mb-3 overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm transition-conv">
           <div className="relative aspect-[3/4] bg-gray-100">
-            <img src={activePhoto} alt="" className="h-full w-full object-cover object-top" />
+            <img src={activePhotoImageUrl} alt="" className="h-full w-full object-cover object-top" />
             <div className="pointer-events-none absolute inset-x-0 top-0 flex gap-1 p-2">
               {profilePhotos.map((_, idx) => (
                 <span
@@ -284,21 +286,24 @@ export default function ProfielDetailPage() {
               messageId: `placeholder-${i}`,
               createdAt: new Date().toISOString(),
               imageUrl: avatarUrl,
-            }))).map((item) => (
-              <div
-                key={`${item.conversationId}:${item.messageId}`}
-                className="relative h-52 w-36 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
-              >
-                <img
-                  src={item.imageUrl}
-                  alt=""
-                  className="h-full w-full object-cover blur-xl scale-110"
-                  loading="lazy"
-                  decoding="async"
-                />
-                <div className="absolute inset-0 bg-black/25" />
-              </div>
-            ))}
+            }))).map((item) => {
+              const imageUrl = resolveProfileImageUrl(item.imageUrl);
+              return (
+                <div
+                  key={`${item.conversationId}:${item.messageId}`}
+                  className="relative h-52 w-36 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
+                >
+                  <img
+                    src={imageUrl}
+                    alt=""
+                    className="h-full w-full object-cover blur-xl scale-110"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  <div className="absolute inset-0 bg-black/25" />
+                </div>
+              );
+            })}
           </div>
           {portfolioLoading ? (
             <p className="mt-2 text-[11px] text-gray-500">Portfolio laden…</p>
@@ -313,7 +318,7 @@ export default function ProfielDetailPage() {
         <div className="space-y-4 md:col-span-5">
           <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
             <div className="relative aspect-[3/4] max-h-[82vh] bg-gray-100">
-              <img src={activePhoto} alt="" className="h-full w-full object-cover object-top" decoding="async" />
+              <img src={activePhotoImageUrl} alt="" className="h-full w-full object-cover object-top" decoding="async" />
               <div className="pointer-events-none absolute inset-x-0 top-0 flex gap-1 p-3">
                 {profilePhotos.map((_, idx) => (
                   <span
@@ -442,21 +447,24 @@ export default function ProfielDetailPage() {
                 messageId: `placeholder-${i}`,
                 createdAt: new Date().toISOString(),
                 imageUrl: avatarUrl,
-              }))).map((item) => (
-                <div
-                  key={`${item.conversationId}:${item.messageId}`}
-                  className="relative h-80 w-56 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
-                >
-                  <img
-                    src={item.imageUrl}
-                    alt=""
-                    className="h-full w-full object-cover blur-xl scale-110"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <div className="absolute inset-0 bg-black/25" />
-                </div>
-              ))}
+              }))).map((item) => {
+                const imageUrl = resolveProfileImageUrl(item.imageUrl);
+                return (
+                  <div
+                    key={`${item.conversationId}:${item.messageId}`}
+                    className="relative h-80 w-56 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
+                  >
+                    <img
+                      src={imageUrl}
+                      alt=""
+                      className="h-full w-full object-cover blur-xl scale-110"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    <div className="absolute inset-0 bg-black/25" />
+                  </div>
+                );
+              })}
             </div>
             {portfolioLoading ? <p className="mt-2 text-xs text-gray-500">Portfolio laden…</p> : null}
           </div>

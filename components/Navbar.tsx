@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Logo from './Logo';
-import { Home, MessageCircle, Users, CreditCard, Bell, LogOut, Images } from 'lucide-react';
+import { Home, MessageCircle, Users, CreditCard, LogOut, Images } from 'lucide-react';
 import { clearStoredUser, getStoredUser } from '@/lib/onboarding-client';
 import { useI18n } from '@/components/I18nProvider';
 import { usePlatformOnboardingBlocking } from '@/components/PlatformOnboardingContext';
@@ -37,7 +37,6 @@ const MOBILE_TAB_SHORT: Record<NavKey, string> = {
 
 export default function Navbar() {
   const { t, locale } = useI18n();
-  const router = useRouter();
   const pathname = usePathname();
   const platformOnboardingBlocking = usePlatformOnboardingBlocking();
   /** Lege initiële staat: voorkomt hydration mismatch (SSR heeft geen localStorage). */
@@ -193,15 +192,6 @@ export default function Navbar() {
           </div>
 
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-2 md:gap-6">
-            <button
-              type="button"
-              className="relative flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:min-h-[44px] sm:min-w-[44px] md:min-h-0 md:min-w-0 md:p-2"
-              aria-label={t('common.notifications')}
-            >
-              <Bell className="h-[1.125rem] w-[1.125rem] sm:h-5 sm:w-5" />
-              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary sm:right-1.5 sm:top-1.5 sm:h-2 sm:w-2" />
-            </button>
-
             <div className="flex items-center gap-0.5 sm:gap-2">
               <div className="group flex cursor-default items-center gap-2">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-primary text-[11px] font-bold text-white shadow ring-2 ring-white sm:h-8 sm:w-8 md:h-9 md:w-9 md:text-xs">
@@ -216,17 +206,35 @@ export default function Navbar() {
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  void fetch('/api/auth/logout', {
-                    method: 'POST',
-                    credentials: 'include',
-                  }).finally(() => {
+                onClick={async () => {
+                  /**
+                   * Hard logout: eerst wachten tot de server het session cookie
+                   * heeft gewist (anders herstelt het beschermde server-rendered
+                   * route de oude sessie alsnog), dan localStorage opschonen,
+                   * dan een echte page-load naar /start zodat ALLE server state
+                   * opnieuw zonder auth wordt opgehaald. `router.push` werkt hier
+                   * onbetrouwbaar op productie omdat sommige routes server-side
+                   * gecached blijven.
+                   */
+                  try {
+                    await fetch('/api/auth/logout', {
+                      method: 'POST',
+                      credentials: 'include',
+                      cache: 'no-store',
+                    });
+                  } catch {
+                    /** Negeer netwerkfout — we forceren alsnog client-side logout. */
+                  }
+                  try {
                     clearStoredUser();
-                    router.push('/start');
-                    router.refresh();
-                  });
+                  } catch {
+                    /* noop */
+                  }
+                  if (typeof window !== 'undefined') {
+                    window.location.href = '/start';
+                  }
                 }}
-                className="inline-flex min-h-[40px] min-w-[40px] items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 sm:min-h-0 sm:min-w-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:underline md:text-xs md:font-semibold"
+                className="inline-flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 sm:min-h-0 sm:min-w-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:underline md:text-xs md:font-semibold"
                 aria-label={t('common.logout')}
               >
                 <LogOut className="h-[1.125rem] w-[1.125rem] sm:hidden" />
