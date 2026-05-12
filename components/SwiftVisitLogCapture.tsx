@@ -28,7 +28,7 @@ function readFirstParam(params: URLSearchParams, keys: ReadonlyArray<string>): s
 }
 
 /**
- * Captures Swift Visit Log tracking params from the current URL and stores
+ * Captures ClickFlare tracking params from the current URL and stores
  * them in cookies so the server can fire the postback after form submit.
  */
 export default function SwiftVisitLogCapture(): null {

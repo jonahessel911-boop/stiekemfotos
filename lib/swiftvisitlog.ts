@@ -1,13 +1,13 @@
 /**
- * ClickFlare / Swift Visit Log postback helper.
- * ClickFlare gebruikt klant-specifieke postback-domeinen (bv. swiftvisitlog.com)
- * en dedupliceert conversies op basis van click_id + txid + ct.
+ * ClickFlare postback helper.
+ * Standaard postback-host: 911-for-me.com (ClickFlare /cf/cv).
+ * Dedupliceert conversies op basis van click_id + txid + ct.
  *
- * Configureerbaar via env:
- *  - CLICKFLARE_POSTBACK_URL  (default: https://swiftvisitlog.com/cf/cv)
+ * Configureerbaar via env (overschrijft default):
+ *  - CLICKFLARE_POSTBACK_URL  (default: https://911-for-me.com/cf/cv)
  *  - CLICKFLARE_CONVERSION_TYPE (default: signup)
  */
-const DEFAULT_SVL_POSTBACK_BASE_URL = "https://swiftvisitlog.com/cf/cv";
+const DEFAULT_SVL_POSTBACK_BASE_URL = "https://911-for-me.com/cf/cv";
 
 export const SVL_POSTBACK_BASE_URL =
   process.env.CLICKFLARE_POSTBACK_URL?.trim() || DEFAULT_SVL_POSTBACK_BASE_URL;
@@ -44,7 +44,7 @@ export type BuildSvlPostbackOpts = {
 };
 
 /**
- * Build a ClickFlare / Swift Visit Log postback URL.
+ * Build a ClickFlare postback URL.
  * Template: <base>?click_id=REPLACE&payout=OPTIONAL&txid=OPTIONAL&ct=OPTIONAL
  * - click_id is required (postback is skipped upstream when missing).
  * - payout, txid, ct worden alleen toegevoegd als ze meegegeven zijn (payout=0 telt als waarde en wordt dus wél geschreven).
