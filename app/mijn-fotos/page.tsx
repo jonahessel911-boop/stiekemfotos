@@ -11,7 +11,16 @@ type PurchasedPhotoItem = {
   unlockedAt: string;
   profileId: string;
   profileName: string;
+  /** Persistent Supabase Storage URL als beschikbaar (anders proxy-route fallback). */
+  imageUrl?: string;
 };
+
+function photoSrc(it: PurchasedPhotoItem): string {
+  return (
+    it.imageUrl?.trim() ||
+    `/api/conversations/${it.conversationId}/image/${it.messageId}`
+  );
+}
 
 type ViewMode = 'all' | 'profiles' | 'folders';
 type FolderMap = Record<string, string>;
@@ -268,7 +277,7 @@ export default function MijnFotosPage() {
                       title={`Open chat met ${it.profileName}`}
                     >
                       <img
-                        src={`/api/conversations/${it.conversationId}/image/${it.messageId}`}
+                        src={photoSrc(it)}
                         alt=""
                         className="aspect-[3/4] w-full object-cover"
                         loading="lazy"
@@ -345,7 +354,7 @@ export default function MijnFotosPage() {
                 >
                   <Link href={`/berichten?chat=${it.conversationId}`} title={`Open chat met ${it.profileName}`}>
                     <img
-                      src={`/api/conversations/${it.conversationId}/image/${it.messageId}`}
+                      src={photoSrc(it)}
                       alt=""
                       className="aspect-[3/4] w-full object-cover"
                       loading="lazy"
@@ -382,7 +391,7 @@ export default function MijnFotosPage() {
                 title={`Open chat met ${it.profileName}`}
               >
                 <img
-                  src={`/api/conversations/${it.conversationId}/image/${it.messageId}`}
+                  src={photoSrc(it)}
                   alt=""
                   className="aspect-[3/4] w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                   loading="lazy"

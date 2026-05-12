@@ -21,7 +21,13 @@ export async function GET(
   return NextResponse.json({
     items: items.map((it) => ({
       ...it,
-      imageUrl: `/api/conversations/${it.conversationId}/image/${it.messageId}`,
+      /**
+       * Voorkeur: persistent Supabase Storage URL (op nieuwe + gemigreerde data).
+       * Legacy fallback: proxy-route voor messages die nog geen `imageUrl` hebben.
+       */
+      imageUrl:
+        it.imageUrl?.trim() ||
+        `/api/conversations/${it.conversationId}/image/${it.messageId}`,
     })),
   });
 }

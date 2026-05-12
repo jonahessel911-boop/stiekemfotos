@@ -931,6 +931,8 @@ export type ProfilePortfolioItem = {
   conversationId: string;
   messageId: string;
   createdAt: string;
+  /** Persistent publieke Supabase Storage URL, indien beschikbaar. */
+  imageUrl?: string;
 };
 
 export type PurchasedPhotoItem = {
@@ -940,6 +942,8 @@ export type PurchasedPhotoItem = {
   unlockedAt: string;
   profileId: string;
   profileName: string;
+  /** Persistent publieke Supabase Storage URL, indien beschikbaar. */
+  imageUrl?: string;
 };
 
 export async function listProfilePortfolioItems(
@@ -955,13 +959,14 @@ export async function listProfilePortfolioItems(
     if (c.ownerUserId !== ownerUserId) continue;
     if (c.profileId !== profileId) continue;
     for (const m of c.messages) {
-      if (m.role !== "assistant" || !m.imageFile) continue;
+      if (m.role !== "assistant" || !(m.imageFile || m.imageUrl)) continue;
       const ts = new Date(m.createdAt).getTime();
       if (!Number.isFinite(ts) || ts < cutoffMs) continue;
       out.push({
         conversationId: c.id,
         messageId: m.id,
         createdAt: m.createdAt,
+        imageUrl: m.imageUrl?.trim() || undefined,
       });
     }
   }
@@ -976,7 +981,13 @@ export async function listPurchasedPhotosForOwner(ownerUserId: string): Promise<
   for (const c of list) {
     if (c.ownerUserId !== ownerUserId) continue;
     for (const m of c.messages) {
-      if (m.role !== "assistant" || !m.imageFile || !m.photoLock?.unlockedAt) continue;
+      if (
+        m.role !== "assistant" ||
+        !(m.imageFile || m.imageUrl) ||
+        !m.photoLock?.unlockedAt
+      ) {
+        continue;
+      }
       out.push({
         conversationId: c.id,
         messageId: m.id,
@@ -984,6 +995,7 @@ export async function listPurchasedPhotosForOwner(ownerUserId: string): Promise<
         unlockedAt: m.photoLock.unlockedAt,
         profileId: c.profileId,
         profileName: c.profileName,
+        imageUrl: m.imageUrl?.trim() || undefined,
       });
     }
   }

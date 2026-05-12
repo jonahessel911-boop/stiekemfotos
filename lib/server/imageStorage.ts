@@ -132,6 +132,7 @@ export async function uploadImageToStorage(opts: {
   }
   const storagePath = segments.join("/");
 
+  const startedAt = Date.now();
   const { error: upErr } = await admin.storage
     .from(IMAGE_BUCKET)
     .upload(storagePath, opts.buffer, {
@@ -139,7 +140,11 @@ export async function uploadImageToStorage(opts: {
       upsert: opts.upsert ?? true,
       cacheControl: "31536000",
     });
+  const durationMs = Date.now() - startedAt;
   if (upErr) {
+    console.warn(
+      `[imageStorage] upload FAIL path=${IMAGE_BUCKET}/${storagePath} bytes=${opts.buffer.length} duration_ms=${durationMs} error="${upErr.message}"`
+    );
     throw new Error(
       `[imageStorage] upload ${IMAGE_BUCKET}/${storagePath} failed: ${upErr.message}`
     );
@@ -148,8 +153,14 @@ export async function uploadImageToStorage(opts: {
   const { data } = admin.storage.from(IMAGE_BUCKET).getPublicUrl(storagePath);
   const publicUrl = (data?.publicUrl ?? "").trim();
   if (!publicUrl) {
+    console.warn(
+      `[imageStorage] upload OK but getPublicUrl gaf lege URL path=${IMAGE_BUCKET}/${storagePath}`
+    );
     throw new Error(`[imageStorage] getPublicUrl gaf lege URL voor ${storagePath}`);
   }
+  console.info(
+    `[imageStorage] upload OK path=${IMAGE_BUCKET}/${storagePath} bytes=${opts.buffer.length} duration_ms=${durationMs}`
+  );
   return { publicUrl, storagePath, provider: "supabase" };
 }
 

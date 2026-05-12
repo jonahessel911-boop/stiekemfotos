@@ -50,13 +50,20 @@ export async function POST(req: Request) {
       );
     }
 
-    // Return the local file URL
-    const imageUrl = `/api/conversations/${testConvId}/image/${testMsgId}`;
+    /**
+     * Voorkeur: persistent Supabase Storage URL uit `generated.publicUrl`.
+     * Fallback: legacy proxy-route op `/api/conversations/.../image/...`
+     * voor dev-omgeving zonder Supabase admin client.
+     */
+    const imageUrl =
+      generated.publicUrl?.trim() ||
+      `/api/conversations/${testConvId}/image/${testMsgId}`;
 
     return NextResponse.json({
       prompt,
       imageUrl,
       filename,
+      publicUrl: generated.publicUrl ?? null,
     });
   } catch (e) {
     return NextResponse.json(

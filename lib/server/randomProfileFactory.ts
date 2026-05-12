@@ -45,12 +45,19 @@ type CreatedRandomProfile = {
 
 const LOCAL_RANDOM_PROFILES_FILE = "random-profiles.json";
 
+/**
+ * Tweede-kans uploader voor profielfoto's. De primary upload gebeurt al inline
+ * in `tryGenerateWithZModel`; deze helper dekt edge cases waar de inline upload
+ * faalde (tijdelijke Supabase outage) maar het lokale bestand wél bestaat.
+ *
+ * **Geen** `/api/conversations/.../image/...` legacy-fallback meer — als dit
+ * pad geen Supabase Storage URL kan produceren, gooien we expliciet zodat de
+ * caller weet dat de profielfoto onbruikbaar is en hij kan retryen of skippen.
+ */
 async function persistConversationImageAsPublicUrl(
   conversationId: string,
   messageId: string
 ): Promise<string> {
-  const legacyRouteUrl = `/api/conversations/${conversationId}/image/${messageId}`;
-
   const dir = convImageDir(conversationId);
   const candidates = [
     { ext: "jpg", mime: "image/jpeg" },
@@ -58,13 +65,7 @@ async function persistConversationImageAsPublicUrl(
     { ext: "png", mime: "image/png" },
   ] as const;
 
-  /**
-   * Probeer de zojuist door `tryGenerateWithZModel` lokaal weggeschreven bytes
-   * te lezen en naar Supabase Storage te uploaden. De Storage upload binnen
-   * `tryGenerateWithZModel` dekt dit pad ook al, maar dit blijft een
-   * vangnet voor flows waar het lokale bestand bestaat maar de inline upload
-   * faalde (bv. tijdelijke Supabase outage).
-   */
+  const errors: string[] = [];
   for (const candidate of candidates) {
     try {
       const filePath = `${dir}/${messageId}.${candidate.ext}`;
@@ -76,13 +77,23 @@ async function persistConversationImageAsPublicUrl(
         upsert: true,
       });
       if (uploaded?.publicUrl) {
+        console.info(
+          `[randomProfile] persist ok conv=${conversationId} msg=${messageId} ext=${candidate.ext} → ${uploaded.publicUrl}`
+        );
         return uploaded.publicUrl;
       }
-    } catch {
-      // Probeer volgende extensie.
+      errors.push(`${candidate.ext}: upload returned no publicUrl`);
+    } catch (e) {
+      errors.push(
+        `${candidate.ext}: ${e instanceof Error ? e.message : String(e)}`
+      );
     }
   }
-  return legacyRouteUrl;
+
+  throw new Error(
+    `[randomProfile] kon profielfoto niet persistent maken in Supabase Storage ` +
+      `(conv=${conversationId} msg=${messageId}). Errors: ${errors.join(" | ")}`
+  );
 }
 
 /** Fallback-pool als Grok faalt of een verboden naam teruggeeft. */
