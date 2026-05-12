@@ -20,6 +20,7 @@ const SUPABASE_TABLES_TO_TRUNCATE: { table: string; column: string }[] = [
   { table: "stripe_checkouts", column: "session_id" },
   { table: "conversations", column: "id" },
   { table: "credit_ledger", column: "id" },
+  { table: "onboarding_signups", column: "id" },
   { table: "users", column: "id" },
 ];
 

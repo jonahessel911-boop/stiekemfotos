@@ -1,21 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { readJsonBlob } from "@/lib/server/blobJson";
-import { readJson } from "@/lib/server/store";
 import { ADMIN_SESSION_COOKIE_NAME, parseAdminCookieValue } from "@/lib/server/adminAuth";
-import type { Conversation } from "@/lib/types/chat";
 import { parseEuroFromPriceLabel } from "@/lib/server/adminAnalytics";
+import { loadAdminDataset, type AdminStripeCheckoutRow } from "@/lib/server/adminDataset";
 
-type SignupRow = { naam: string; email: string; leeftijd: number; createdAt: string };
-type UserRow = { id: string; email: string; naam: string; createdAt: string };
-type StripeCheckoutRow = {
-  sessionId: string;
-  userId: string;
-  credits: number;
-  priceLabel: string;
-  priceEurCents?: number;
-  paidAt?: string;
-};
+type StripeCheckoutRow = AdminStripeCheckoutRow;
 
 function monthKey(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -68,12 +57,7 @@ export async function GET() {
   const ok = parseAdminCookieValue(jar.get(ADMIN_SESSION_COOKIE_NAME)?.value);
   if (!ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [users, conversations, checkouts] = await Promise.all([
-    readJsonBlob<UserRow[]>("users.json", []),
-    readJsonBlob<Conversation[]>("conversations.json", []),
-    readJsonBlob<StripeCheckoutRow[]>("stripe-checkouts.json", []),
-  ]);
-  const signups = readJson<SignupRow[]>("onboarding-signups.json", []);
+  const { users, signups, conversations, checkouts } = await loadAdminDataset();
 
   /** Pre-compute per-user metrics. */
   const userFirstUserMsgAt = new Map<string, number>();
