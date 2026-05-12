@@ -310,7 +310,7 @@ export default function ProfielDetailPage() {
       {/* ——— Desktop: balanced two-column layout ——— */}
       <div className="mx-auto hidden w-full max-w-7xl grid-cols-12 items-start gap-6 px-6 py-8 md:grid lg:px-8">
         {/* Left: large photo (responsive, constrained height) */}
-        <div className="space-y-4 lg:col-span-5 xl:col-span-5">
+        <div className="space-y-4 md:col-span-5">
           <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
             <div className="relative aspect-[3/4] max-h-[82vh] bg-gray-100">
               <img src={activePhoto} alt="" className="h-full w-full object-cover object-top" decoding="async" />
@@ -376,7 +376,7 @@ export default function ProfielDetailPage() {
         </div>
 
         {/* Right: info + portfolio + chat (fills remaining height) */}
-        <div className="flex h-full flex-col space-y-6 lg:col-span-7 xl:col-span-7">
+        <div className="flex h-full flex-col space-y-6 md:col-span-7">
           {/* Profile info card */}
           <div className="rounded-3xl border border-gray-100 bg-white p-7 shadow-sm">
             <div className="mb-5 flex items-start justify-between gap-4">

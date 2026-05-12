@@ -22,10 +22,9 @@ export async function GET() {
           { status: 403 }
         );
       }
-      await ensureUserInboxForOwner(userId);
-
-      // Definitief opruimen van legacy "local" / seed chats (zonder ownerUserId)
-      // zodat de inbox alleen echte, door de gebruiker gestarte gesprekken bevat.
+      // ensureUserInboxForOwner is now a no-op (no more pre-seeding all profiles).
+      // We only keep real conversations the user has started.
+      // Clean up any remaining legacy seed chats (without ownerUserId).
       const { purgeLegacySeedConversations } = await import("@/lib/server/conversations");
       await purgeLegacySeedConversations(userId);
 

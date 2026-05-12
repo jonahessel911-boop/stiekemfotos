@@ -212,19 +212,45 @@ async function upsertConversationAndMessages(
     throw new Error(`[conversationsRelational] upsert conversation ${c.id}: ${ue.message}`);
   }
 
-  const { error: de } = await supabase.from("messages").delete().eq("conversation_id", c.id);
-  if (de) {
-    throw new Error(`[conversationsRelational] clear messages ${c.id}: ${de.message}`);
+  /**
+   * SAFETY: Als de in-memory state 0 messages bevat, NOOIT alle messages wipen.
+   * Dat was de oorzaak van "Foto niet gevonden": een stale snapshot (race tussen
+   * loadList → saveList en een concurrente POST messages flow) had c.messages = []
+   * terwijl de DB net nieuwe berichten bevatte. De DELETE wiste die volledig.
+   *
+   * Als de in-memory state echt leeg is en de DB ook leeg, prima — geen DELETE nodig.
+   * Als de DB al messages bevat, bail out met een warning.
+   */
+  if (c.messages.length === 0) {
+    const { count: existingCount, error: ce2 } = await supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("conversation_id", c.id);
+    if (ce2) {
+      throw new Error(`[conversationsRelational] count messages ${c.id}: ${ce2.message}`);
+    }
+    if ((existingCount ?? 0) > 0) {
+      console.warn(
+        `[conversationsRelational] REFUSING to wipe ${existingCount} messages for conv ${c.id} — in-memory state is empty (likely stale snapshot). Conversation row updated; messages untouched.`
+      );
+      return;
+    }
+    /** Echt lege conv (net gemaakt) — niets te doen. */
+    return;
   }
 
+  /**
+   * UPSERT-only flow (geen DELETE meer). Sinds messages in deze app alleen worden
+   * toegevoegd of geüpdatet (replyToId, unlockedAt, imageFile, ...), en nooit hard
+   * verwijderd, is een DELETE-vooraf onnodig. Hij introduceerde juist een race window:
+   * als de DELETE slaagde maar de INSERT faalde (timeout, crash, stale state), bleef
+   * de conv leeg achter. Nu doen we alleen UPSERT — bestaande rows worden geüpdatet
+   * via onConflict=id, nieuwe rows worden ingevoegd. Geen data loss meer.
+   */
   const inserts = dedupeMessageInsertRows(c.messages.map((m) => messageToInsertRow(m, c.id)));
   for (let i = 0; i < inserts.length; i += MESSAGE_INSERT_CHUNK) {
     const chunk = dedupeMessageInsertRows(inserts.slice(i, i + MESSAGE_INSERT_CHUNK));
     if (chunk.length === 0) continue;
-    /**
-     * Upsert i.p.v. insert: overlappende message-uuid’s (merge/retry/orphan rows) breken
-     * anders `messages_pkey`. ON CONFLICT werkt alleen als er geen dubbele ids *in dezelfde batch* zitten.
-     */
     const { error: ie } = await supabase.from("messages").upsert(chunk, {
       onConflict: "id",
     });
@@ -249,16 +275,25 @@ export async function saveConversationsRelational(
   opts?: {
     /** Optionele per-conv mutex zodat parallelle upsert+delete-message flows niet over elkaar heen schrijven. */
     withConversationLock?: <T>(conversationId: string, fn: () => Promise<T>) => Promise<T>;
+    /**
+     * Standaard UIT. Alleen aanzetten voor expliciete legacy-cleanup paden
+     * (bv. purgeLegacySeedConversations). Bij elke normale saveList NIET aanzetten —
+     * anders kan een stale snapshot (race tussen twee parallelle loadList→saveList
+     * calls) een net-toegevoegde conversation in een andere flow per ongeluk
+     * orphan-deleten, met als gevolg dataverlies en "Foto niet gevonden".
+     */
+    deleteOrphans?: boolean;
   }
 ): Promise<void> {
-  const keepIds = new Set(list.map((c) => c.id));
-
-  const { data: existing } = await supabase.from("conversations").select("id");
-  for (const r of existing ?? []) {
-    const id = (r as { id: string }).id;
-    if (!keepIds.has(id)) {
-      const { error } = await supabase.from("conversations").delete().eq("id", id);
-      if (error) console.error("[conversationsRelational] delete orphan conversation:", error.message);
+  if (opts?.deleteOrphans) {
+    const keepIds = new Set(list.map((c) => c.id));
+    const { data: existing } = await supabase.from("conversations").select("id");
+    for (const r of existing ?? []) {
+      const id = (r as { id: string }).id;
+      if (!keepIds.has(id)) {
+        const { error } = await supabase.from("conversations").delete().eq("id", id);
+        if (error) console.error("[conversationsRelational] delete orphan conversation:", error.message);
+      }
     }
   }
 

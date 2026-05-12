@@ -42,6 +42,7 @@ import {
   type UserRecord,
 } from "@/lib/server/users";
 import {
+  buildBodyShotIdentityDescriptor,
   compactIdentityForChatPhotoPrompt,
   generateRealisticImage,
   sanitizeIdentityForZImagePrompt,
@@ -686,14 +687,31 @@ async function saveList(list: Conversation[]): Promise<void> {
     throw new Error("Conversations kunnen niet worden opgeslagen: Supabase admin client ontbreekt.");
   }
   /**
-   * Cross-conversation save (oa. orphan-delete pad) blijft via `saveConversationsRelational`,
-   * maar de PER-conv message-rewrite zetten we onder dezelfde mutex als `updateConversationAtomic`.
-   * Hiermee blokkeren we dat een verouderde snapshot tijdens een gelijktijdige POST-flow
-   * een net-toegevoegde locked-photo message kan overschrijven.
+   * Standaard NIET deleteOrphans: een stale snapshot mag NOOIT een net-toegevoegde
+   * conversation uit de DB wissen. Alleen `purgeLegacySeedConversations` zet expliciet
+   * `deleteOrphans: true` (zie hieronder).
+   *
+   * De per-conv message-rewrite zit onder dezelfde mutex als `updateConversationAtomic`
+   * zodat een verouderde snapshot tijdens een gelijktijdige POST-flow geen
+   * net-toegevoegde locked-photo message kan overschrijven.
    */
   await saveConversationsRelational(admin, normalized, {
     withConversationLock: <T>(conversationId: string, fn: () => Promise<T>) =>
       withConversationLock(conversationId, fn),
+  });
+}
+
+/** Expliciete variant voor legacy cleanup paden (bv. seed-purge). */
+async function saveListWithOrphanCleanup(list: Conversation[]): Promise<void> {
+  const normalized = normalizeConversationMessages(list);
+  const admin = getSupabaseAdmin();
+  if (!admin) {
+    throw new Error("Conversations kunnen niet worden opgeslagen: Supabase admin client ontbreekt.");
+  }
+  await saveConversationsRelational(admin, normalized, {
+    withConversationLock: <T>(conversationId: string, fn: () => Promise<T>) =>
+      withConversationLock(conversationId, fn),
+    deleteOrphans: true,
   });
 }
 
@@ -972,31 +990,15 @@ export async function listPurchasedPhotosForOwner(ownerUserId: string): Promise<
   return out;
 }
 
-/** Startinbox: lege threads aanmaken zonder automatisch eerste bericht — user moet eerst sturen. */
-export async function ensureUserInboxForOwner(ownerUserId: string): Promise<void> {
-  const inboxIds = await getInboxProfileIdsForPlatform();
-  if (inboxIds.length === 0) return;
-
-  const list = await loadList();
-  let changed = false;
-  for (const pid of inboxIds) {
-    if (list.some((c) => c.ownerUserId === ownerUserId && c.profileId === pid)) continue;
-    const p = await getDbProfileById(pid);
-    if (!p) continue;
-    const now = new Date().toISOString();
-    list.unshift({
-      id: randomUUID(),
-      profileId: p.id,
-      profileName: p.name,
-      previewAvatar: p.photo,
-      isOnline: p.isOnline,
-      ownerUserId,
-      updatedAt: now,
-      messages: [],
-    });
-    changed = true;
-  }
-  if (changed) await saveList(list);
+/**
+ * ensureUserInboxForOwner is DISABLED.
+ * We no longer pre-create empty conversation threads for every profile.
+ * The inbox only shows conversations the user has explicitly started
+ * (via "Vraag om foto" or sending the first message).
+ */
+export async function ensureUserInboxForOwner(_ownerUserId: string): Promise<void> {
+  // Intentionally left empty — no more auto-seeding of all profiles.
+  return;
 }
 
 /** Definitief verwijderen van legacy seed/local chats (zonder ownerUserId). */
@@ -1004,7 +1006,8 @@ export async function purgeLegacySeedConversations(_ownerUserId: string): Promis
   const list = await loadList();
   const filtered = list.filter((c) => Boolean(c.ownerUserId));
   if (filtered.length !== list.length) {
-    await saveList(filtered);
+    /** Legitiem orphan-delete pad: we willen de legacy seed-rijen echt wissen. */
+    await saveListWithOrphanCleanup(filtered);
   }
 }
 
@@ -1938,6 +1941,31 @@ async function distillChatIntoPhotoDirective(input: {
     console.warn("[photoPrompt] distillChatIntoPhotoDirective failed:", e);
     return null;
   }
+}
+
+/**
+ * Korte identity teaser (≤ ~80 chars) voor HELEMAAL VOORIN de Z Image prompt.
+ * Bevat alleen: heritage hint + haarkleur + haarstijl + huid + body type.
+ * Geen face/eyes — die woorden zouden Z Image richting portretten duwen.
+ *
+ * Voorbeeld output: "Dutch woman with dark blonde long loose waves, fair skin, slim hourglass body."
+ */
+function buildBodyShotIdentityTeaser(bodyShotIdentity: string, profile: Profile): string {
+  const heritageRaw = (profile.heritage || "Dutch").trim();
+  const heritageWord = /nederland|dutch|holland/i.test(heritageRaw) ? "Dutch" : heritageRaw;
+
+  /** Haal hair-, skin- en body-tokens uit de body-shot identity string. */
+  const hairMatch = bodyShotIdentity.match(/\b([a-z]+\s*blonde|[a-z]+\s*brown|[a-z]+\s*brunette|black hair|red hair|auburn|chestnut|platinum|strawberry blonde|ash blonde|dirty blonde)\b[^,.;]*?\bhair\b/i);
+  const skinMatch = bodyShotIdentity.match(/\b(?:very\s+)?(?:fair|light|olive|tan|deep brown|rich brown|dark|medium|porcelain|warm beige|cool|pale)\s+skin[^,.;]*/i);
+  const bodyMatch = bodyShotIdentity.match(/\b(?:slim\s+(?:hourglass|athletic|curvy)?|slender\s+athletic|petite\s+slim|soft\s+curvy|tall\s+broad-shouldered\s+lean|compact\s+muscular\s+legs|hourglass|curvy|athletic|petite|tall|slim|slender)\b/i);
+
+  const parts: string[] = [`${heritageWord} woman`];
+  if (hairMatch) parts.push(`with ${hairMatch[0].toLowerCase()}`);
+  if (skinMatch) parts.push(skinMatch[0].toLowerCase());
+  if (bodyMatch) parts.push(`${bodyMatch[0].toLowerCase()} body`);
+
+  const teaser = parts.join(", ").replace(/\s+/g, " ").replace(/\s*,\s*,+/g, ", ").trim();
+  return `${teaser}.`;
 }
 
 async function generatePersonalizedImagePrompt(
@@ -3075,24 +3103,49 @@ export async function appendUserMessagesAndReply(
   let imagePromptFromModel: string | null = null;
 
   try {
-    // Bouw een compacte recente chat history (laatste 5-6 turns) zodat de model context heeft
-    // voor wensen zoals "daarvan", "die combinatie", "die foto", etc.
-    const recentHistory = conv.messages
+    /**
+     * Bouw chat history vanaf NA de laatst geleverde foto (= huidige photo cycle).
+     * Anders blijft het model "doorhangen" in de vorige photo wens en negeert hij de nieuwe wens.
+     *
+     * Voorbeeld bug die dit voorkomt:
+     *   - User: "stuur foto in roze string"  → foto gemaakt
+     *   - User: "ga naakt voor spiegel staan" → model zag oude "roze string" wens en maakte weer
+     *     dezelfde generieke foto i.p.v. naakt mirror selfie.
+     */
+    const lastAssistantPhotoIdx = (() => {
+      for (let i = conv.messages.length - 1; i >= 0; i--) {
+        const m = conv.messages[i]!;
+        if (m.role === "assistant" && (m.photoLock || m.imageFile)) return i;
+      }
+      return -1;
+    })();
+    /** Messages NA de laatste foto = huidige cyclus (incl. nieuwe user wens). */
+    const cycleMessages = conv.messages.slice(lastAssistantPhotoIdx + 1);
+    const recentHistory = cycleMessages
       .slice(-10)
       .map((m) => {
-        const role = m.role === "user" ? "User" : "Luna";
+        const role = m.role === "user" ? "User" : profile.name;
         const text = messagePlainTextForPhotoIntent(m).slice(0, 220);
         return `${role}: ${text}`;
       })
       .join("\n");
 
+    const userLatest = (joinedUserText || lastUserTextLower || "").trim();
     const latestInput = [
+      "=== HUIDIGE CHAT CYCLUS (sinds laatste foto) ===",
       recentHistory || "(begin van gesprek)",
       "",
-      `LATEST USER MESSAGE: ${joinedUserText || lastUserTextLower || ""}`,
+      "=== ALLERLAATSTE USER BERICHT (DIT IS DE WENS DIE JE MOET UITVOEREN) ===",
+      userLatest || "(geen bericht)",
       "",
-      "NOTE: If the user is asking for a photo, look at the recent history for specific wishes (colors, garments, pose, body parts, etc.) and include them in the image_prompt you generate."
-    ].join("\n").slice(0, 1500);
+      "=== INSTRUCTIES ===",
+      "1. Geef een normale chat 'response' (1-4 zinnen, Nederlands, vrouwelijk, in karakter).",
+      "2. Als de user om een foto vraagt OF zegt dat hij geil is OF iets seksueels van je wil zien:",
+      "   - Genereer een 'image_prompt' die LETTERLIJK beschrijft wat de user vraagt in de allerlaatste boodschap.",
+      "   - Niet meer focussen op vorige foto-wensen, alleen op de huidige wens.",
+      "   - Voorbeelden: 'naakt voor spiegel' → 'fully naked mirror selfie', 'roze string' → 'wearing only pink thong', 'billen' → 'back view of bare buttocks'.",
+      "3. Anders: image_prompt = null.",
+    ].join("\n").slice(0, 2000);
 
     const personaInstructions = buildProfileInstructions({
       name: profile.name,
@@ -3168,10 +3221,60 @@ export async function appendUserMessagesAndReply(
       allowVoiceReaction: hasUserEverSentVoiceInChat,
     });
     const photoMsgId = randomUUID();
+
+    /**
+     * Bouw de definitieve image prompt: de WENS van de user (uit de model-prompt) is dominant,
+     * de profiel-identiteit volgt als body-focused descriptor.
+     *
+     * Belangrijk:
+     *   - NIET starten met "Subject — same face, same eyes". Die tokens duwen Z Image naar een
+     *     face-portrait, ongeacht de gevraagde kleding/pose. De wens moet voorop staan.
+     *   - Hard cap op 1000 chars TOTAAL — dat is de Z Image API limiet. We reserveren ruimte voor
+     *     ZMODEL_SINGLE_FRAME_PREFIX (~290 chars) en de identity-staart, daarna wordt de model-prompt
+     *     intelligent ingekort zodat de identity nooit wegvalt.
+     */
+    const profileAppearanceRaw = (
+      profile.visualIdentityPrompt?.trim() || buildStableVisualIdentityForProfile(profile)
+    ).replace(/\s+/g, " ");
+    /** Sanitized identity — verwijdert frame-filling / mirror-selfie termen. */
+    const profileAppearanceSanitized = sanitizeIdentityForZImagePrompt(profileAppearanceRaw);
+    /**
+     * Body-focused descriptor: hair, skin, body type, heritage — ZONDER face/eyes tokens.
+     * Beperkt tot ~180 chars zodat er ruim plek is voor de model-prompt binnen het budget.
+     */
+    const bodyShotIdentity = buildBodyShotIdentityDescriptor(profileAppearanceSanitized, 180);
+
+    /**
+     * Korte teaser HELEMAAL voor de wens — alleen heritage + haar + huid (geen face/eyes).
+     * Z Image gebruikt de eerste tokens het zwaarst voor identity-vorming, daarom dit nu vooraan.
+     */
+    const identityTeaser = buildBodyShotIdentityTeaser(bodyShotIdentity, profile);
+    const identityTail = `The woman is ${profile.name}, ${profile.age} years old, same person as her profile reference photo: ${bodyShotIdentity}.`;
+
+    /**
+     * Z Image budget: 1000 totaal. Onze finalize-stap voegt nog een prefix toe (~290 chars).
+     * Daarom houden we het USER prompt-body deel ≤ 700 chars, zodat na prefix het totaal ≤ 990 blijft.
+     */
+    const Z_IMAGE_BODY_BUDGET = 700;
+    const reservedForIdentity = identityTeaser.length + identityTail.length + 2; // +2 voor spaties
+    const modelPromptBudget = Math.max(120, Z_IMAGE_BODY_BUDGET - reservedForIdentity);
+    const modelPromptRaw = imagePromptFromModel!.replace(/\s+/g, " ").trim();
+    /** Truncate de model-prompt op woordgrens als hij te lang is — behoudt het begin (de wens). */
+    const modelPromptCapped = modelPromptRaw.length <= modelPromptBudget
+      ? modelPromptRaw
+      : (() => {
+          const cut = modelPromptRaw.slice(0, modelPromptBudget);
+          const lastBreak = Math.max(cut.lastIndexOf(", "), cut.lastIndexOf(". "), cut.lastIndexOf("; "), cut.lastIndexOf(" "));
+          return (lastBreak > modelPromptBudget * 0.6 ? cut.slice(0, lastBreak) : cut).trimEnd().replace(/[,;]+$/g, "");
+        })();
+    const modelPromptTruncated = modelPromptCapped.length < modelPromptRaw.length;
+
+    const composedImagePrompt = `${identityTeaser} ${modelPromptCapped} ${identityTail}`;
+
     /** Parallel: serialiseren van 3× Grok tot 1× batch voorkomt Vercel/host timeouts (>240s). */
     const [imagePrompt, immediateLockedTease, delayedLockedNudgeText] = await Promise.all([
-      // Responses API gaf de volledige prompt → die gebruiken we direct (geen extra distill)
-      Promise.resolve(imagePromptFromModel!),
+      // Definitieve prompt = model-prompt + profiel-uiterlijk
+      Promise.resolve(composedImagePrompt),
       generateLockedPhotoTeaseText(
         profile.name,
         joinedUserText,
@@ -3187,14 +3290,14 @@ export async function appendUserMessagesAndReply(
     console.info(
       `[photoPrompt] conv=${conversationId} msg=${photoMsgId} request="${joinedUserText
         .replace(/\s+/g, " ")
-        .slice(0, 180)}" modelPrompt=${Boolean(imagePromptFromModel)} promptLen=${imagePrompt.length}`
+        .slice(0, 180)}" modelPrompt=${Boolean(imagePromptFromModel)} promptLen=${imagePrompt.length} modelPromptLen=${modelPromptRaw.length}->${modelPromptCapped.length}${modelPromptTruncated ? " (TRUNCATED)" : ""} teaser=${identityTeaser.length} identityTail=${identityTail.length}`
     );
     console.info(`[photoPrompt] SENT conv=${conversationId} msg=${photoMsgId} prompt=<<<${imagePrompt}>>>`);
     immediateLockedPhotoDelivery = {
       messageId: photoMsgId,
       prompt: imagePrompt,
-      width: 768,
-      height: 1024, // 3:4 portrait (allowed ratio), strongly single vertical shot
+      width: 720,
+      height: 1280, // 9:16 portrait — beste voor mobiel, vult de telefoonchat verticaal.
       teaseText: immediateLockedTease,
       delayedNudgeText: delayedLockedNudgeText,
     };
@@ -3544,8 +3647,8 @@ export async function unlockAssistantPhoto(
     }
     if (!target.imageFile) {
       const prompt = target.photoGeneration?.prompt?.trim();
-      const width = target.photoGeneration?.width ?? 1024;
-      const height = target.photoGeneration?.height ?? 1024;
+      const width = target.photoGeneration?.width ?? 720;
+      const height = target.photoGeneration?.height ?? 1280;
       if (!prompt) {
         throw new Error("Foto prompt ontbreekt voor deze vergrendelde foto");
       }

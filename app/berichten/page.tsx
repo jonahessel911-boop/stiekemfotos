@@ -764,6 +764,7 @@ function BerichtenInner() {
         });
 
         setLoadingList(false);
+        setLoadingMessages(false);
 
         setSelectedId(conv.id);
         setInput(draft);
@@ -2020,11 +2021,7 @@ function BerichtenInner() {
               >
                 <div className="flex min-h-full flex-col gap-3 py-3 md:gap-4 md:py-4">
                 {(displayMessages.length > 0 || pendingIndicatorVisible) && <div className="mt-auto" />}
-                {displayMessages.length === 0 && (
-                  <p className="text-center text-gray-500 text-sm">
-                    Stuur een bericht — het profiel antwoordt via AI (Grok).
-                  </p>
-                )}
+                {displayMessages.length === 0 && null}
                 {displayMessages.map((m: ChatMessage) => (
                     <div
                       key={m.id}
@@ -2109,18 +2106,18 @@ function BerichtenInner() {
                                 </div>
                               )}
                               {isUnlocked ? (
-                                <div className="overflow-hidden rounded-2xl border border-primary/25 shadow-md">
+                                <div className="aspect-[9/16] w-[240px] max-w-full overflow-hidden rounded-2xl border border-primary/25 shadow-md sm:w-[280px] md:w-[300px]">
                                   <button
                                     type="button"
                                     onClick={() => imgSrc && setLightboxSrc(imgSrc)}
                                     disabled={!imgSrc}
-                                    className="block w-full cursor-zoom-in border-0 bg-transparent p-0 text-left disabled:cursor-default"
+                                    className="block h-full w-full cursor-zoom-in border-0 bg-transparent p-0 text-left disabled:cursor-default"
                                     aria-label="Foto volledig scherm"
                                   >
                                     <img
                                       src={imgSrc}
                                       alt=""
-                                      className="max-h-80 w-full object-cover bg-black/5"
+                                      className="h-full w-full object-cover bg-black/5"
                                     />
                                   </button>
                                 </div>
@@ -2129,7 +2126,7 @@ function BerichtenInner() {
                                   type="button"
                                   onClick={() => void handleUnlockPhoto(m)}
                                   disabled={isUnlocking}
-                                  className="group relative w-full max-w-[260px] overflow-hidden rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/15 via-primary/5 to-primary/15 text-left shadow-lg active:scale-[0.99] transition-all disabled:cursor-wait"
+                                  className="group relative aspect-[9/16] w-[240px] max-w-full overflow-hidden rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/15 via-primary/5 to-primary/15 text-left shadow-lg active:scale-[0.99] transition-all disabled:cursor-wait sm:w-[280px] md:w-[300px]"
                                   aria-label={`Foto ontgrendelen voor ${cost} credits`}
                                 >
                                   {imgSrc ? (
@@ -2137,11 +2134,11 @@ function BerichtenInner() {
                                       src={imgSrc}
                                       alt=""
                                       aria-hidden
-                                      className="h-56 w-full object-cover blur-2xl scale-110 select-none pointer-events-none brightness-90"
+                                      className="h-full w-full object-cover blur-2xl scale-110 select-none pointer-events-none brightness-90"
                                       draggable={false}
                                     />
                                   ) : (
-                                    <div className="h-56 w-full bg-gradient-to-br from-primary/30 to-primary/30" />
+                                    <div className="h-full w-full bg-gradient-to-br from-primary/30 to-primary/30" />
                                   )}
                                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 px-4 py-3 text-center">
                                     <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-primary shadow-md">
@@ -2184,18 +2181,18 @@ function BerichtenInner() {
                           return (
                             <div className="flex max-w-[88%] flex-col items-end space-y-2">
                               {showImg && (
-                                <div className="relative overflow-hidden rounded-2xl border border-primary/25 shadow-md">
+                                <div className="relative aspect-[9/16] w-[240px] max-w-full overflow-hidden rounded-2xl border border-primary/25 shadow-md sm:w-[280px] md:w-[300px]">
                                   <button
                                     type="button"
                                     onClick={() => imgSrc && setLightboxSrc(imgSrc)}
                                     disabled={!imgSrc}
-                                    className="block w-full cursor-zoom-in border-0 bg-transparent p-0 text-left disabled:cursor-default"
+                                    className="block h-full w-full cursor-zoom-in border-0 bg-transparent p-0 text-left disabled:cursor-default"
                                     aria-label="Foto volledig scherm"
                                   >
                                     <img
                                       src={imgSrc}
                                       alt=""
-                                      className="max-h-64 w-full object-cover bg-black/5"
+                                      className="h-full w-full object-cover bg-black/5"
                                     />
                                   </button>
                                   {!textBody && (

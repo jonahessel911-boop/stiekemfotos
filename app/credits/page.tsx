@@ -5,7 +5,6 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CreditsPricingOffers } from '@/components/CreditsPricingOffers';
 import {
-  addCredits,
   getCreditsBalance,
   getCreditPurchaseHistory,
   INITIAL_FREE_CREDITS,
@@ -87,26 +86,6 @@ export default function CreditsPage() {
           <p className="text-xs text-gray-400 mt-6">
             Chatberichten kosten 0 credits
           </p>
-          {(process.env.NODE_ENV === 'development' ||
-            process.env.NEXT_PUBLIC_DEV_CREDITS_BUTTON === '1') && (
-            <div className="mt-6 flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  addCredits(100, 'Dev: 100 gratis credits');
-                  void refresh();
-                }}
-                className="rounded-xl border border-dashed border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
-              >
-                +100 gratis credits (dev)
-              </button>
-              <p className="text-[11px] text-amber-800/80 max-w-xs">
-                Alleen in development, of zet{' '}
-                <code className="rounded bg-amber-100/80 px-1">NEXT_PUBLIC_DEV_CREDITS_BUTTON=1</code> voor
-                preview-tests.
-              </p>
-            </div>
-          )}
         </div>
 
         <section className="rounded-2xl border border-gray-200/80 bg-white shadow-sm overflow-hidden mb-10">

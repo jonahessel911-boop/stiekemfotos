@@ -17,7 +17,7 @@ export const CREDITS_PER_MESSAGE = 0;
 export const CREDITS_PER_PHOTO_UNLOCK = 100;
 
 /** Startbalans voor elk nieuw account (eenmalig, voor foto-unlocks). */
-export const INITIAL_FREE_CREDITS = 200;
+export const INITIAL_FREE_CREDITS = 300;
 
 export function notifyCreditsUpdated() {
   if (typeof window !== "undefined") {

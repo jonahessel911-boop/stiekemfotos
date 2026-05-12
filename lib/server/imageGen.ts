@@ -147,6 +147,60 @@ export function compactIdentityForChatPhotoPrompt(identity: string, maxChars = 1
   return s;
 }
 
+/**
+ * Voor chat-foto's waar de USER een specifieke body/clothing wens heeft (bv. "roze stringetje",
+ * "bovenlijf zonder iets aan", "naakt op bed"): bouw een body-focused descriptor uit de identity
+ * die GEEN "eyes", "face", "facial features", "lips" tokens bevat. Die woorden in de prompt
+ * pushen Z Image richting een face-portrait, ongeacht de gevraagde framing/kleding.
+ *
+ * Behouden: heritage hint zonder "face", haarkleur+stijl, huid, body-type, sieraden.
+ * Verwijderd: "eyes", "facial structure", "face filling", "gaze", "lips", "mouth", "expression",
+ *             en de "Northern European Dutch facial features" subzin (alleen "Dutch heritage").
+ */
+export function buildBodyShotIdentityDescriptor(identity: string, maxChars = 240): string {
+  let s = identity.replace(/\s+/g, " ").trim();
+
+  // 1. Verwijder face-portrait triggers (eyes / face / facial / lips / mouth / gaze / expression).
+  s = s
+    .replace(/\([^)]*facial[^)]*\)/gi, "") // "(Northern European Dutch facial features, ...)"
+    .replace(/,?\s*identical\s+facial\s+structure\s+and\s+body\s+proportions[^,.;]*/gi, ", same body proportions")
+    .replace(/,?\s*[^,.;]*\b(?:facial\s+features?|facial\s+structure|face\s+shape|lip\s+shape|lips?|mouth|gaze|expression|eye\s+shape|eyelids?)\b[^,.;]*/gi, "")
+    .replace(/,?\s*(?:bright|piercing|striking|soft|deep|warm|sparkling|alluring|seductive|innocent)?\s*(?:blue|green|brown|hazel|grey|gray|amber|dark|light)?\s*-?\s*(?:blue|green|brown|hazel|grey|gray|amber)?\s+eyes\b[^,.;]*/gi, "")
+    .replace(/,?\s*\b(?:almond|monolid|double\s*eyelid)[^,.;]*\beyes?\b[^,.;]*/gi, "")
+    .replace(/,?\s*\beyes?\b[^,.;]*/gi, "")
+    .replace(/,?\s*\bface\b[^,.;]*/gi, "");
+
+  // 2. Verwijder narratieve / sensorische / framing termen.
+  s = s
+    .replace(/\b(?:cascading|flowing|tumbling|falling|framing|wavy[- ]ish|softly\s*waving)\s+[^,.;]*[,.;]/gi, "")
+    .replace(/\b(?:rich|deep|luxurious|silky|glossy|glowing|radiant|porcelain|flawless|smooth|delicate)\s+/gi, "")
+    .replace(/\b(?:softly|gently|naturally|warmly|beautifully|gorgeously|effortlessly)\s+/gi, "")
+    .replace(/\b(?:striking|stunning|captivating|alluring|seductive|piercing|gorgeous|beautiful|breathtaking)\s+/gi, "")
+    .replace(/\bin\s+natural\s+light[^,.;]*[,.;]/gi, "")
+    .replace(/,?\s*one\s+candid\s+uncropped\s+snapshot[^,.;]*/gi, "")
+    .replace(/\bfilling\s+the\s+frame\s+edge\s+to\s+edge\b/gi, "")
+    .replace(/\b(?:edge\s+to\s+edge|face\s*filling|face[- ]?filling|portrait\s+fills?\s+the\s+frame)\b/gi, "");
+
+  // 3. Opschonen: dubbele kommas, spaties, dashes.
+  s = s
+    .replace(/\s*—\s*/g, " — ")
+    .replace(/\s*,\s*,+/g, ", ")
+    .replace(/\s*([,.;])\s*/g, "$1 ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;:.\-—]+/, "")
+    .replace(/[\s,;:.\-—]+$/, "")
+    .trim();
+
+  // 4. Hard cap op woordgrens.
+  if (s.length > maxChars) {
+    const cut = s.slice(0, maxChars);
+    const lastBreak = Math.max(cut.lastIndexOf(", "), cut.lastIndexOf(". "), cut.lastIndexOf("; "), cut.lastIndexOf(" "));
+    s = (lastBreak > maxChars * 0.6 ? cut.slice(0, lastBreak) : cut).trimEnd().replace(/[,.;]+$/g, "");
+  }
+
+  return s;
+}
+
 /** Zelfde sanering als admin random profile → ZModel: geen grid/collage-termen die het model triggeren. */
 export function sanitizeIdentityForZImagePrompt(identity: string): string {
   return (

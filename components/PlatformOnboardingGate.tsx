@@ -157,8 +157,12 @@ export default function PlatformOnboardingGate() {
                 kost geen credits).
               </p>
               <p className="leading-relaxed">
-                Je account bevat 200 credits om mee te beginnen — genoeg om je eerste foto&apos;s te
+                Je account bevat 300 credits om mee te beginnen — genoeg om je eerste foto&apos;s te
                 ontgrendelen.
+              </p>
+              <p className="leading-relaxed text-sm text-gray-700">
+                1 (naakt) foto kost 100 credits. Je kan dus 3 van je favoriete vrouwen vragen om
+                foto&apos;s. Veel plezier! Maak ze geil.
               </p>
               <p className="leading-relaxed">
                 Vraag haar om lingerie, een strak outfitje, naakt op bed, in de douche… of laat haar
