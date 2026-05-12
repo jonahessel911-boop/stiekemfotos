@@ -1,4 +1,19 @@
-export const SVL_POSTBACK_BASE_URL = "https://swiftvisitlog.com/cf/cv";
+/**
+ * ClickFlare / Swift Visit Log postback helper.
+ * ClickFlare gebruikt klant-specifieke postback-domeinen (bv. swiftvisitlog.com)
+ * en dedupliceert conversies op basis van click_id + txid + ct.
+ *
+ * Configureerbaar via env:
+ *  - CLICKFLARE_POSTBACK_URL  (default: https://swiftvisitlog.com/cf/cv)
+ *  - CLICKFLARE_CONVERSION_TYPE (default: signup)
+ */
+const DEFAULT_SVL_POSTBACK_BASE_URL = "https://swiftvisitlog.com/cf/cv";
+
+export const SVL_POSTBACK_BASE_URL =
+  process.env.CLICKFLARE_POSTBACK_URL?.trim() || DEFAULT_SVL_POSTBACK_BASE_URL;
+
+export const SVL_CONVERSION_TYPE =
+  process.env.CLICKFLARE_CONVERSION_TYPE?.trim() || "signup";
 
 export const SVL_CLICK_ID_COOKIE = "svl_click_id";
 export const SVL_PAYOUT_COOKIE = "svl_payout";
@@ -24,22 +39,113 @@ export type BuildSvlPostbackOpts = {
   clickId: string;
   payout?: string | number | null;
   txid?: string | null;
+  /** ClickFlare conversion type — bij hergebruik van zelfde (click_id, txid, ct) wordt de conversie geüpdatet i.p.v. gedupliceerd. */
+  ct?: string | null;
 };
 
 /**
- * Build a Swift Visit Log postback URL.
- * Template: https://swiftvisitlog.com/cf/cv?click_id=REPLACE&payout=OPTIONAL&txid=OPTIONAL
+ * Build a ClickFlare / Swift Visit Log postback URL.
+ * Template: <base>?click_id=REPLACE&payout=OPTIONAL&txid=OPTIONAL&ct=OPTIONAL
  * - click_id is required (postback is skipped upstream when missing).
- * - payout and txid are only included when explicitly provided.
+ * - payout, txid, ct worden alleen toegevoegd als ze meegegeven zijn (payout=0 telt als waarde en wordt dus wél geschreven).
  */
 export function buildSvlPostbackUrl(opts: BuildSvlPostbackOpts): string {
   const params = new URLSearchParams();
   params.set("click_id", String(opts.clickId).trim());
-  if (opts.payout !== undefined && opts.payout !== null && String(opts.payout).trim() !== "") {
-    params.set("payout", String(opts.payout).trim());
+  if (opts.payout !== undefined && opts.payout !== null) {
+    const payoutStr =
+      typeof opts.payout === "number" ? opts.payout.toFixed(2) : String(opts.payout).trim();
+    if (payoutStr !== "") params.set("payout", payoutStr);
   }
   if (opts.txid !== undefined && opts.txid !== null && String(opts.txid).trim() !== "") {
     params.set("txid", String(opts.txid).trim());
   }
+  if (opts.ct !== undefined && opts.ct !== null && String(opts.ct).trim() !== "") {
+    params.set("ct", String(opts.ct).trim());
+  }
   return `${SVL_POSTBACK_BASE_URL}?${params.toString()}`;
+}
+
+/**
+ * Format a Stripe amount (in cents) as a ClickFlare-friendly decimal payout.
+ * 2499 → "24.99".  null/undefined → "0.00".
+ */
+export function formatPayoutFromCents(cents: number | null | undefined): string {
+  const n = typeof cents === "number" && Number.isFinite(cents) ? cents : 0;
+  return (Math.max(0, n) / 100).toFixed(2);
+}
+
+/**
+ * Build the txid for ClickFlare from an internal user id.
+ * Uses the "user_" prefix so it is identifiable in ClickFlare reporting.
+ */
+export function buildSvlTxidForUser(userId: string): string {
+  return `user_${userId}`;
+}
+
+export type SendSvlPostbackOpts = BuildSvlPostbackOpts & {
+  /** Korte label voor logregels: bv. "signup" of "stripe_paid". */
+  reason?: string;
+  /** Abort timeout in ms (default 4000). */
+  timeoutMs?: number;
+};
+
+export type SendSvlPostbackResult = {
+  fired: boolean;
+  ok?: boolean;
+  status?: number;
+  url?: string;
+  error?: string;
+};
+
+/**
+ * Fire a ClickFlare postback. Always best-effort: never throws, always logs.
+ * Skips silently when click_id is missing.
+ */
+export async function sendSvlPostback(opts: SendSvlPostbackOpts): Promise<SendSvlPostbackResult> {
+  const clickId = opts.clickId?.trim();
+  const reason = opts.reason || "unknown";
+  if (!clickId) {
+    console.log(`[clickflare:${reason}] skipped — missing click_id`);
+    return { fired: false };
+  }
+  let url: string;
+  try {
+    url = buildSvlPostbackUrl({
+      clickId,
+      payout: opts.payout ?? undefined,
+      txid: opts.txid ?? undefined,
+      ct: opts.ct ?? undefined,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[clickflare:${reason}] build url failed: ${msg}`);
+    return { fired: false, error: msg };
+  }
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 4000);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      console.warn(
+        `[clickflare:${reason}] postback non-OK status=${res.status} click_id=${clickId} url=${url}`
+      );
+      return { fired: true, ok: false, status: res.status, url };
+    }
+    console.log(
+      `[clickflare:${reason}] postback ok click_id=${clickId} payout=${opts.payout ?? "(none)"} txid=${opts.txid ?? "(none)"} ct=${opts.ct ?? "(none)"}`
+    );
+    return { fired: true, ok: true, status: res.status, url };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`[clickflare:${reason}] postback fetch fout: ${msg} url=${url}`);
+    return { fired: true, ok: false, error: msg, url };
+  } finally {
+    clearTimeout(timer);
+  }
 }

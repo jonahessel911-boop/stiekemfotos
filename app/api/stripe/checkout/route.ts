@@ -70,6 +70,7 @@ export async function POST(req: Request) {
       sessionId: session.id,
       userId,
       credits: pkg.credits,
+      priceEurCents: pkg.priceEurCents,
       priceLabel: `€${(pkg.priceEurCents / 100).toFixed(2).replace(".", ",")} · ${pkg.credits} credits`,
     });
 

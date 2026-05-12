@@ -4,8 +4,10 @@ import { readJson, writeJson } from "@/lib/server/store";
 import { createUser } from "@/lib/server/users";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
 import {
-  buildSvlPostbackUrl,
+  buildSvlTxidForUser,
+  sendSvlPostback,
   SVL_CLICK_ID_COOKIE,
+  SVL_CONVERSION_TYPE,
   SVL_PAYOUT_COOKIE,
   SVL_TXID_COOKIE,
 } from "@/lib/swiftvisitlog";
@@ -99,42 +101,23 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
     writeJson("onboarding-signups.json", list);
-    // Swift Visit Log postback fire bij formulier inzenden.
-    // Vervangt de eerdere server-side TikTok conversion fire.
-    try {
-      if (clickIdCookie) {
-        const postbackUrl = buildSvlPostbackUrl({
-          clickId: clickIdCookie,
-          ...(payoutCookie ? { payout: payoutCookie } : {}),
-          txid: txidCookie || user.id,
-        });
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 4000);
-        try {
-          const res = await fetch(postbackUrl, {
-            method: "GET",
-            cache: "no-store",
-            signal: ctrl.signal,
-          });
-          if (!res.ok) {
-            console.warn(
-              `[swiftvisitlog] postback non-OK status=${res.status} click_id=${clickIdCookie}`
-            );
-          } else {
-            console.log(
-              `[swiftvisitlog] postback ok click_id=${clickIdCookie} txid=${txidCookie || user.id}`
-            );
-          }
-        } finally {
-          clearTimeout(timer);
-        }
-      } else {
-        console.log("[swiftvisitlog] postback skipped: missing click_id cookie");
-      }
-    } catch (e) {
-      console.warn(
-        `[swiftvisitlog] postback fout: ${e instanceof Error ? e.message : String(e)}`
-      );
+    /**
+     * ClickFlare postback bij signup — initieel met payout=0 + ct=signup +
+     * txid=user_<id>. Na een succesvolle Stripe-betaling wordt op dezelfde
+     * (click_id, txid, ct) opnieuw geschoten met de geüpdatete payout (LTV)
+     * en dedupliceert ClickFlare de conversion. Vervangt de eerdere
+     * server-side TikTok fire.
+     */
+    if (clickIdCookie) {
+      await sendSvlPostback({
+        clickId: clickIdCookie,
+        payout: payoutCookie || "0.00",
+        txid: txidCookie || buildSvlTxidForUser(user.id),
+        ct: SVL_CONVERSION_TYPE,
+        reason: "signup",
+      });
+    } else {
+      console.log("[clickflare:signup] skipped — missing click_id cookie");
     }
 
     const res = NextResponse.json({
