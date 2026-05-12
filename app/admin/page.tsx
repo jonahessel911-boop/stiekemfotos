@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 type DailyBucket = { date: string; value: number };
 
@@ -18,6 +18,23 @@ type AdminAnalytics = {
   purchasesByDay: DailyBucket[];
   signupsByDay: DailyBucket[];
   chartDays: number;
+};
+
+type PeriodRow = {
+  key: string;
+  label: string;
+  signups: number;
+  conversions: number;
+  revenueEur: number;
+  signupToUserChatPct: number | null;
+  userChatToUnlockFreePct: number | null;
+  userChatToUnlockPaidPct: number | null;
+  signupToPaidPct: number | null;
+};
+
+type PeriodOverview = {
+  periods: PeriodRow[];
+  totals: PeriodRow;
 };
 
 type AdminData = {
@@ -85,21 +102,37 @@ export default function AdminPage() {
   const [aiAnswer, setAiAnswer] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [overview, setOverview] = useState<PeriodOverview | null>(null);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
     setError(null);
+    setOverviewError(null);
     try {
-      const r = await fetch('/api/admin/overview', { credentials: 'include' });
-      const d = (await r.json()) as AdminData & { error?: string };
-      if (r.status === 401) {
+      const [resOverview, resPeriod] = await Promise.all([
+        fetch('/api/admin/overview', { credentials: 'include' }),
+        fetch('/api/admin/period-overview', { credentials: 'include' }),
+      ]);
+      if (resOverview.status === 401) {
         setAuthorized(false);
         setData(null);
+        setOverview(null);
         return;
       }
-      if (!r.ok) throw new Error(d.error || 'Laden mislukt');
+      const d = (await resOverview.json()) as AdminData & { error?: string };
+      if (!resOverview.ok) throw new Error(d.error || 'Laden mislukt');
       setAuthorized(true);
       setData(d);
+
+      if (resPeriod.ok) {
+        const po = (await resPeriod.json()) as PeriodOverview;
+        setOverview(po);
+      } else {
+        const errBody = (await resPeriod.json().catch(() => ({}))) as { error?: string };
+        setOverviewError(errBody.error || 'Periode-overzicht niet geladen');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Fout');
     } finally {
@@ -107,12 +140,32 @@ export default function AdminPage() {
     }
   };
 
+  const resetAnalytics = async () => {
+    if (
+      !window.confirm(
+        'Weet je zeker dat je ALLE analytics + data wilt resetten?\n\nDit wist users, signups, conversations, messages en aankopen — zowel uit blob-opslag als Supabase. Niet ongedaan te maken.'
+      )
+    ) {
+      return;
+    }
+    setResetBusy(true);
+    try {
+      const r = await fetch('/api/admin/reset', { method: 'POST', credentials: 'include' });
+      if (!r.ok) {
+        const errBody = (await r.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errBody.error || 'Reset mislukt');
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Reset mislukt');
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   useEffect(() => {
     void load();
   }, []);
-
-  const stats = useMemo(() => data?.stats, [data]);
-  const ax = useMemo(() => data?.analytics, [data]);
 
   if (!authorized) {
     return (
@@ -179,20 +232,33 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold text-gray-900">Admin portal</h1>
-          <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Admin portal</h1>
+            <p className="text-xs text-gray-500">Periode-overzicht (per maand)</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => void load()}
-              className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+              disabled={loading || resetBusy}
+              className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             >
-              Vernieuwen
+              {loading ? 'Laden…' : 'Vernieuwen'}
+            </button>
+            <button
+              onClick={() => void resetAnalytics()}
+              disabled={resetBusy || loading}
+              className="rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-60"
+              title="Wis alle users, signups, conversations en aankopen (Supabase + blob)"
+            >
+              {resetBusy ? 'Resetten…' : 'Reset analytics'}
             </button>
             <button
               onClick={() =>
                 void fetch('/api/admin/logout', { method: 'POST', credentials: 'include' }).then(() => {
                   setAuthorized(false);
                   setData(null);
+                  setOverview(null);
                 })
               }
               className="rounded-xl bg-black px-3 py-2 text-sm font-semibold text-white"
@@ -202,66 +268,17 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {stats ? (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat label="Users" value={stats.users} />
-            <Stat label="Signups" value={stats.signups} />
-            <Stat label="Aankopen (orders)" value={stats.purchases} />
-            <Stat label="Gesprekken (rows)" value={stats.conversations} />
+        {error ? (
+          <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
           </div>
         ) : null}
 
-        {ax ? (
-          <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-              <StatMoney label="Omzet (betaald)" value={ax.revenueEurTotal} suffix=" €" />
-              <Stat label="Credits verkocht" value={ax.totalCreditsPurchased} hint="Som uit Stripe-checkouts" />
-              <Stat label="Unieke chats" value={ax.uniqueChatConversations} hint="Gesprekken met ownerUserId" />
-              <Stat label="Locked foto’s (AI)" value={ax.totalLockedImagesSent} hint="Assistant photoLock" />
-              <Stat label="User foto-uploads" value={ax.totalUserImagesSent} hint="Gebruiker stuurt foto" />
-              <Stat label="Ontgrendeld" value={ax.totalImagesUnlocked} hint="Credits uitgegeven" />
-              <StatPct label="Unlock-rate" value={ax.unlockConversionPercent} hint="Ontgrendeld ÷ locked verstuurd" />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <ConversionCard
-                title="Eerste bericht → eerste foto"
-                subtitle="Van chats met user-bericht: % met ≥1 locked foto daarna"
-                percent={ax.firstUserMessageToFirstLockedImagePercent}
-              />
-              <ConversionCard
-                title="Unlock-rate (betaling)"
-                subtitle="Van alle verstuurde locked foto’s: % daadwerkelijk ontgrendeld"
-                percent={ax.unlockConversionPercent}
-              />
-              <ConversionCard
-                title="1e → 2e ontgrendeling"
-                subtitle="Van users met ≥1 unlock: % met ≥2 ontgrendelde foto’s"
-                percent={ax.firstUnlockToSecondUnlockPercent}
-              />
-            </div>
-
-            <Section title={`Trend laatste ${ax.chartDays} dagen`}>
-              <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-                <DailyBarChart
-                  title="Signups per dag"
-                  data={ax.signupsByDay}
-                  format="int"
-                />
-                <DailyBarChart
-                  title="Omzet per dag (EUR)"
-                  data={ax.revenueByDay}
-                  format="eur"
-                />
-                <DailyBarChart
-                  title="Aankopen per dag (# orders)"
-                  data={ax.purchasesByDay}
-                  format="int"
-                />
-              </div>
-            </Section>
-          </>
-        ) : null}
+        <PeriodOverviewTable
+          overview={overview}
+          overviewError={overviewError}
+          loading={loading}
+        />
 
         <Section title="Signups">
           <SimpleTable
@@ -431,93 +448,184 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-      <div className="text-xs uppercase text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-gray-900">{value}</div>
-      {hint ? <p className="mt-1 text-[11px] leading-snug text-gray-400">{hint}</p> : null}
-    </div>
-  );
+function formatEur(value: number): string {
+  return value.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function StatMoney({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-      <div className="text-xs uppercase text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-primary-deep">
-        {value.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        {suffix ?? ''}
-      </div>
-    </div>
-  );
+function formatPct(value: number | null): string {
+  return value === null ? '—' : `${value.toLocaleString('nl-NL', { maximumFractionDigits: 1 })}%`;
 }
 
-function StatPct({ label, value, hint }: { label: string; value: number | null; hint?: string }) {
-  const display = value === null ? '—' : `${value}%`;
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-      <div className="text-xs uppercase text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-gray-900">{display}</div>
-      {hint ? <p className="mt-1 text-[11px] leading-snug text-gray-400">{hint}</p> : null}
-    </div>
-  );
-}
-
-function ConversionCard({
-  title,
-  subtitle,
-  percent,
+function PeriodOverviewTable({
+  overview,
+  overviewError,
+  loading,
 }: {
-  title: string;
-  subtitle: string;
-  percent: number | null;
+  overview: PeriodOverview | null;
+  overviewError: string | null;
+  loading: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/5 to-white p-5 shadow-sm">
-      <p className="text-sm font-bold text-gray-900">{title}</p>
-      <p className="mt-1 text-xs leading-relaxed text-gray-600">{subtitle}</p>
-      <p className="mt-4 text-4xl font-bold tabular-nums text-primary-deep">
-        {percent === null ? '—' : `${percent}%`}
-      </p>
-    </div>
-  );
-}
-
-function DailyBarChart({
-  title,
-  data,
-  format,
-}: {
-  title: string;
-  data: DailyBucket[];
-  format: 'int' | 'eur';
-}) {
-  const max = Math.max(1, ...data.map((d) => d.value));
-  const fmt = (v: number) =>
-    format === 'eur'
-      ? `${v.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`
-      : String(Math.round(v));
-
-  return (
-    <div className="min-w-0">
-      <p className="mb-3 text-sm font-semibold text-gray-900">{title}</p>
-      <div className="flex h-36 items-end gap-px rounded-lg border border-gray-100 bg-gray-50/80 px-1 pb-1 pt-2">
-        {data.map((d) => (
-          <div key={d.date} className="flex min-w-0 flex-1 flex-col justify-end h-full">
-            <div
-              className="mx-px w-full min-h-[3px] rounded-t bg-primary/90 transition-colors hover:bg-primary-hover"
-              style={{ height: `${Math.max(4, (d.value / max) * 100)}%` }}
-              title={`${d.date}: ${fmt(d.value)}`}
-            />
+    <section className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-gray-100 px-5 py-4">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Periode-overzicht</h2>
+          <p className="text-xs text-gray-500">
+            Per maand: omzet, signups en conversies door de funnel.
+          </p>
+        </div>
+        {overview ? (
+          <div className="flex flex-wrap gap-4 text-right text-xs text-gray-500">
+            <div>
+              <div className="font-semibold uppercase tracking-wide text-[10px] text-gray-400">
+                Totaal omzet
+              </div>
+              <div className="text-base font-bold tabular-nums text-gray-900">
+                € {formatEur(overview.totals.revenueEur)}
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold uppercase tracking-wide text-[10px] text-gray-400">
+                Totaal signups
+              </div>
+              <div className="text-base font-bold tabular-nums text-gray-900">
+                {overview.totals.signups}
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold uppercase tracking-wide text-[10px] text-gray-400">
+                Signup → betaald
+              </div>
+              <div className="text-base font-bold tabular-nums text-gray-900">
+                {formatPct(overview.totals.signupToPaidPct)}
+              </div>
+            </div>
           </div>
-        ))}
+        ) : null}
       </div>
-      <div className="mt-2 flex justify-between text-[10px] text-gray-500">
-        <span>{data[0]?.date?.slice(5) ?? ''}</span>
-        <span>vandaag</span>
+
+      {overviewError ? (
+        <div className="px-5 py-3 text-sm text-red-700">{overviewError}</div>
+      ) : null}
+
+      <div className="max-h-[640px] overflow-auto">
+        <table className="min-w-full border-collapse text-sm">
+          <thead className="sticky top-0 z-10 bg-gray-50 text-gray-600">
+            <tr>
+              <th className="border-b border-gray-200 px-4 py-3 text-left font-semibold">
+                Maand
+              </th>
+              <th className="border-b border-gray-200 px-4 py-3 text-right font-semibold">
+                Omzet
+              </th>
+              <th className="border-b border-gray-200 px-4 py-3 text-right font-semibold">
+                Signups
+              </th>
+              <th className="border-b border-gray-200 px-4 py-3 text-right font-semibold">
+                Aankopen
+              </th>
+              <th
+                className="border-b border-gray-200 px-4 py-3 text-right font-semibold"
+                title="Van signups in deze maand: % dat ≥1 user-bericht heeft gestuurd"
+              >
+                Signup → Chat
+              </th>
+              <th
+                className="border-b border-gray-200 px-4 py-3 text-right font-semibold"
+                title="Van users-met-chat: % dat een foto unlockte vóór hun eerste betaalde aankoop"
+              >
+                Chat → Unlock (Free)
+              </th>
+              <th
+                className="border-b border-gray-200 px-4 py-3 text-right font-semibold"
+                title="Van users-met-chat: % dat een foto unlockte ná hun eerste betaalde aankoop"
+              >
+                Chat → Unlock (Paid)
+              </th>
+              <th
+                className="border-b border-gray-200 px-4 py-3 text-right font-semibold"
+                title="Van signups in deze maand: % dat een betaalde aankoop heeft gedaan"
+              >
+                Signup → Paid
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {overview && overview.periods.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-500">
+                  {loading ? 'Laden…' : 'Nog geen data.'}
+                </td>
+              </tr>
+            ) : null}
+            {(overview?.periods ?? []).map((row, idx) => (
+              <tr
+                key={row.key}
+                className={`${
+                  idx === 0 ? 'bg-amber-50/40' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'
+                } hover:bg-amber-50`}
+              >
+                <td className="border-b border-gray-100 px-4 py-3 font-semibold text-gray-900">
+                  {row.label}
+                  {idx === 0 ? (
+                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-700">
+                      Huidig
+                    </span>
+                  ) : null}
+                </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-900">
+                  € {formatEur(row.revenueEur)}
+                </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
+                  {row.signups}
+                </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
+                  {row.conversions}
+                </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
+                  {formatPct(row.signupToUserChatPct)}
+                </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
+                  {formatPct(row.userChatToUnlockFreePct)}
+                </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
+                  {formatPct(row.userChatToUnlockPaidPct)}
+                </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums font-semibold text-gray-900">
+                  {formatPct(row.signupToPaidPct)}
+                </td>
+              </tr>
+            ))}
+            {overview ? (
+              <tr className="bg-gray-900 text-gray-50">
+                <td className="px-4 py-3 font-bold">Totaal</td>
+                <td className="px-4 py-3 text-right tabular-nums font-bold">
+                  € {formatEur(overview.totals.revenueEur)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {overview.totals.signups}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {overview.totals.conversions}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {formatPct(overview.totals.signupToUserChatPct)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {formatPct(overview.totals.userChatToUnlockFreePct)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {formatPct(overview.totals.userChatToUnlockPaidPct)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums font-bold">
+                  {formatPct(overview.totals.signupToPaidPct)}
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
       </div>
-    </div>
+    </section>
   );
 }
 
