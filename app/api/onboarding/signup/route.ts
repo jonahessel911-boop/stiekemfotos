@@ -10,7 +10,7 @@ import {
   SVL_CONVERSION_TYPE,
   SVL_PAYOUT_COOKIE,
   SVL_TXID_COOKIE,
-} from "@/lib/swiftvisitlog";
+} from "@/lib/clickflare-postback";
 
 type SignupBody = {
   naam: string;

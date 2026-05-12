@@ -9,7 +9,7 @@ import {
   SVL_PAYOUT_QUERY_KEYS,
   SVL_TXID_COOKIE,
   SVL_TXID_QUERY_KEYS,
-} from "@/lib/swiftvisitlog";
+} from "@/lib/clickflare-postback";
 
 function setCookie(name: string, value: string): void {
   if (!value) return;
@@ -31,7 +31,7 @@ function readFirstParam(params: URLSearchParams, keys: ReadonlyArray<string>): s
  * Captures ClickFlare tracking params from the current URL and stores
  * them in cookies so the server can fire the postback after form submit.
  */
-export default function SwiftVisitLogCapture(): null {
+export default function ClickFlareCapture(): null {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {

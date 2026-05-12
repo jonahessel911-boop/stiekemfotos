@@ -3,18 +3,19 @@
  * Standaard postback-host: 911-for-me.com (ClickFlare /cf/cv).
  * Dedupliceert conversies op basis van click_id + txid + ct.
  *
- * Configureerbaar via env (overschrijft default):
+ * Optionele env (alleen nodig om de URL of ct te overschrijven):
  *  - CLICKFLARE_POSTBACK_URL  (default: https://911-for-me.com/cf/cv)
  *  - CLICKFLARE_CONVERSION_TYPE (default: signup)
  */
-const DEFAULT_SVL_POSTBACK_BASE_URL = "https://911-for-me.com/cf/cv";
+const DEFAULT_CLICKFLARE_POSTBACK_BASE_URL = "https://911-for-me.com/cf/cv";
 
 export const SVL_POSTBACK_BASE_URL =
-  process.env.CLICKFLARE_POSTBACK_URL?.trim() || DEFAULT_SVL_POSTBACK_BASE_URL;
+  process.env.CLICKFLARE_POSTBACK_URL?.trim() || DEFAULT_CLICKFLARE_POSTBACK_BASE_URL;
 
 export const SVL_CONVERSION_TYPE =
   process.env.CLICKFLARE_CONVERSION_TYPE?.trim() || "signup";
 
+/** Cookie-namen blijven `svl_*` zodat bestaande bezoekers geen tracking verliezen. */
 export const SVL_CLICK_ID_COOKIE = "svl_click_id";
 export const SVL_PAYOUT_COOKIE = "svl_payout";
 export const SVL_TXID_COOKIE = "svl_txid";

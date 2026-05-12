@@ -15,7 +15,7 @@ import {
   formatPayoutFromCents,
   sendSvlPostback,
   SVL_CONVERSION_TYPE,
-} from "@/lib/swiftvisitlog";
+} from "@/lib/clickflare-postback";
 
 export async function POST(req: Request) {
   try {
