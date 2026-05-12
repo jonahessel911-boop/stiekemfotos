@@ -2485,12 +2485,13 @@ function styleInstructionForPhotoEngagement(style: PhotoEngagementStyle): string
   }
 }
 
+/**
+ * "In-flight" = er staat een achtergrond-image-generation gepland of bezig.
+ * Een eerdere locked foto die nog niet ontgrendeld is, blokkeert NIET meer:
+ * we mogen op verzoek van de user direct een nieuwe locked foto erbij sturen.
+ */
 function hasActiveLockedPhotoPipeline(conv: Conversation): boolean {
-  if (conv.pendingLockedPhotoDeliveryAt || conv.pendingLockedPhotoDelivery) return true;
-  if (!conv.pendingLockedPhotoMessageId) return false;
-  const locked = conv.messages.find((m) => m.id === conv.pendingLockedPhotoMessageId);
-  if (!locked?.photoLock) return false;
-  return !locked.photoLock.unlockedAt;
+  return Boolean(conv.pendingLockedPhotoDeliveryAt || conv.pendingLockedPhotoDelivery);
 }
 
 function enforcePendingPhotoReply(replyText: string): string {
