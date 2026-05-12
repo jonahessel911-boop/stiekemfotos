@@ -699,8 +699,9 @@ function BerichtenInner() {
       }
 
       // Timeout guard: voorkomt dat de pagina eeuwig op "Laden..." blijft hangen als de server traag is.
+      // 25s headroom voor cold lambda + Supabase cold start; de hot-path zelf is ~<1s.
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
+      const timeoutId = window.setTimeout(() => controller.abort(), 25_000);
 
       try {
         const createRes = await fetch('/api/conversations', {

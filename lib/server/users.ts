@@ -50,6 +50,8 @@ export type UserRecord = {
    * Ontbreekt het veld → bestaande accounts vóór deze feature (geen onboarding).
    */
   platformOnboardingCompletedAt?: string | null;
+  /** Swift Visit Log / affiliate click_id uit landing URL (?click_id=...). */
+  clickId?: string;
 };
 
 export type ReactionNudge = {
@@ -112,6 +114,7 @@ export type CreateUserInput = {
   zoekLeeftijdCategorie?: string;
   zoekEigenschappen?: string[];
   geschatteMatches?: number;
+  clickId?: string;
 };
 
 export async function createUser(input: CreateUserInput): Promise<UserRecord> {
@@ -140,6 +143,7 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     ...(typeof input.geschatteMatches === "number"
       ? { geschatteMatches: input.geschatteMatches }
       : {}),
+    ...(input.clickId && input.clickId.trim() ? { clickId: input.clickId.trim() } : {}),
     platformOnboardingCompletedAt: null,
   };
   const list = await load();

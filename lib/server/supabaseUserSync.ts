@@ -40,6 +40,7 @@ export async function upsertAppUserToSupabaseUsers(user: UserRecord): Promise<vo
     ...(user.platformOnboardingCompletedAt !== undefined
       ? { platform_onboarding_completed_at: user.platformOnboardingCompletedAt }
       : {}),
+    ...(user.clickId ? { click_id: user.clickId } : {}),
   };
 
   const { error } = await supabase.from("users").upsert(row, { onConflict: "id" });

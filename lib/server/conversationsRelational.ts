@@ -159,6 +159,44 @@ export async function loadConversationsRelational(
   return rows.map((r) => conversationFromRow(r, byConv.get(r.id) ?? []));
 }
 
+/**
+ * Hot path: gericht zoeken naar een bestaande conversation voor één owner+profiel.
+ * Vermijdt loadConversationsRelational (die ALLE conversations van ALLE users laadt
+ * met alle berichten — traag bij groeiende dataset).
+ */
+export async function loadConversationByOwnerAndProfile(
+  supabase: SupabaseClient,
+  ownerFk: string,
+  profileId: string
+): Promise<Conversation | null> {
+  const { data: rows, error } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("owner_user_id", ownerFk)
+    .eq("profile_id", profileId)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    throw new Error(
+      `[conversationsRelational] load conv by owner+profile: ${error.message}`
+    );
+  }
+  const row = (rows ?? [])[0] as ConversationRow | undefined;
+  if (!row) return null;
+  const { data: msgRows, error: me } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("conversation_id", row.id)
+    .order("created_at", { ascending: true });
+  if (me) {
+    throw new Error(
+      `[conversationsRelational] load messages ${row.id}: ${me.message}`
+    );
+  }
+  const messages = (msgRows ?? []).map((raw) => messageFromRow(raw as MessageRow));
+  return conversationFromRow(row, messages);
+}
+
 export async function loadConversationById(
   supabase: SupabaseClient,
   conversationId: string

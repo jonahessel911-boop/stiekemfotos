@@ -62,6 +62,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const jar = await cookies();
+    const clickIdCookie = jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim();
+    const payoutCookie = jar.get(SVL_PAYOUT_COOKIE)?.value?.trim();
+    const txidCookie = jar.get(SVL_TXID_COOKIE)?.value?.trim();
+
     let user;
     try {
       user = await createUser({
@@ -74,6 +79,7 @@ export async function POST(req: Request) {
         ...(zoekLeeftijdCategorie ? { zoekLeeftijdCategorie } : {}),
         ...(zoekEigenschappen?.length ? { zoekEigenschappen } : {}),
         ...(geschatteMatches != null ? { geschatteMatches } : {}),
+        ...(clickIdCookie ? { clickId: clickIdCookie } : {}),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Fout";
@@ -96,15 +102,11 @@ export async function POST(req: Request) {
     // Swift Visit Log postback fire bij formulier inzenden.
     // Vervangt de eerdere server-side TikTok conversion fire.
     try {
-      const jar = await cookies();
-      const clickId = jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim();
-      if (clickId) {
-        const payout = jar.get(SVL_PAYOUT_COOKIE)?.value?.trim();
-        const cookieTxid = jar.get(SVL_TXID_COOKIE)?.value?.trim();
+      if (clickIdCookie) {
         const postbackUrl = buildSvlPostbackUrl({
-          clickId,
-          ...(payout ? { payout } : {}),
-          txid: cookieTxid || user.id,
+          clickId: clickIdCookie,
+          ...(payoutCookie ? { payout: payoutCookie } : {}),
+          txid: txidCookie || user.id,
         });
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 4000);
@@ -116,11 +118,11 @@ export async function POST(req: Request) {
           });
           if (!res.ok) {
             console.warn(
-              `[swiftvisitlog] postback non-OK status=${res.status} click_id=${clickId}`
+              `[swiftvisitlog] postback non-OK status=${res.status} click_id=${clickIdCookie}`
             );
           } else {
             console.log(
-              `[swiftvisitlog] postback ok click_id=${clickId} txid=${cookieTxid || user.id}`
+              `[swiftvisitlog] postback ok click_id=${clickIdCookie} txid=${txidCookie || user.id}`
             );
           }
         } finally {

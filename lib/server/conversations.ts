@@ -3,10 +3,12 @@ import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import {
   loadConversationById,
+  loadConversationByOwnerAndProfile,
   loadConversationsRelational,
   saveConversationsRelational,
   saveSingleConversationRelational,
 } from "@/lib/server/conversationsRelational";
+import { resolveUserIdForSupabaseFk } from "@/lib/server/ensureUserRowForFk";
 import type { Conversation, ConversationSummary, ChatMessage } from "@/lib/types/chat";
 import type { Profile } from "@/lib/types/profile";
 import { getDbProfileById, listDbProfiles, isSupabaseProfilesEnabled } from "@/lib/server/profilesDb";
@@ -1037,22 +1039,35 @@ export async function findOrCreateConversation(
   ownerUserId: string
 ): Promise<Conversation> {
   if (!ownerUserId.trim()) throw new Error("Log in om te chatten.");
-  const profile = await resolveProfileById(profileId);
-  if (!profile) throw new Error("Profiel niet gevonden");
 
-  const ownerRecord = await findUserById(ownerUserId);
+  /**
+   * Hot path: gericht 1 conversation ophalen i.p.v. de hele inbox (alle users + alle
+   * messages) opnieuw te laden + terug te schrijven. Dat was de oorzaak van trage
+   * "Vraag om foto"-flows en de 10s frontend AbortController timeout op de eerste
+   * chat voor nieuwe gebruikers.
+   */
+  const admin = getSupabaseAdmin();
+  if (!admin) {
+    throw new Error("Chat database is niet beschikbaar. Probeer het later opnieuw.");
+  }
+
+  const [profile, ownerRecord, ownerFk] = await Promise.all([
+    resolveProfileById(profileId),
+    findUserById(ownerUserId),
+    resolveUserIdForSupabaseFk(ownerUserId),
+  ]);
+  if (!profile) throw new Error("Profiel niet gevonden");
   if (!ownerRecord) {
     throw new Error("Je sessie is verlopen — log opnieuw in.");
   }
-  await upsertAppUserToSupabaseUsers(ownerRecord);
-
-  await ensureUserInboxForOwner(ownerUserId);
-  const list = await loadList();
-  if (dedupeDuplicateOwnerConversationsInPlace(list, ownerUserId)) {
-    await saveList(list);
+  if (!ownerFk) {
+    throw new Error("Account synchronisatie mislukt — probeer opnieuw in te loggen.");
   }
-  const existing = list.find((c) => c.ownerUserId === ownerUserId && c.profileId === profileId);
-  if (existing) return existing;
+
+  const existing = await loadConversationByOwnerAndProfile(admin, ownerFk, profileId);
+  if (existing) {
+    return enforceUniqueConversationAvatars(normalizeConversationMessages([existing]))[0]!;
+  }
 
   const id = randomUUID();
   const now = new Date().toISOString();
@@ -1067,8 +1082,9 @@ export async function findOrCreateConversation(
     updatedAt: now,
   };
 
-  list.unshift(conv);
-  await saveList(list);
+  await withConversationLock(conv.id, () =>
+    saveSingleConversationRelational(admin, conv)
+  );
   return conv;
 }
 
