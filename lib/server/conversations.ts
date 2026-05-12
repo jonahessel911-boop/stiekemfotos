@@ -34,6 +34,7 @@ import {
 } from "@/lib/conversation-memory";
 import { buildFreeChatPrompt } from "@/lib/prompts/freeChat";
 import { saveConversationImage, saveConversationVoiceInput } from "@/lib/server/convImageStore";
+import { tryUploadImageToStorage } from "@/lib/server/imageStorage";
 import {
   findUserById,
   canSendInboxNotificationEmail,
@@ -44,7 +45,7 @@ import {
 import {
   buildBodyShotIdentityDescriptor,
   compactIdentityForChatPhotoPrompt,
-  generateRealisticImage,
+  generateRealisticImageDetailed,
   sanitizeIdentityForZImagePrompt,
   zModelMaxUserPromptBodyChars,
 } from "@/lib/server/imageGen";
@@ -2788,13 +2789,38 @@ export async function appendUserMessagesAndReply(
       if (imageBuffer.length < 80) {
         throw new Error("Ongeldige foto.");
       }
-      const filename = await saveConversationImage(
-        conversationId,
-        userMessage.id,
-        imageBuffer,
-        imageMime
-      );
-      userMessage.imageFile = filename;
+      /**
+       * Persistent: upload naar Supabase Storage (publieke bucket). Hierdoor
+       * verdwijnt de foto niet bij een koude lambda of nieuwe deploy. Op falen
+       * vallen we terug op lokaal fs (alleen werkbaar in dev — accepted).
+       */
+      const uploaded = await tryUploadImageToStorage({
+        pathSegments: ["chat-images", conversationId, `${userMessage.id}`],
+        buffer: imageBuffer,
+        mime: imageMime,
+        upsert: true,
+      });
+      if (uploaded?.publicUrl) {
+        userMessage.imageUrl = uploaded.publicUrl;
+      }
+      try {
+        const filename = await saveConversationImage(
+          conversationId,
+          userMessage.id,
+          imageBuffer,
+          imageMime
+        );
+        userMessage.imageFile = filename;
+      } catch (e) {
+        /** Vercel: schijf is read-only — niet erg, Supabase URL is bron van waarheid. */
+        if (!uploaded?.publicUrl) {
+          throw e;
+        }
+        console.warn(
+          "[messages] local saveConversationImage failed, relying on Supabase URL",
+          e instanceof Error ? e.message : String(e)
+        );
+      }
       imageSlots.push({ buffer: imageBuffer, mime: imageMime });
     }
     if (voiceB64Raw) {
@@ -3653,18 +3679,22 @@ export async function unlockAssistantPhoto(
         throw new Error("Foto prompt ontbreekt voor deze vergrendelde foto");
       }
       // Generates the real image only when user unlocks.
-      const generated = await generateRealisticImage(
+      const generated = await generateRealisticImageDetailed(
         { prompt, width, height, steps: 9, randomSeed: true },
         conv.id,
         target.id
       );
-      if (!generated) {
+      if (!generated.filename) {
         throw new Error("Foto genereren mislukt");
       }
-      target.imageFile = generated;
+      target.imageFile = generated.filename;
+      if (generated.publicUrl) {
+        /** Persistent Supabase URL — frontend gebruikt deze direct, geen proxy roundtrip nodig. */
+        target.imageUrl = generated.publicUrl;
+      }
       if (!conv.firstGeneratedPhotoMessageId) {
         conv.firstGeneratedPhotoMessageId = target.id;
-        conv.firstGeneratedPhotoFile = generated;
+        conv.firstGeneratedPhotoFile = generated.filename;
       }
     }
     target.photoLock = {

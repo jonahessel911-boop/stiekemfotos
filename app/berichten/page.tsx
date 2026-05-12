@@ -123,7 +123,7 @@ function deduplicateMessages(messages: ChatMessage[]): ChatMessage[] {
   const canonicalKeyFor = (m: ChatMessage): string => {
     const contentKey = (m.content || '').trim().toLowerCase();
     const replyKey = (m.replyToId || '').trim().toLowerCase();
-    const img = m.imageFile ? 'img1' : 'img0';
+    const img = m.imageFile || m.imageUrl ? 'img1' : 'img0';
     const gift = m.gift ? `gift:${m.gift.direction}:${m.gift.credits}` : 'gift:none';
     return `${m.role}|${contentKey}|${replyKey}|${img}|${gift}`;
   };
@@ -207,7 +207,7 @@ function MessageTimestamp({
 function snippetForReply(m: ChatMessage | undefined): string {
   if (!m) return '';
   if (m.gift) return `${m.gift.emoji ?? '🎁'} ${m.gift.credits} credits`;
-  if (m.imageFile) {
+  if (m.imageFile || m.imageUrl) {
     if (m.role === 'assistant' && m.photoLock && !m.photoLock.unlockedAt) {
       return '🔒 vergrendelde foto';
     }
@@ -2076,7 +2076,7 @@ function BerichtenInner() {
                             variant={m.role === 'user' ? 'outgoing-meta' : 'incoming'}
                           />
                         </div>
-                      ) : m.role === 'assistant' && (m.imageFile || m.photoLock) ? (
+                      ) : m.role === 'assistant' && (m.imageFile || m.imageUrl || m.photoLock) ? (
                         (() => {
                           const isUnlocked =
                             Boolean(m.photoLock?.unlockedAt) ||
@@ -2084,9 +2084,16 @@ function BerichtenInner() {
                             Boolean(locallyUnlockedByMessageId[m.id]);
                           const isUnlocking = Boolean(unlockingByMessageId[m.id]);
                           const cost = m.photoLock?.credits ?? CREDITS_PER_PHOTO_UNLOCK;
-                          const imgSrc = selectedId
-                            ? `/api/conversations/${selectedId}/image/${m.id}`
-                            : '';
+                          /**
+                           * Voorkeur: directe Supabase Storage URL (persistent, geen proxy).
+                           * Legacy fallback: `/api/conversations/.../image/...` voor oude
+                           * berichten zonder `imageUrl`.
+                           */
+                          const imgSrc = m.imageUrl?.trim()
+                            ? m.imageUrl
+                            : selectedId
+                              ? `/api/conversations/${selectedId}/image/${m.id}`
+                              : '';
                           const replied = m.replyToId
                             ? displayMessages.find((x) => x.id === m.replyToId)
                             : undefined;
@@ -2172,12 +2179,19 @@ function BerichtenInner() {
                             : undefined;
                           const optPreview = optimisticImageById[m.id];
                           const showImg =
-                            Boolean(m.imageFile && selectedId) || Boolean(optPreview);
+                            Boolean((m.imageFile || m.imageUrl) && selectedId) || Boolean(optPreview);
                           const textBody =
                             m.content && m.content !== '📷' ? m.content : '';
+                          /**
+                           * Voorkeur: optimistic data-URL (lokale preview),
+                           * dan persistente Supabase Storage URL,
+                           * dan legacy proxy-route als fallback.
+                           */
                           const imgSrc =
                             optPreview ??
-                            `/api/conversations/${selectedId}/image/${m.id}`;
+                            (m.imageUrl?.trim()
+                              ? m.imageUrl
+                              : `/api/conversations/${selectedId}/image/${m.id}`);
                           return (
                             <div className="flex max-w-[88%] flex-col items-end space-y-2">
                               {showImg && (

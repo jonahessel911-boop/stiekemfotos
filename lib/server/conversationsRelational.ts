@@ -101,7 +101,16 @@ function messageToInsertRow(m: ChatMessage, conversationId: string): Record<stri
     role,
     content: m.content ?? "",
     created_at: m.createdAt,
-    image_url: m.imageFile ? `local:${m.imageFile}` : null,
+    /**
+     * Voorkeur: persistent publieke URL (Supabase Storage).
+     * Fallback: `local:${filename}` voor legacy data/dev. `imageFile` blijft
+     * óók in de metadata-blob staan zodat de chat client beide kan vinden.
+     */
+    image_url: m.imageUrl?.trim()
+      ? m.imageUrl.trim()
+      : m.imageFile
+        ? `local:${m.imageFile}`
+        : null,
     voice_url: null,
     gift_credits: gift?.credits ?? null,
     gift_label: gift?.packageLabel ?? null,

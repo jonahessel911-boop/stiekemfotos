@@ -28,8 +28,14 @@ export interface ChatMessage {
   deliveredAt?: string;
   /** When the other side actually read the message (realistic timing) */
   readAt?: string;
-  /** User: bestandsnaam in data/conv-images/{conversationId}/ (jpg/png). */
+  /** User: bestandsnaam in data/conv-images/{conversationId}/ (jpg/png). Legacy/dev fallback. */
   imageFile?: string;
+  /**
+   * Persistent publieke URL (Supabase Storage). Wordt direct in <img src> gebruikt.
+   * Aanwezig op alle nieuwe uploads (user, gegenereerd, profielmedia). Legacy
+   * berichten zonder dit veld vallen terug op `/api/conversations/.../image/...`.
+   */
+  imageUrl?: string;
   /**
    * Assistant-foto's worden vergrendeld verstuurd. Pas na betaling van
    * `credits` mag de gebruiker de foto bekijken.

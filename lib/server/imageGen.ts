@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import path from "path";
 import type { Profile } from "@/lib/types/profile";
 import { buildStableVisualIdentityForProfile } from "@/lib/server/profileVisualIdentity";
+import { tryUploadImageToStorage } from "@/lib/server/imageStorage";
 
 const ZMODEL_API_KEY = process.env.ZMODEL_API_KEY?.trim() || "";
 const ZMODEL_BASE_URL = process.env.ZMODEL_BASE_URL?.trim() || "https://zimageturbo.ai";
@@ -36,6 +37,8 @@ export type GenerateImageOptions = {
 export type GenerateImageDetailedResult = {
   status: GenerationStatus;
   filename: string | null;
+  /** Persistent publieke URL (Supabase Storage). Aanwezig bij `status === "success"` als upload slaagt. */
+  publicUrl?: string | null;
   seed?: number | null;
   durationS?: number;
   errorDetail?: string;
@@ -253,8 +256,12 @@ function aspectRatioForSize(width: number, height: number): string {
 async function tryGenerateWithZModel(
   options: GenerateImageOptions,
   outputDir: string,
+  conversationId: string,
   messageId: string
-): Promise<{ filename: string; error?: never } | { filename?: never; error: string }> {
+): Promise<
+  | { filename: string; publicUrl: string | null; error?: never }
+  | { filename?: never; publicUrl?: never; error: string }
+> {
   if (!ZMODEL_API_KEY) {
     return { error: "ZMODEL_API_KEY ontbreekt." };
   }
@@ -371,11 +378,39 @@ async function tryGenerateWithZModel(
     return { error: "ZModel gaf lege/ongeldige image bytes terug." };
   }
   const targetFilename = `${messageId}.jpg`;
-  const targetPath = path.join(outputDir, targetFilename);
-  await writeFile(targetPath, imgBuffer);
-  return { filename: targetFilename };
+  /**
+   * 1) Best-effort lokaal schrijven — handig in dev en als instant warm-cache
+   *    in dezelfde lambda. Op productie verdwijnt dit bestand bij koude start;
+   *    de Supabase Storage upload (stap 2) is daarom de eigenlijke bron van waarheid.
+   */
+  try {
+    const targetPath = path.join(outputDir, targetFilename);
+    await writeFile(targetPath, imgBuffer);
+  } catch (e) {
+    console.warn(
+      "[imageGen] local writeFile failed (continuing with Supabase upload)",
+      e instanceof Error ? e.message : String(e)
+    );
+  }
+
+  /**
+   * 2) Persistent storage in Supabase. Bij falen returnen we toch success
+   *    op basis van local fs; de chat image route heeft een blob/profile_media
+   *    fallback voor legacy data. In dev zonder Supabase blijft alleen local.
+   */
+  const upload = await tryUploadImageToStorage({
+    pathSegments: ["chat-images", conversationId, targetFilename],
+    buffer: imgBuffer,
+    mime: "image/jpeg",
+    upsert: true,
+  });
+  return { filename: targetFilename, publicUrl: upload?.publicUrl ?? null };
 }
 
+/**
+ * Backwards-compatible: callers die alleen de filename nodig hebben.
+ * Voor nieuw werk: gebruik `generateRealisticImageDetailed` zodat je ook `publicUrl` hebt.
+ */
 export async function generateRealisticImage(
   options: GenerateImageOptions,
   conversationId: string,
@@ -398,7 +433,9 @@ export async function generateRealisticImageDetailed(
     randomSeed = true,
   } = options;
   const outputDir = path.join(process.cwd(), "data", "conv-images", conversationId);
-  await mkdir(outputDir, { recursive: true });
+  await mkdir(outputDir, { recursive: true }).catch(() => {
+    /** Read-only fs (Vercel) — Supabase upload is leidend, lokale write is best-effort. */
+  });
   const promptHash = createHash("sha256")
     .update(finalizePromptForZModel(prompt))
     .digest("hex")
@@ -409,16 +446,18 @@ export async function generateRealisticImageDetailed(
   const zResult = await tryGenerateWithZModel(
     { prompt, width, height, steps: options.steps, seed, randomSeed },
     outputDir,
+    conversationId,
     messageId
   );
   if (zResult.filename) {
     const durationMs = Date.now() - startedAt;
     console.info(
-      `[imageGen] provider=zmodel prompt_hash=${promptHash} duration_ms=${durationMs} success=true`
+      `[imageGen] provider=zmodel prompt_hash=${promptHash} duration_ms=${durationMs} success=true supabase=${zResult.publicUrl ? "yes" : "no"}`
     );
     return {
       status: "success",
       filename: zResult.filename,
+      publicUrl: zResult.publicUrl,
       seed: null,
       durationS: durationMs / 1000,
     };

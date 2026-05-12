@@ -9,6 +9,7 @@ import {
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
 import { convImageDir } from "@/lib/server/convImageStore";
+import { tryUploadImageToStorage } from "@/lib/server/imageStorage";
 import type { PersonaStyle, Profile } from "@/lib/types/profile";
 import {
   type PhenotypeKey,
@@ -49,8 +50,6 @@ async function persistConversationImageAsPublicUrl(
   messageId: string
 ): Promise<string> {
   const legacyRouteUrl = `/api/conversations/${conversationId}/image/${messageId}`;
-  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
-  if (!token) return legacyRouteUrl;
 
   const dir = convImageDir(conversationId);
   const candidates = [
@@ -59,22 +58,26 @@ async function persistConversationImageAsPublicUrl(
     { ext: "png", mime: "image/png" },
   ] as const;
 
+  /**
+   * Probeer de zojuist door `tryGenerateWithZModel` lokaal weggeschreven bytes
+   * te lezen en naar Supabase Storage te uploaden. De Storage upload binnen
+   * `tryGenerateWithZModel` dekt dit pad ook al, maar dit blijft een
+   * vangnet voor flows waar het lokale bestand bestaat maar de inline upload
+   * faalde (bv. tijdelijke Supabase outage).
+   */
   for (const candidate of candidates) {
     try {
       const filePath = `${dir}/${messageId}.${candidate.ext}`;
       const buf = await readFile(filePath);
-      const { put } = await import("@vercel/blob");
-      const blob = await put(
-        `stiekemefotos/profile-media/${conversationId}/${messageId}.${candidate.ext}`,
-        buf,
-        {
-          access: "public",
-          addRandomSuffix: false,
-          allowOverwrite: true,
-          contentType: candidate.mime,
-        }
-      );
-      return blob.url;
+      const uploaded = await tryUploadImageToStorage({
+        pathSegments: ["profile-photos", conversationId, `${messageId}.${candidate.ext}`],
+        buffer: buf,
+        mime: candidate.mime,
+        upsert: true,
+      });
+      if (uploaded?.publicUrl) {
+        return uploaded.publicUrl;
+      }
     } catch {
       // Probeer volgende extensie.
     }
@@ -1215,7 +1218,14 @@ export async function createRandomProfileWithPhotos(
         `Foto ${i + 1} genereren mislukt: ${generated?.errorDetail || "onbekend"}`
       );
     }
-    photoUrls.push(await persistConversationImageAsPublicUrl(conversationId, messageId));
+    /**
+     * Primair: de Supabase Storage public URL die `generateRealisticImageDetailed`
+     * meegeeft. Fallback: legacy persist helper voor edge cases waar de inline upload faalde.
+     */
+    const persistedUrl =
+      generated.publicUrl?.trim() ||
+      (await persistConversationImageAsPublicUrl(conversationId, messageId));
+    photoUrls.push(persistedUrl);
   }
 
   const avatarUrl = photoUrls[0]!;
