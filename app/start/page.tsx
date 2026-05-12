@@ -6,6 +6,7 @@ import Logo from '@/components/Logo';
 import { CircularLoader } from '@/components/CircularLoader';
 import { ArrowRight, Check } from 'lucide-react';
 import { setStoredUser } from '@/lib/onboarding-client';
+import SwiftVisitLogCapture from '@/components/SwiftVisitLogCapture';
 
 type Step =
   | 'splash'
@@ -323,6 +324,7 @@ export default function StartPage() {
 
   return (
     <div className="min-h-screen bg-[var(--onboarding-bg)] flex flex-col">
+      <SwiftVisitLogCapture />
       <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 max-w-lg mx-auto w-full">
         {step === 'splash' && (
           <div className="text-center w-full">

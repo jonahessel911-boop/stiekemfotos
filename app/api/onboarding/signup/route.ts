@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
-import { createHash } from "crypto";
+import { cookies } from "next/headers";
 import { readJson, writeJson } from "@/lib/server/store";
 import { createUser } from "@/lib/server/users";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
-import { TIKTOK_ACCESS_TOKEN, TIKTOK_PIXEL_ID, TIKTOK_TRACK_URL } from "@/lib/tiktok";
+import {
+  buildSvlPostbackUrl,
+  SVL_CLICK_ID_COOKIE,
+  SVL_PAYOUT_COOKIE,
+  SVL_TXID_COOKIE,
+} from "@/lib/swiftvisitlog";
 
 type SignupBody = {
   naam: string;
@@ -18,10 +23,6 @@ type SignupBody = {
 };
 
 type StoredSignup = Omit<SignupBody, "wachtwoord"> & { createdAt: string };
-
-function sha256LowerTrim(value: string): string {
-  return createHash("sha256").update(value.trim().toLowerCase()).digest("hex");
-}
 
 export async function POST(req: Request) {
   try {
@@ -92,49 +93,46 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
     writeJson("onboarding-signups.json", list);
-    // Server-side conversion fire zodat submit-events altijd mee gaan na geslaagde form-submit.
+    // Swift Visit Log postback fire bij formulier inzenden.
+    // Vervangt de eerdere server-side TikTok conversion fire.
     try {
-      const common = {
-        event_time: Math.floor(Date.now() / 1000),
-        user: {
-          email: sha256LowerTrim(email),
-          phone: null,
-          external_id: sha256LowerTrim(user.id),
-        },
-        properties: {
-          currency: null,
-          content_type: "page",
-        },
-        page: {
-          url: req.headers.get("origin") ?? null,
-          referrer: req.headers.get("referer") ?? null,
-        },
-      };
-      await fetch(TIKTOK_TRACK_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Token": TIKTOK_ACCESS_TOKEN,
-        },
-        body: JSON.stringify({
-          event_source: "web",
-          event_source_id: TIKTOK_PIXEL_ID,
-          pixel_code: TIKTOK_PIXEL_ID,
-          data: [
-            {
-              event: "CompleteRegistration",
-              ...common,
-            },
-            {
-              event: "SubmitForm",
-              ...common,
-            },
-          ],
-        }),
-        cache: "no-store",
-      });
-    } catch {
-      // best effort tracking
+      const jar = await cookies();
+      const clickId = jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim();
+      if (clickId) {
+        const payout = jar.get(SVL_PAYOUT_COOKIE)?.value?.trim();
+        const cookieTxid = jar.get(SVL_TXID_COOKIE)?.value?.trim();
+        const postbackUrl = buildSvlPostbackUrl({
+          clickId,
+          ...(payout ? { payout } : {}),
+          txid: cookieTxid || user.id,
+        });
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        try {
+          const res = await fetch(postbackUrl, {
+            method: "GET",
+            cache: "no-store",
+            signal: ctrl.signal,
+          });
+          if (!res.ok) {
+            console.warn(
+              `[swiftvisitlog] postback non-OK status=${res.status} click_id=${clickId}`
+            );
+          } else {
+            console.log(
+              `[swiftvisitlog] postback ok click_id=${clickId} txid=${cookieTxid || user.id}`
+            );
+          }
+        } finally {
+          clearTimeout(timer);
+        }
+      } else {
+        console.log("[swiftvisitlog] postback skipped: missing click_id cookie");
+      }
+    } catch (e) {
+      console.warn(
+        `[swiftvisitlog] postback fout: ${e instanceof Error ? e.message : String(e)}`
+      );
     }
 
     const res = NextResponse.json({
