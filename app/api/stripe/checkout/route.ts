@@ -16,6 +16,17 @@ function withQuery(urlStr: string, params: Record<string, string>) {
   return u.toString();
 }
 
+/**
+ * Voegt `session_id={CHECKOUT_SESSION_ID}` toe aan een URL ZONDER URL-encoding
+ * van de `{` / `}` tekens. Stripe vervangt de placeholder alleen als hij
+ * letterlijk in de URL staat — `URLSearchParams.set` encodeert hem naar
+ * `%7B...%7D` en breekt daarmee de substitutie.
+ */
+function appendStripeSessionPlaceholder(urlStr: string): string {
+  const sep = urlStr.includes("?") ? "&" : "?";
+  return `${urlStr}${sep}session_id={CHECKOUT_SESSION_ID}`;
+}
+
 export async function POST(req: Request) {
   try {
     const jar = await cookies();
@@ -34,10 +45,9 @@ export async function POST(req: Request) {
     }
     const pkg = CREDIT_PACKAGES[packageId];
     const returnUrl = resolveReturnUrl(body.returnUrl);
-    const successUrl = withQuery(returnUrl, {
-      stripe_success: "1",
-      session_id: "{CHECKOUT_SESSION_ID}",
-    });
+    const successUrl = appendStripeSessionPlaceholder(
+      withQuery(returnUrl, { stripe_success: "1" })
+    );
     const cancelUrl = withQuery(returnUrl, { stripe_canceled: "1" });
 
     const stripe = getStripe();
