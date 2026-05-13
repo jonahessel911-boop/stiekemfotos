@@ -1,7 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePathname } from "next/navigation";
 import { usePlatformOnboardingControls } from "@/components/PlatformOnboardingContext";
 
@@ -69,6 +76,16 @@ export default function PlatformOnboardingGate() {
   useEffect(() => {
     setPlatformOnboardingActive(Boolean(open && !skip));
   }, [open, skip, setPlatformOnboardingActive]);
+
+  const step6ScrollRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open || skip) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    if (step === 6) {
+      step6ScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [open, skip, step]);
 
   useEffect(() => {
     if (!open || skip) return;
@@ -219,7 +236,10 @@ export default function PlatformOnboardingGate() {
         }}
       />
 
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-8 pb-32 md:px-8 md:pt-12 md:pb-12">
+      <div
+        ref={step6ScrollRef}
+        className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-8 pb-32 md:px-8 md:pt-12 md:pb-12"
+      >
         <div className="mx-auto w-full max-w-xl">
           <p className="mb-3 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
             Stap {TOTAL_STEPS} van {TOTAL_STEPS} · op stiekemefotos.nl
@@ -352,6 +372,12 @@ function OnboardingShell({
   ariaTitleId: string;
   children: ReactNode;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [step]);
+
   return (
     <div
       className="fixed inset-0 z-[200] flex flex-col bg-[var(--surface)]"
@@ -359,7 +385,10 @@ function OnboardingShell({
       aria-modal="true"
       aria-labelledby={ariaTitleId}
     >
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-8 pb-28 md:px-8 md:py-12 md:pb-12">
+      <div
+        ref={scrollRef}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-8 pb-28 md:px-8 md:py-12 md:pb-12"
+      >
         <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wider text-primary">
           Stap {step} van {TOTAL_STEPS}
         </p>
