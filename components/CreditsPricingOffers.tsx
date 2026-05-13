@@ -6,18 +6,17 @@ import { addCredits } from '@/lib/credits-client';
 import { DealWalletPayButton } from '@/components/DealWalletPayButton';
 
 const PACKAGES = [
-  { id: 'left', credits: 100, priceLabel: '€10,00', title: '1 foto', featured: false as const },
+  { id: 'left', credits: 100, priceLabel: '€10,00', featured: false as const },
   {
     id: 'middle',
     credits: 200,
     priceLabel: '€4,99',
     wasPriceLabel: '€22,99',
     discountPercent: 78,
-    title: "2 foto's",
     featured: true as const,
     priceEurCents: 499,
   },
-  { id: 'right', credits: 300, priceLabel: '€29,99', title: "3 foto's", featured: false as const },
+  { id: 'right', credits: 300, priceLabel: '€29,99', featured: false as const },
 ] as const;
 
 type Props = {
@@ -116,7 +115,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
     <div className="space-y-5">
       {showIntro ? (
         <p className="text-sm text-gray-600 leading-relaxed">
-          Kies een pakket om op te waarderen.{' '}
+          Koop credits om mee te chatten en foto&apos;s te ontvangen.{' '}
           <span className="font-semibold text-primary">
             Speciale aanbieding: 200 credits voor €4,99 — 78% korting (was €22,99).
           </span>
@@ -162,14 +161,9 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
                 </span>
               </>
             ) : null}
-            <p
-              className={`text-xs font-semibold uppercase tracking-wide ${
-                pkg.featured ? 'pt-4 text-primary-deep' : 'text-gray-500'
-              }`}
+            <div
+              className={`flex flex-wrap items-baseline gap-x-2 gap-y-0 ${pkg.featured ? 'pt-4' : 'mt-2'}`}
             >
-              {pkg.title}
-            </p>
-            <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0">
               <span
                 className={`font-bold ${pkg.featured ? 'text-4xl text-primary' : 'text-3xl text-gray-900'}`}
               >
@@ -187,14 +181,17 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
               {pkg.credits.toLocaleString('nl-NL')} credits
             </div>
             <p className={`mt-1 text-xs ${pkg.featured ? 'text-gray-700' : 'text-gray-500'}`}>
+              Voor chatten en foto&apos;s ontvangen.
               {pkg.featured ? (
                 <>
-                  <Sparkles className="-mt-0.5 mr-0.5 inline h-3 w-3 text-primary" />
-                  Beste deal — bespaar {pkg.discountPercent}% nu
+                  {' '}
+                  <Sparkles className="-mt-0.5 ml-0.5 inline h-3 w-3 text-primary" />
+                  <span className="font-semibold text-primary-deep">
+                    {' '}
+                    Beste deal — bespaar {pkg.discountPercent}% nu.
+                  </span>
                 </>
-              ) : (
-                "Voor foto's, unlocks en gifts"
-              )}
+              ) : null}
             </p>
             <button
               type="button"

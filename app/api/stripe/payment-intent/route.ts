@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       currency: "eur",
       automatic_payment_methods: { enabled: true },
       receipt_email: user.email || undefined,
-      description: `${pkg.credits} credits (${pkg.title}) — stiekemefotos.nl`,
+      description: `${pkg.credits} credits — stiekemefotos.nl`,
       metadata: {
         userId,
         packageId,

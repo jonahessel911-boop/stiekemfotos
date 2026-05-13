@@ -65,8 +65,8 @@ export async function POST(req: Request) {
           price_data: {
             currency: "eur",
             product_data: {
-              name: `${pkg.credits} credits (${pkg.title})`,
-              description: "Credits voor chats op stiekemefotos.nl",
+              name: `${pkg.credits} credits`,
+              description: "Credits voor chatten en foto's op stiekemefotos.nl",
             },
             unit_amount: pkg.priceEurCents,
           },

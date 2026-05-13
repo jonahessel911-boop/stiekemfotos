@@ -150,7 +150,7 @@ export default function CreditsPage() {
         <section className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-5 md:p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900 mb-1">Credits bijkopen</h2>
           <p className="text-sm text-gray-600 mb-6">
-            Koop credits voor foto-unlocks en extra&apos;s.
+            Koop credits om mee te chatten en foto&apos;s te ontvangen.
           </p>
           <CreditsPricingOffers showIntro={false} onAfterPurchase={() => void refresh()} />
         </section>
