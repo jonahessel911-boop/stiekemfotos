@@ -356,6 +356,34 @@ function BerichtenInner() {
     };
   }, [lightboxSrc]);
 
+  /**
+   * Lock body/html scroll while berichten is open so the (mobile) viewport
+   * cannot drift between focus changes and keyboard open/close.
+   * Otherwise the page can shift up and leave a gap above the navbar.
+   */
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevHtmlHeight = html.style.height;
+    const prevBodyHeight = body.style.height;
+    const prevBodyPosition = body.style.position;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    html.style.height = '100%';
+    body.style.height = '100%';
+    body.style.position = 'relative';
+    window.scrollTo(0, 0);
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      html.style.height = prevHtmlHeight;
+      body.style.height = prevBodyHeight;
+      body.style.position = prevBodyPosition;
+    };
+  }, []);
+
   const openGiftMessage = useCallback((messageId: string) => {
     setOpenedGiftByMessageId((prev) => (prev[messageId] ? prev : { ...prev, [messageId]: true }));
   }, []);
@@ -1921,7 +1949,7 @@ function BerichtenInner() {
   };
 
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden bg-[var(--surface)] h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))] max-h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))] md:h-[100dvh] md:max-h-[100dvh]">
+    <div className="fixed inset-x-0 top-0 z-10 bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))] flex min-h-0 flex-col overflow-hidden bg-[var(--surface)] md:static md:bottom-auto md:top-auto md:h-[100dvh] md:max-h-[100dvh] md:z-auto">
       <Navbar />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-12 sm:pt-14 lg:pt-20">
