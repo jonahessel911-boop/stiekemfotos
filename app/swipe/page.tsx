@@ -276,7 +276,7 @@ export default function SwipePage() {
             />
           </span>
           <span className="text-base font-bold tracking-tight">
-            stiekemefotos<span className="text-rose-500">.nl</span>
+            stiekemefotos<span className="text-primary">.nl</span>
           </span>
         </button>
       </header>
@@ -286,7 +286,7 @@ export default function SwipePage() {
         {!loaded ? (
           <div className="grid h-full place-items-center text-sm text-white/70">Laden…</div>
         ) : loadError ? (
-          <div className="grid h-full place-items-center px-6 text-center text-sm text-rose-200">
+          <div className="grid h-full place-items-center px-6 text-center text-sm text-red-200">
             {loadError}
           </div>
         ) : profiles.length === 0 ? (
@@ -302,7 +302,7 @@ export default function SwipePage() {
               </p>
               <button
                 onClick={() => router.push('/berichten')}
-                className="rounded-2xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-rose-700"
+                className="rounded-2xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-primary-hover"
               >
                 Naar inbox
               </button>
@@ -393,7 +393,7 @@ export default function SwipePage() {
                       className={`rounded-2xl border-4 px-5 py-2 text-2xl font-extrabold uppercase tracking-wider ${
                         directionOverlay.side === 'right'
                           ? 'border-emerald-400 text-emerald-400'
-                          : 'border-rose-400 text-rose-400'
+                          : 'border-red-400 text-red-400'
                       }`}
                     >
                       {directionOverlay.side === 'right' ? 'Goed' : 'Skip'}
@@ -444,7 +444,7 @@ export default function SwipePage() {
                 onClick={() => triggerSwipe('left')}
                 disabled={!current || !!flyOff}
                 aria-label="Skip"
-                className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/70 bg-white text-rose-500 shadow-xl transition hover:scale-105 disabled:opacity-50"
+                className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/70 bg-white text-red-500 shadow-xl transition hover:scale-105 disabled:opacity-50"
               >
                 <X className="h-7 w-7" strokeWidth={3} />
               </button>
@@ -478,11 +478,11 @@ export default function SwipePage() {
           <div className="relative z-10 w-full max-w-md rounded-t-3xl bg-white p-5 text-gray-900 shadow-2xl sm:rounded-3xl sm:p-6">
             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-gray-200 sm:hidden" />
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-primary">
                 <Sparkles className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-500">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">
                   Foto wensen
                 </p>
                 <h3 className="truncate text-lg font-bold">
@@ -514,7 +514,7 @@ export default function SwipePage() {
                         : curr
                     )
                   }
-                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[12px] font-medium text-gray-700 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[12px] font-medium text-gray-700 transition hover:bg-orange-50 hover:text-orange-700 disabled:opacity-50"
                 >
                   {s}
                 </button>
@@ -531,11 +531,11 @@ export default function SwipePage() {
               disabled={wishSheet.sending}
               placeholder="Bijv: hey schat, doe je een foto voor me met gele lingerie op bed?"
               rows={3}
-              className="mt-3 w-full resize-none rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[15px] outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 disabled:opacity-60"
+              className="mt-3 w-full resize-none rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[15px] outline-none focus:border-primary focus:ring-2 focus:ring-orange-100 disabled:opacity-60"
             />
 
             {wishSheet.error ? (
-              <p className="mt-2 text-sm text-rose-600">{wishSheet.error}</p>
+              <p className="mt-2 text-sm text-red-600">{wishSheet.error}</p>
             ) : null}
 
             <div className="mt-4 flex items-center justify-between gap-3">
@@ -554,7 +554,7 @@ export default function SwipePage() {
                 type="button"
                 onClick={() => void sendWish()}
                 disabled={wishSheet.sending || wishSheet.text.trim().length === 0}
-                className="inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Send className="h-4 w-4" />
                 {wishSheet.sending ? 'Versturen…' : 'Versturen'}

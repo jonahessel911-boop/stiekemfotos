@@ -106,12 +106,12 @@ function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref
               <td style="padding:24px;">
                 <div style="font-size:32px;font-weight:800;line-height:1.15;color:#0f172a;">${title}</div>
                 <div style="margin-top:10px;font-size:19px;font-weight:600;color:#374151;">${subtitle}</div>
-                <div style="margin-top:16px;height:3px;width:74px;background:#c6003f;border-radius:999px;"></div>
+                <div style="margin-top:16px;height:3px;width:74px;background:#f97316;border-radius:999px;"></div>
                 <div style="margin-top:20px;">
                 ${body}
                 </div>
                 <div style="margin-top:26px;">
-                  <a href="${safeHref}" style="display:inline-block;background:#c6003f;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:16px;">${ctaText}</a>
+                  <a href="${safeHref}" style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:16px;">${ctaText}</a>
                 </div>
                 <p style="margin-top:18px;font-size:12px;color:#6b7280;">
                   18+ · Privé en discreet. Als je dit niet wilt ontvangen, log in en pas je voorkeuren aan.

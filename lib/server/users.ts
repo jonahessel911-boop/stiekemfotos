@@ -167,8 +167,8 @@ export function toPublicUser(u: UserRecord) {
     createdAt: u.createdAt,
     emailVerified: Boolean(u.emailVerifiedAt),
     hasCreditPurchase: Boolean(u.firstCreditPurchaseAt),
-    /** Alleen `null` = nieuw account, onboarding nog niet gedaan. Ontbrekend veld = legacy gebruiker. */
-    needsPlatformOnboarding: u.platformOnboardingCompletedAt === null,
+    /** Onboarding-overlay is verwijderd; flag blijft hier puur voor backwards compat. */
+    needsPlatformOnboarding: false,
   };
 }
 

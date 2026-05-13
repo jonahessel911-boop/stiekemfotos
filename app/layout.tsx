@@ -3,8 +3,6 @@ import { Poppins } from "next/font/google";
 import { Suspense } from "react";
 import { headers } from "next/headers";
 import { CreditsPricingProvider } from "@/components/CreditsPricingProvider";
-import PlatformOnboardingGate from "@/components/PlatformOnboardingGate";
-import { PlatformOnboardingProvider } from "@/components/PlatformOnboardingContext";
 import TikTokPixel from "@/components/TikTokPixel";
 import { I18nProvider } from "@/components/I18nProvider";
 import { detectLocaleFromAcceptLanguage } from "@/lib/i18n";
@@ -56,12 +54,7 @@ export default async function RootLayout({
         <I18nProvider locale={locale} messages={messages}>
           {/* Desktop left sidebar lives in Navbar; offset content accordingly */}
           <div className="md:pl-56">
-            <CreditsPricingProvider>
-              <PlatformOnboardingProvider>
-                <PlatformOnboardingGate />
-                {children}
-              </PlatformOnboardingProvider>
-            </CreditsPricingProvider>
+            <CreditsPricingProvider>{children}</CreditsPricingProvider>
           </div>
         </I18nProvider>
       </body>

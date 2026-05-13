@@ -6,20 +6,20 @@
   :root {
     --background: 220 14% 96%;
     --foreground: 222.2 84% 4.9%;
-    --surface: #e8eaef;
-    --surface-card: #f2f3f6;
-    --brand: #c6003f;
-    /** Signup / login / wachtwoord — zacht roze i.p.v. koud grijs */
-    --onboarding-bg: #faf0f4;
-    --onboarding-card: #fff8fa;
-    --onboarding-footer-bg: #efd9e3;
-    --auth-shell-bg: #faf0f4;
+    --surface: #ffffff;
+    --surface-card: #f8fafc;
+    --brand: #f97316;
+    /** Signup / login / wachtwoord — clean wit BestDates-stijl */
+    --onboarding-bg: #ffffff;
+    --onboarding-card: #ffffff;
+    --onboarding-footer-bg: #f1f5f9;
+    --auth-shell-bg: #ffffff;
   }
 }
 
 /* Legacy helper — voor oude markup; logo gebruikt nu /logo-stiekemefotos.png */
 .diamond-logo {
-  background: linear-gradient(145deg, #c6003f 0%, #9e0033 55%, #7a0028 100%);
+  background: linear-gradient(145deg, #f97316 0%, #ea580c 55%, #c2410c 100%);
   position: relative;
   display: flex;
   align-items: center;
@@ -89,12 +89,12 @@
   100% {
     transform: scale(1);
     opacity: 1;
-    box-shadow: 0 0 0 0 rgba(198, 0, 63, 0.45);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45);
   }
   50% {
     transform: scale(1.15);
     opacity: 0.95;
-    box-shadow: 0 0 0 6px rgba(198, 0, 63, 0);
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
   }
 }
 
@@ -119,10 +119,10 @@
 @keyframes gift-box-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(198, 0, 63, 0.2);
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.2);
   }
   50% {
-    box-shadow: 0 0 0 7px rgba(198, 0, 63, 0);
+    box-shadow: 0 0 0 7px rgba(249, 115, 22, 0);
   }
 }
 
