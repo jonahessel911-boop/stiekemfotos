@@ -25,6 +25,7 @@ import {
   X,
   Loader2,
   Lock,
+  Send,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -2809,19 +2810,21 @@ function BerichtenInner() {
                           handleSend();
                         }
                       }}
-                      placeholder="Typ je bericht… (Shift+Enter voor nieuwe regel)"
+                      placeholder="Typ je bericht…"
                       rows={2}
                       disabled={false}
-                      className="max-h-32 min-h-[3.25rem] flex-1 resize-y rounded-2xl border border-gray-200 px-3 py-3 text-base leading-snug text-gray-900 shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 md:min-h-[3.5rem] md:text-[15px]"
+                      className="max-h-40 min-h-[3.75rem] flex-1 resize-none rounded-2xl border border-gray-200 px-4 py-3.5 text-base leading-relaxed text-gray-900 shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 md:min-h-[4rem] md:text-[15px]"
                     />
-                    <Button
-                      type="button"
-                      onClick={handleSend}
-                      disabled={!input.trim() && !pendingImage}
-                      className="flex h-12 min-h-[48px] min-w-[6.5rem] shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-base font-semibold text-white shadow-sm transition-all active:scale-[0.97] hover:bg-primary/90"
-                    >
-                      Verstuur
-                    </Button>
+                    {(input.trim() || pendingImage) && (
+                      <button
+                        type="button"
+                        onClick={handleSend}
+                        aria-label="Verstuur"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-white shadow-sm transition-all active:scale-95 hover:bg-primary/90 disabled:opacity-60"
+                      >
+                        <Send className="h-5 w-5 -translate-x-[1px]" />
+                      </button>
+                    )}
                   </div>
                   {(isRecordingVoice || voiceDraftBlob) && (
                     <div className="flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2">
@@ -2952,12 +2955,17 @@ function BerichtenInner() {
           role="dialog"
           aria-modal="true"
           aria-label="Vergrote foto"
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/92 p-3"
+          className="fixed inset-0 z-[300] flex h-[100dvh] w-screen items-center justify-center bg-black"
           onClick={() => setLightboxSrc(null)}
+          style={{ paddingTop: 'env(safe-area-inset-top)' }}
         >
           <button
             type="button"
-            className="absolute right-3 top-3 z-[201] rounded-full bg-white/15 p-2.5 text-white hover:bg-white/25"
+            className="absolute z-[301] flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80 active:scale-95"
+            style={{
+              top: 'calc(env(safe-area-inset-top) + 0.75rem)',
+              right: '0.75rem',
+            }}
             onClick={(e) => {
               e.stopPropagation();
               setLightboxSrc(null);
@@ -2969,7 +2977,7 @@ function BerichtenInner() {
           <img
             src={lightboxSrc}
             alt=""
-            className="max-h-[min(92dvh,92vh)] max-w-full object-contain"
+            className="h-[100dvh] w-screen object-contain"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
