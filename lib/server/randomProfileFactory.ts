@@ -529,7 +529,7 @@ function slugify(input: string): string {
 }
 
 function buildBaseAmateurStyle(): string {
-  return "realistic amateur smartphone photo at home, grainy unedited phone camera, imperfect framing, candid vibe, subject fills frame appropriately for shot type";
+  return "grainy unedited phone camera, at home, candid";
 }
 
 /** Willekeurige maar fenotype-consistente haarkleur-/huid-/oog-ankers voor Grok + image lock. */
@@ -769,7 +769,7 @@ function buildShortInteriorForNameCard(identitySeed: string, photoIndex: number)
  * Geen ALL CAPS — dat belandde als tekst op props/briefjes.
  */
 const PROFILE_PROMPT_SINGLE_SHOT_LEAD =
-  "Ultra-realistic amateur smartphone photo grain sensor noise uneven warm lamp light handheld imperfect framing raw candid vibe at home not studio not catalogue. ";
+  "Amateur grain, warm lamp light, handheld at home. ";
 
 /**
  * Extra voor “minder knap”: aanzienlijk minder aantrekkelijk dan een standaard
@@ -786,11 +786,11 @@ const PROFILE_PROMPT_SINGLE_SHOT_LEAD =
  */
 /**
  * Day-to-day positieve descriptoren — image-modellen negeren negaties
- * grotendeels. We zeggen dus expliciet WIE ze is, niet wie ze niet is.
- * Doel: gewone NL vrouw die je in de bus, supermarkt of op kantoor ziet.
+ * grotendeels. Kort gehouden zodat het identity-blok niet wordt
+ * weggesnoeid uit het 1000-char prompt budget.
  */
 const PROFILE_PROMPT_EVERYDAY_LOOK_LEAD =
-  "Subject is an everyday working-class Dutch woman in her twenties — the kind of person you sit next to on the bus, see at the supermarket checkout, or pass at the bakery. Day-to-day vibe: she has just come home from her shift at the supermarket / call center / daycare / office, tired after work, slightly bloated from sitting all day, wearing comfortable inexpensive clothing from the Action or H&M sale rack. Skin shows a normal day of work: a bit shiny on the forehead, no makeup retouching, possibly an active pimple or two she did not bother covering. Hair was washed two days ago, now flat and slightly oily at the roots, tied up casually or hanging straight without styling. Slight bags under the eyes from a late evening of scrolling. Body is the soft natural shape of a regular Dutch woman who eats normally and rarely goes to the gym. Strictly follow the identity body, skin and hair description above. Raw unedited smartphone selfie taken in 5 seconds in her own home, real ordinary Dutch household lighting, looks like a real candid moment a girl-next-door would send her friend. ";
+  "Average Dutch working-class woman vibe, household lighting, no salon look, no glamour. ";
 
 /** Kort als budget krap is — lange lead wordt eerst hiernaartoe ingekort. */
 const PROFILE_PROMPT_STYLE_COMPACT =
@@ -868,7 +868,7 @@ function buildRandomProfileImagePrompt(params: {
   }
 
   const verifyLead = params.includeVerification
-    ? "One single full-frame candid mirror selfie of one whole woman holding a real torn paper prop. The paper has only her first name written on it in messy pen or pencil ink, no other words. The entire image is just this one woman in one frame from her own smartphone. "
+    ? "Single mirror selfie one whole woman, one torn paper prop with only her first name in messy pen, one frame only. "
     : "";
 
   const everydayLead = params.everydayLook ? PROFILE_PROMPT_EVERYDAY_LOOK_LEAD : "";
@@ -883,8 +883,8 @@ function buildRandomProfileImagePrompt(params: {
   /** Kamer + pose + crop-hint: blijft intact tenzij identiteit extreem lang is. */
   const coreShot = `${params.sceneEn}, ${directive}, ${framingHint}`;
 
-  /** Alleen hier vandaan mag worden afgekapt (vanaf het einde). Verificatie/headshot vóór de lange lead. */
-  let styleTail = `${verifyLead}${params.headshotLead}${PROFILE_PROMPT_SINGLE_SHOT_LEAD}${everydayLead}${closing}, identical face every shot, same exact nose mouth chin eyebrows and skin marks as the recurring woman described above, same hair color and texture, same body proportions`;
+  /** Alleen hier vandaan mag worden afgekapt (vanaf het einde). Compact gehouden zodat identity intact blijft. */
+  let styleTail = `${verifyLead}${params.headshotLead}${PROFILE_PROMPT_SINGLE_SHOT_LEAD}${everydayLead}${closing}, same face hair body as above`;
 
   const maxBody = zModelMaxUserPromptBodyChars();
   let identityFull = sanitizeIdentityForZImagePrompt(params.identityCore.replace(/\s+/g, " ").trim());
@@ -923,6 +923,14 @@ function buildRandomProfileImagePrompt(params: {
   if (full.length > maxBody) {
     full = full.slice(0, maxBody).trimEnd();
   }
+
+  /**
+   * Diagnostiek: log per profiel-foto hoeveel ruimte de identity (faceLock +
+   * hair/body/skin) over had. Als idPart per foto wisselt → identity-drift.
+   */
+  console.info(
+    `[randomProfile] photo=${params.photoIndex} idLen=${idPart.length}/${identityFull.length} bodyLen=${full.length}/${maxBody} idHead="${idPart.slice(0, 80)}"`
+  );
 
   if (full.length < identityFull.length * 0.55 && params.photoIndex === 0) {
     console.warn(
@@ -1182,54 +1190,48 @@ export async function createRandomProfileWithPhotos(
 
   /**
    * Concrete face-lock — voorkomt identity-drift tussen de 3-6 profielfoto's.
-   * Image-modellen renderen bij elke nieuwe scene een lichtjes andere variant
-   * van een vage "ordinary face"-beschrijving. Door concrete deterministische
-   * gezichtskenmerken (neus, mond, kin, distinctief mark) hard te pinnen
-   * krijgt elke scene dezelfde vrouw. Deze 4-5 anchors worden voor- én
-   * achteraan in de identity geplakt zodat het model ze niet kan vergeten.
+   * Compact gehouden (<150 chars) zodat ALLE foto's identieke tokens krijgen
+   * zonder dat de prompt-budget shrink ergens hapt. Korte concrete tokens
+   * werken sterker dan lange descriptie-zinnen.
    */
   const noseLock = hashPick(identitySeed, "nose-lock", [
-    "small slightly upturned button nose",
-    "straight medium-length nose with a small rounded tip",
-    "slightly larger rounded nose with visible nostrils",
-    "narrow straight nose with a small bump on the bridge",
-    "short wide nose with a soft rounded tip",
+    "small upturned button nose",
+    "straight nose round tip",
+    "wide round nose visible nostrils",
+    "narrow nose small bump bridge",
+    "short wide flat nose",
   ]);
   const mouthLock = hashPick(identitySeed, "mouth-lock", [
-    "small thin lips with the corners slightly downturned at rest",
-    "medium-thin lips, top lip thinner than bottom, no cupid's bow",
-    "wide thin mouth with a faint asymmetry on the right side",
-    "small mouth with a slight overbite visible when relaxed",
-    "narrow lips with a tiny natural pout",
+    "thin downturned lips",
+    "thin lips no cupid bow",
+    "wide thin asymmetric mouth",
+    "small mouth slight overbite",
+    "narrow lips natural pout",
   ]);
   const chinLock = hashPick(identitySeed, "chin-lock", [
-    "soft rounded chin blending into the jawline",
-    "small receding chin with a soft second chin line",
-    "wide square-ish chin without a defined jaw point",
-    "small pointed chin with soft cheeks above",
-    "weak chin with a soft jaw and full cheeks",
+    "soft rounded chin",
+    "small receding chin double-chin line",
+    "wide square chin no jaw point",
+    "small pointed chin soft cheeks",
+    "weak chin full cheeks",
   ]);
   const markLock = hashPick(identitySeed, "mark-lock", [
-    "a small dark beauty mark on the left cheek near the mouth",
-    "light scattered freckles across the nose bridge and cheeks",
-    "a small mole below the right eye",
-    "a tiny scar at the left eyebrow tail",
-    "faint freckles only on the upper cheekbones",
-    "no distinguishing marks, plain bare skin",
+    "dark beauty mark left cheek",
+    "freckles nose bridge cheeks",
+    "small mole below right eye",
+    "tiny scar left eyebrow tail",
+    "faint freckles upper cheekbones",
+    "plain bare skin no marks",
   ]);
   const browLock = hashPick(identitySeed, "brow-lock", [
-    "thin sparse natural eyebrows, slightly arched, no makeup",
-    "medium thick natural unplucked eyebrows, straight shape",
-    "uneven natural eyebrows, left slightly higher than right",
-    "thin over-plucked eyebrows with light gaps",
-    "soft medium eyebrows tapering at the ends",
+    "thin sparse eyebrows",
+    "thick unplucked straight brows",
+    "uneven brows left higher",
+    "over-plucked thin brows",
+    "soft tapering brows",
   ]);
-  /**
-   * Compact face-lock dat in élke prompt vooraan EN achteraan herhaald wordt.
-   * Houd het kort (~180–220 chars) zodat het door `finalizePromptForZModel`
-   * niet wordt afgekapt.
-   */
-  const faceLock = `Same recurring woman across every photo, identical face every shot: ${noseLock}; ${mouthLock}; ${chinLock}; ${browLock}; ${markLock}`;
+  /** Compact face-lock: ~120 chars. Identiek per profiel; verschilt per profiel. */
+  const faceLock = `same woman every shot, ${noseLock}, ${mouthLock}, ${chinLock}, ${browLock}, ${markLock}`;
 
   /**
    * Per-profiel variatie binnen het "plain/minder knap" thema: niet ieder
@@ -1238,35 +1240,33 @@ export async function createRandomProfileWithPhotos(
    * getrokken naar de zwaardere kant zodat profielen "iets dikker" overkomen.
    */
   /**
-   * Per-profiel variatie binnen het "average werkende NL vrouw" thema, in
-   * volledig positieve taal — image models negeren negaties dus we vermijden
-   * formuleringen als "NOT pretty". In plaats daarvan: concrete day-to-day
-   * trekken die het model wél kan renderen.
+   * Compact per-profiel variatie. Korte tokens i.p.v. lange zinnen — zo blijft
+   * de hele identiteit onder ~280 chars en wordt nooit afgekapt.
    */
   const bodyPick = hashPick(identitySeed, "body-ed", [
-    "around 75 kilo soft natural body, gentle belly, full hips, soft thighs, full chest with natural shape, round fuller face",
-    "around 80 kilo soft natural body, soft belly with gentle roll, full hips and thicker thighs, soft fleshy upper arms, fuller round face",
-    "around 85 kilo build, thick midsection, full wide hips, fuller thighs, soft heavier upper arms, double chin, full cheeks",
-    "around 78 kilo soft Dutch build, soft belly softness, wider hips, full natural chest, fuller cheeks",
-    "around 82 kilo plus-size build, soft belly, wider hips, thicker arms, double chin, full round face",
+    "75kg soft body, gentle belly, full hips, full chest, round face",
+    "80kg soft body, belly roll, thicker thighs, fleshy arms, fuller face",
+    "85kg thick midsection, wide hips, double chin, full cheeks",
+    "78kg soft build, belly softness, wider hips, full chest",
+    "82kg plus-size, soft belly, wider hips, double chin",
   ]);
   const skinPick = hashPick(identitySeed, "skin-ed", [
-    "bare skin texture of a real woman after a long workday, oily forehead, one visible pimple on chin, blotchy uneven tone, light bags under the eyes",
-    "oily forehead with several small pimples and clogged pores around the nose, light post-acne marks on cheeks, no makeup",
-    "light bags under the eyes, dull tired tone, slight forehead shine, otherwise clear skin",
-    "blotchy skin with redness on cheeks and around the nose, one prominent active pimple, no makeup",
-    "tired washed-out skin tone with light freckles, slight forehead shine, soft puffy under-eyes",
+    "oily forehead, one pimple chin, blotchy tone, bags under eyes",
+    "oily skin scattered pimples, post-acne marks",
+    "bags under eyes, dull tired tone",
+    "blotchy skin redness cheeks, one active pimple",
+    "tired washed-out tone, light freckles",
   ]);
   const hairPick = hashPick(identitySeed, "hair-ed", [
-    "two-day-old wash, slightly oily roots, hair hanging flat past the shoulders, mousy dirty-blonde",
-    "frizzy unruly medium-length hair, plain medium brown, untouched after a day at work",
-    "messy low ponytail with loose strands across the face, slightly greasy at the roots, dull dark brown",
-    "limp dry hair with visible split ends, mousy color, hanging lifelessly past the shoulders",
-    "homecut blunt fringe partly covering the forehead, straight household-mirror hair, dirty-blonde",
-    "thin straight hair partly hiding the face, oily roots, dull dark brown",
+    "flat slightly oily long mousy dirty-blonde hair past shoulders",
+    "frizzy mid-length plain medium-brown hair",
+    "messy low ponytail dark brown, loose strands at face",
+    "limp dry mousy hair past shoulders, split ends",
+    "homecut blunt fringe dirty-blonde, straight household hair",
+    "thin straight dark brown hair, oily roots",
   ]);
   const everydayIdentitySuffix = everydayLook
-    ? ` — average everyday working-class Dutch woman; ${skinPick}; ${hairPick}; ${bodyPick}; comfortable inexpensive everyday clothing from Action or H&M sale rack; raw candid smartphone selfie at home, household clutter visible`
+    ? `; ${hairPick}; ${bodyPick}; ${skinPick}`
     : "";
   /**
    * IdentityLock-structuur (volgorde belangrijk voor Z Image — vroege tokens
@@ -1284,13 +1284,15 @@ export async function createRandomProfileWithPhotos(
    */
   let baseIdentity: string;
   if (everydayLook) {
-    baseIdentity = `One specific recurring woman ${firstName} ${age}, Dutch (${PHENOTYPE_TRAITS[phenotype].faceHint}), ${appearanceAnchors.skin}, ${appearanceAnchors.eyes}; ${jewelry}; ${phone}`;
+    /** Compact: alleen naam, leeftijd, fenotype-trekken die niet conflicteren met everyday. */
+    baseIdentity = `Dutch woman ${firstName}, ${age}, ${appearanceAnchors.skin}, ${appearanceAnchors.eyes}`;
   } else if (aiLook && aiLook.length >= 32) {
     baseIdentity = `One specific recurring woman ${firstName} ${age}, lives in Netherlands (${PHENOTYPE_TRAITS[phenotype].faceHint}): ${aiLook}; ${jewelry}; ${phone}`;
   } else {
     baseIdentity = buildVisualIdentityLockString(identitySeed, firstName, age, heritageNl, phenotype);
   }
-  const identityLock = `${faceLock}. ${baseIdentity}${everydayIdentitySuffix}`;
+  /** Volgorde: faceLock direct vooraan; daarna naam/leeftijd; daarna haar/lijf/huid. */
+  const identityLock = `${faceLock}; ${baseIdentity}${everydayIdentitySuffix}`;
   /** Same string prefixed on every profile photo prompt — persist for chat unlock images. */
   const identityCore = `${identityLock}, ${buildBaseAmateurStyle()}`;
   const userProfileBio = buildRandomUserBio(
