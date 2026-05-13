@@ -339,21 +339,21 @@ const NL_CITIES = [
 const COUNTRY_NL = "Netherlands";
 
 /**
- * Gewogen fenotype: meer Noord-/West-Europees, Noordisch en Oost-Europees (batch ziet er
- * minder “allemaal donker” uit). Som = 100.
+ * Veel gelijker verdeeld voor échte etnische diversiteit binnen een batch.
+ * Som = 100. Geen enkel fenotype dominant; alle hoofdgroepen ~6-13%.
  */
 const PHENOTYPE_WEIGHTS: { key: PhenotypeKey; weight: number }[] = [
-  { key: "nl_north", weight: 22 },
-  { key: "west_european_fair", weight: 22 },
-  { key: "nordic", weight: 14 },
-  { key: "east_european", weight: 22 },
-  { key: "mediterranean", weight: 8 },
-  { key: "mena", weight: 3 },
-  { key: "sub_saharan", weight: 2 },
-  { key: "east_asian", weight: 2 },
-  { key: "south_asian", weight: 2 },
-  { key: "southeast_asian", weight: 2 },
-  { key: "latam", weight: 1 },
+  { key: "nl_north", weight: 13 },
+  { key: "west_european_fair", weight: 12 },
+  { key: "nordic", weight: 9 },
+  { key: "east_european", weight: 12 },
+  { key: "mediterranean", weight: 11 },
+  { key: "mena", weight: 9 },
+  { key: "sub_saharan", weight: 9 },
+  { key: "east_asian", weight: 8 },
+  { key: "south_asian", weight: 7 },
+  { key: "southeast_asian", weight: 6 },
+  { key: "latam", weight: 4 },
 ];
 
 function pickWeightedPhenotype(): PhenotypeKey {
@@ -462,6 +462,18 @@ const INTERIOR_ROOM_TYPES: { en: string; nl: string }[] = [
   { en: "walk-in closet or open wardrobe mirror surrounded by clothes", nl: "kleedkamer" },
   { en: "dining area or open kitchen-living, table chairs patio door light", nl: "eethoek" },
   { en: "laundry nook, washer dryer domestic mirror or phone propped", nl: "wasruimte" },
+  // --- Outdoor / varia scenes voor meer variatie ---
+  { en: "wet inside the shower, water on skin, shower glass and tiles, phone held up", nl: "douche" },
+  { en: "outdoor sandy beach on a sunny day, sea and sky in background, towel on the sand", nl: "strand" },
+  { en: "swimming pool edge, water reflections, sun loungers, blue tiles in background", nl: "zwembad" },
+  { en: "small balcony on a city apartment, plants and railing, urban rooftops behind", nl: "balkon" },
+  { en: "city park grass with trees in background, sunny afternoon, casual selfie", nl: "park" },
+  { en: "sauna wooden interior, warm dim light, towel wrapped around her", nl: "sauna" },
+  { en: "hotel room with bed and curtains, hotel-style lamps, suitcase visible", nl: "hotelkamer" },
+  { en: "car driver seat, seatbelt visible, dashboard and windshield reflection", nl: "auto" },
+  { en: "small home gym corner, mirror, yoga mat, dumbbells on the floor", nl: "thuisgym" },
+  { en: "small home office desk corner, laptop and notebook visible, soft daylight", nl: "thuiswerkplek" },
+  { en: "bathtub full of water and bubbles, candles on the rim, phone held above", nl: "ligbad" },
 ];
 
 const INTERIOR_LIGHTING: string[] = [
@@ -1240,15 +1252,20 @@ export async function createRandomProfileWithPhotos(
    * getrokken naar de zwaardere kant zodat profielen "iets dikker" overkomen.
    */
   /**
-   * Compact per-profiel variatie. Korte tokens i.p.v. lange zinnen — zo blijft
-   * de hele identiteit onder ~280 chars en wordt nooit afgekapt.
+   * Compact per-profiel variatie. Body-buckets nu écht random spread van dun
+   * tot dik (geen scheef trekken meer). Korte tokens i.p.v. lange zinnen.
    */
   const bodyPick = hashPick(identitySeed, "body-ed", [
+    "55kg thin frame, small chest, narrow hips, slim arms, sharp collarbones",
+    "58kg slim build, small chest, slender waist, lean legs",
+    "62kg average slim, small natural chest, slim hips, lean arms",
+    "66kg regular average, natural chest, balanced hips, soft tummy",
+    "70kg average Dutch build, soft belly, natural chest, full hips",
     "75kg soft body, gentle belly, full hips, full chest, round face",
     "80kg soft body, belly roll, thicker thighs, fleshy arms, fuller face",
     "85kg thick midsection, wide hips, double chin, full cheeks",
-    "78kg soft build, belly softness, wider hips, full chest",
-    "82kg plus-size, soft belly, wider hips, double chin",
+    "90kg plus-size, soft heavy belly, wide hips, thick arms, round face",
+    "95kg fuller plus-size, large belly, very wide hips, double chin",
   ]);
   const skinPick = hashPick(identitySeed, "skin-ed", [
     "oily forehead, one pimple chin, blotchy tone, bags under eyes",
