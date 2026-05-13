@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flame, Sparkles } from 'lucide-react';
 import { addCredits } from '@/lib/credits-client';
+import { DealWalletPayButton } from '@/components/DealWalletPayButton';
 
 const PACKAGES = [
   { id: 'left', credits: 100, priceLabel: '€10,00', title: '1 foto', featured: false as const },
@@ -14,6 +15,7 @@ const PACKAGES = [
     discountPercent: 78,
     title: "2 foto's",
     featured: true as const,
+    priceEurCents: 499,
   },
   { id: 'right', credits: 300, priceLabel: '€29,99', title: "3 foto's", featured: false as const },
 ] as const;
@@ -206,6 +208,24 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
             >
               {busyId === pkg.id ? 'Even geduld…' : pkg.featured ? 'Pak deze deal' : 'Koop nu'}
             </button>
+            {pkg.featured && 'priceEurCents' in pkg ? (
+              <DealWalletPayButton
+                publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''}
+                amountCents={pkg.priceEurCents}
+                currency="eur"
+                totalLabel={`${pkg.credits} credits — speciale deal ${pkg.priceLabel}`}
+                disabled={busyId !== null}
+                onPaid={(credits, priceLabel) => {
+                  addCredits(credits, priceLabel);
+                  onAfterPurchase?.();
+                  setPurchaseSuccess('Betaling succesvol, je credits zijn toegevoegd.');
+                  setPurchaseError(null);
+                }}
+                onWalletError={(msg) => {
+                  setPurchaseError(msg);
+                }}
+              />
+            ) : null}
           </div>
         ))}
       </div>
