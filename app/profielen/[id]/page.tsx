@@ -249,7 +249,7 @@ export default function ProfielDetailPage() {
                 Like
               </Button>
               <Button type="button" onClick={requestPhotoCta} className="h-11 rounded-xl text-sm font-semibold">
-                Vraag om foto
+                Start chat
               </Button>
             </div>
             <button
@@ -375,7 +375,7 @@ export default function ProfielDetailPage() {
               onClick={requestPhotoCta}
               className="h-12 rounded-2xl text-base font-semibold shadow-sm"
             >
-              Vraag om foto
+              Start chat
             </Button>
           </div>
         </div>
