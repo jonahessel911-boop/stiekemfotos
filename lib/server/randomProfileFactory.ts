@@ -454,26 +454,26 @@ const CASUAL_OUTFITS = [
 
 /** Per foto andere plek in huis; `nl` voor beschrijvingen. */
 const INTERIOR_ROOM_TYPES: { en: string; nl: string }[] = [
-  { en: "bedroom full-length or dresser mirror, unmade bed visible", nl: "slaapkamer" },
-  { en: "kitchen, phone or reflection in appliance or window, counters stools", nl: "keuken" },
-  { en: "living room, sofa TV wall, mirror or selfie arm length", nl: "woonkamer" },
-  { en: "bathroom, shower glass steam wet tiles vanity mirror", nl: "badkamer" },
-  { en: "narrow hallway, full-length mirror coat hooks", nl: "gang" },
-  { en: "walk-in closet or open wardrobe mirror surrounded by clothes", nl: "kleedkamer" },
-  { en: "dining area or open kitchen-living, table chairs patio door light", nl: "eethoek" },
-  { en: "laundry nook, washer dryer domestic mirror or phone propped", nl: "wasruimte" },
+  { en: "bedroom with unmade bed, clothes on floor, cluttered nightstand", nl: "slaapkamer" },
+  { en: "kitchen with counters and stools, fridge and oven visible", nl: "keuken" },
+  { en: "living room with sofa and TV wall, coffee table with stuff on it", nl: "woonkamer" },
+  { en: "bathroom with sink and toiletries, towels on hook", nl: "badkamer" },
+  { en: "narrow hallway with coat hooks and shoes on the floor", nl: "gang" },
+  { en: "walk-in closet or open wardrobe filled with clothes", nl: "kleedkamer" },
+  { en: "dining area with table and chairs, patio door light", nl: "eethoek" },
+  { en: "laundry nook with washer and dryer, basket of clothes", nl: "wasruimte" },
   // --- Outdoor / varia scenes voor meer variatie ---
-  { en: "wet inside the shower, water on skin, shower glass and tiles, phone held up", nl: "douche" },
+  { en: "wet inside the shower, water on skin, tiled walls", nl: "douche" },
   { en: "outdoor sandy beach on a sunny day, sea and sky in background, towel on the sand", nl: "strand" },
-  { en: "swimming pool edge, water reflections, sun loungers, blue tiles in background", nl: "zwembad" },
+  { en: "swimming pool edge, sun loungers, blue tiles in background", nl: "zwembad" },
   { en: "small balcony on a city apartment, plants and railing, urban rooftops behind", nl: "balkon" },
-  { en: "city park grass with trees in background, sunny afternoon, casual selfie", nl: "park" },
+  { en: "city park grass with trees in background, sunny afternoon", nl: "park" },
   { en: "sauna wooden interior, warm dim light, towel wrapped around her", nl: "sauna" },
-  { en: "hotel room with bed and curtains, hotel-style lamps, suitcase visible", nl: "hotelkamer" },
-  { en: "car driver seat, seatbelt visible, dashboard and windshield reflection", nl: "auto" },
-  { en: "small home gym corner, mirror, yoga mat, dumbbells on the floor", nl: "thuisgym" },
+  { en: "hotel room with bed and curtains, hotel-style lamps", nl: "hotelkamer" },
+  { en: "car driver seat, seatbelt visible, dashboard behind", nl: "auto" },
+  { en: "small home gym corner, yoga mat, dumbbells on the floor", nl: "thuisgym" },
   { en: "small home office desk corner, laptop and notebook visible, soft daylight", nl: "thuiswerkplek" },
-  { en: "bathtub full of water and bubbles, candles on the rim, phone held above", nl: "ligbad" },
+  { en: "bathtub full of water and bubbles, candles on the rim", nl: "ligbad" },
 ];
 
 const INTERIOR_LIGHTING: string[] = [
@@ -685,16 +685,27 @@ function pickClothedShotDirectiveEveryday(
   outfit: string
 ): string {
   const variants = [
-    `front-camera arm-length selfie NO mirror in frame wearing ${outfit}, Dutch angle casual`,
-    `handheld selfie at arms length straight on NO mirror wearing ${outfit}, messy hair ok`,
-    `phone propped shelf or stack timer selfie step back wearing ${outfit}, room clutter visible`,
-    `sitting on sofa arm-length selfie toward lens wearing ${outfit}, warm lamp`,
-    `leaning on kitchen counter toward camera wearing ${outfit}, eye-level no mirror`,
-    `standing by window natural light selfie wearing ${outfit}, landscape behind subject`,
-    `sitting on floor legs out arm-length selfie wearing ${outfit}, rug and furniture in frame`,
-    `full-length bedroom mirror shot wearing ${outfit}, phone low — mirror ok here`,
-    `mirror selfie smartphone visible wearing ${outfit}, narrow slice of mirror only`,
-    `lying on bed arm extended phone above face wearing ${outfit}, ceiling corner visible`,
+    // --- Geen spiegel — arm-extended / front-cam ---
+    `front-camera arm-extended selfie no mirror in frame wearing ${outfit}, Dutch angle casual`,
+    `handheld selfie at arms length straight on no mirror wearing ${outfit}, messy hair ok`,
+    `front camera selfie close to face no mirror wearing ${outfit}, face fills upper half of frame`,
+    `arm-extended waist-up selfie wearing ${outfit}, looking down at the lens`,
+    // --- Self-timer / propped phone, step back ---
+    `phone propped on shelf or stack timer self-timer photo, woman stepped back full body wearing ${outfit}, room visible`,
+    `self-timer photo phone leaning against books across the room, full body shot wearing ${outfit}, looking at the camera`,
+    `self-timer photo phone on counter, casual three-quarter pose wearing ${outfit}, ambient room light`,
+    // --- Vanuit ligging / vanaf bed ---
+    `lying on bed phone held above face wearing ${outfit}, ceiling corner visible, soft pillow background`,
+    `lying on bed phone propped at side recording herself wearing ${outfit}, casual relaxed pose`,
+    `sitting on bed legs crossed front-cam selfie wearing ${outfit}, blanket and pillows behind`,
+    // --- Casual home situaties ---
+    `sitting on sofa arm-extended selfie toward lens wearing ${outfit}, warm lamp light`,
+    `leaning on kitchen counter front-cam toward camera wearing ${outfit}, eye-level no mirror`,
+    `standing by window natural daylight front-cam selfie wearing ${outfit}, view behind subject`,
+    `sitting on floor legs out arm-extended selfie wearing ${outfit}, rug and furniture in frame`,
+    // --- Slechts kleine fractie mirror ---
+    `full-length mirror shot wearing ${outfit}, phone low, mirror only takes part of frame`,
+    `quick mirror selfie wearing ${outfit}, only a narrow slice of mirror, mostly her`,
     `hallway arm-length selfie walking toward camera wearing ${outfit}, coat hooks background`,
     `desk chair leaning in selfie wearing ${outfit}, monitor edge in frame`,
     `perched on stairs selfie looking up wearing ${outfit}, diagonal composition`,
@@ -725,16 +736,26 @@ function pickNudeShotDirective(identitySeed: string, photoIndex: number): string
 /** Topless/intiem: meer variatie zonder alleen spiegel (everyday-profielen). */
 function pickNudeShotDirectiveEveryday(identitySeed: string, photoIndex: number): string {
   const variants = [
-    "topless front camera arm-length NO mirror soft window sidelight",
-    "lying on bed topless sheet at hips arm-length selfie relaxed",
-    "seated on sofa edge topless arm extended selfie warm lamp",
-    "topless kneeling on bed toward lens phone at chest natural light",
-    "standing shower steam wet skin topless crop tasteful",
-    "topless mirror selfie phone visible neutral stance",
-    "sitting tub edge topless feet visible soft overhead",
-    "half-lit bedroom topless lying on side pillow amateur crop",
-    "kitchen counter lean topless small crop everyday lighting",
-    "doorway silhouette topless profile soft flare",
+    // --- Front-cam / arm-extended, GEEN spiegel ---
+    "topless front camera arm-extended selfie no mirror soft window sidelight",
+    "topless arm-extended selfie close to face no mirror, natural daylight",
+    "topless front-cam waist-up selfie no mirror, looking down at lens",
+    // --- Vanuit ligging / op bed ---
+    "lying on bed topless sheet at hips phone held above face relaxed",
+    "lying on bed topless on side phone propped at nightstand recording herself",
+    "lying on back topless phone over face arm extended ceiling visible",
+    "kneeling on bed toward lens topless phone at chest natural light",
+    // --- Self-timer / propped phone ---
+    "self-timer photo phone propped on dresser topless full body stepped back",
+    "self-timer photo phone leaning against books across room topless casual stance",
+    // --- Casual home situaties ---
+    "seated on sofa edge topless arm-extended selfie warm lamp light",
+    "kitchen counter lean topless arm-extended phone in hand everyday light",
+    "sitting on bathtub edge topless feet visible phone held forward",
+    "standing in shower wet skin topless phone held up at chest",
+    // --- Slechts kleine fractie mirror ---
+    "topless mirror selfie phone visible neutral stance, mirror small in frame",
+    "topless full-length mirror selfie hip-tilt, mirror is half of frame",
   ];
   return hashPick(identitySeed, `nude-ed-${photoIndex}`, variants);
 }
@@ -759,10 +780,12 @@ function pickVerificationDirective(
   const singleShotPrefix =
     "one single full-frame photograph, just one face in the entire image, one whole woman from one camera, ";
   const variants = [
-    `${singleShotPrefix}mirror selfie one hand holds torn scrap ${onlyName} ballpoint ink`,
-    `${singleShotPrefix}small scrap resting on bare stomach ${onlyName} pencil scribble`,
-    `${singleShotPrefix}fingertips pinch folded lined scrap ${onlyName} uneven letters`,
-    `${singleShotPrefix}arm-length scrap note near chin ${onlyName} ugly natural handwriting`,
+    `${singleShotPrefix}front-cam arm-extended selfie holding torn scrap ${onlyName} ballpoint ink, no mirror`,
+    `${singleShotPrefix}small scrap resting on bare stomach ${onlyName} pencil scribble, phone held above`,
+    `${singleShotPrefix}fingertips pinch folded lined scrap ${onlyName} uneven letters, front-cam selfie`,
+    `${singleShotPrefix}arm-extended scrap note near chin ${onlyName} ugly natural handwriting, no mirror`,
+    `${singleShotPrefix}lying on bed scrap on chest ${onlyName} casual handwriting, phone held above`,
+    `${singleShotPrefix}seated on bed scrap held forward ${onlyName} messy ink, front-cam`,
   ];
   return hashPick(identitySeed, `verify-${photoIndex}`, variants);
 }

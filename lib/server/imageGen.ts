@@ -21,7 +21,7 @@ export const ZMODEL_PROMPT_MAX_CHARS = 1000;
  * Geen woorden grid/raster (prikkelen het model).
  */
 const ZMODEL_SINGLE_FRAME_PREFIX =
-  "Photorealistic amateur self-taken smartphone selfie. One single rectangular photo, exactly one woman one face one body in the entire image. She holds the phone herself, own arm visible OR mirror selfie with phone in hand. Candid imperfect framing, real iPhone snap. ";
+  "Photorealistic amateur self-taken smartphone photo. One single rectangular photo, exactly one woman one face one body in the entire image. She took this herself — could be an arm-extended selfie, a phone-propped self-timer shot, a lying-down phone-above shot, a quick mirror selfie, or a candid moment captured by the woman herself. The photo type varies per shot. Candid imperfect framing, real iPhone snap. ";
 
 export type GenerationStatus = "success" | "nsfw_blocked" | "failed";
 
