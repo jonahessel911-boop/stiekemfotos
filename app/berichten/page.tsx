@@ -97,10 +97,12 @@ function formatRecordingDuration(totalSeconds: number): string {
   return `${mins}:${secs}`;
 }
 
-/** Typing-indicator meteen na verzenden; server-latency is al genoeg “wachttijd”. */
-function typingIndicatorDelayMs(_approxServerMessageCount: number): number {
-  void _approxServerMessageCount;
-  return 0;
+/**
+ * Profiel “typt…” pas na random 10–60s (zelfde venster als server-side tekstantwoord-queue).
+ * Zo verschijnen de dots niet direct bij verzenden.
+ */
+function assistantTypingVisibilityDelayMs(): number {
+  return 10_000 + Math.floor(Math.random() * 50_001);
 }
 
 function isEmailVerificationError(message: string | null): boolean {
@@ -313,6 +315,11 @@ function BerichtenInner() {
   const conversationProfileNameRef = useRef<string>('Ze');
   const listRef = useRef<ConversationSummary[]>([]);
   const messagesLenByConvRef = useRef<Record<string, number>>({});
+  /** Aantal assistent-bubbles vóór deze send — om te zien wanneer het echte antwoord binnenkomt. */
+  const assistantCountBeforeSendRef = useRef<Record<string, number>>({});
+  /** POST is klaar maar server queue’t nog tekstantwoord → typ-indicator mag door tot echte bubble. */
+  const awaitingQueuedAssistantRef = useRef<Set<string>>(new Set());
+  const [assistantTypingUiEpoch, setAssistantTypingUiEpoch] = useState(0);
   const optimisticConversationIdRef = useRef<string | null>(null);
   /** Synchronous guard to block rapid double-send before React state updates land. */
   const sendGuardByConvRef = useRef<Set<string>>(new Set());
@@ -484,6 +491,26 @@ function BerichtenInner() {
     }
   }, []);
 
+  const maybeClearAwaitingAssistantTyping = useCallback((id: string, conv: Conversation) => {
+    if (!awaitingQueuedAssistantRef.current.has(id)) return;
+    const before = assistantCountBeforeSendRef.current[id];
+    if (before === undefined) return;
+    const ac = conv.messages.filter((m) => m.role === 'assistant').length;
+    if (ac > before) {
+      awaitingQueuedAssistantRef.current.delete(id);
+      delete assistantCountBeforeSendRef.current[id];
+      setTypingVisibleAtByConv((prev) => {
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      });
+      setSendStartedAtByConv((prev) => {
+        const { [id]: _, ...rest } = prev;
+        return rest;
+      });
+      setAssistantTypingUiEpoch((x) => x + 1);
+    }
+  }, []);
+
   const fetchConversation = useCallback(async (id: string, opts?: { soft?: boolean }) => {
     const soft = opts?.soft === true;
     let generationAtStart = 0;
@@ -510,13 +537,21 @@ function BerichtenInner() {
       /** Zacht verversen: GET kan net achterlopen op POST; behoud berichten die de server nog niet teruggeeft. */
       if (soft) {
         setConversation((prev) => {
-          if (!prev || prev.id !== id) return incoming;
+          if (!prev || prev.id !== id) {
+            conversationCacheRef.current[id] = incoming;
+            queueMicrotask(() => maybeClearAwaitingAssistantTyping(id, incoming));
+            return incoming;
+          }
           const incomingIds = new Set(incoming.messages.map((m) => m.id));
           const carryOver = prev.messages.filter((m) => !incomingIds.has(m.id));
-          if (carryOver.length === 0) return incoming;
+          if (carryOver.length === 0) {
+            conversationCacheRef.current[id] = incoming;
+            queueMicrotask(() => maybeClearAwaitingAssistantTyping(id, incoming));
+            return incoming;
+          }
 
           const merged = [...incoming.messages, ...carryOver];
-          return {
+          const out: Conversation = {
             ...incoming,
             messages: sortChatMessagesChronologically(deduplicateMessages(merged)),
             updatedAt:
@@ -524,9 +559,14 @@ function BerichtenInner() {
                 ? incoming.updatedAt
                 : prev.updatedAt,
           };
+          conversationCacheRef.current[id] = out;
+          queueMicrotask(() => maybeClearAwaitingAssistantTyping(id, out));
+          return out;
         });
       } else {
+        conversationCacheRef.current[id] = incoming;
         setConversation(incoming);
+        queueMicrotask(() => maybeClearAwaitingAssistantTyping(id, incoming));
       }
     } catch (e) {
       if (selectedIdRef.current !== id) return;
@@ -550,7 +590,7 @@ function BerichtenInner() {
         setLoadingMessages(false);
       }
     }
-  }, []);
+  }, [maybeClearAwaitingAssistantTyping]);
 
   const handleUnlockPhoto = useCallback(
     async (m: ChatMessage) => {
@@ -1289,9 +1329,16 @@ function BerichtenInner() {
         ? formatLastOnlineAgo(lastAssistantIso, presenceNow)
         : '—';
   const sendingHere = Boolean(selectedId && inflightSends.has(selectedId));
+  const awaitingQueuedAssistantHere = Boolean(
+    selectedId && awaitingQueuedAssistantRef.current.has(selectedId)
+  );
+  void assistantTypingUiEpoch;
   const sendStartedAtHere = selectedId ? sendStartedAtByConv[selectedId] ?? uiNow : uiNow;
   const typingVisibleAtHere = selectedId ? typingVisibleAtByConv[selectedId] ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
-  const pendingIndicatorVisible = sendingHere && uiNow >= typingVisibleAtHere && typingVisibleAtHere !== Number.MAX_SAFE_INTEGER;
+  const pendingIndicatorVisible =
+    (sendingHere || awaitingQueuedAssistantHere) &&
+    uiNow >= typingVisibleAtHere &&
+    typingVisibleAtHere !== Number.MAX_SAFE_INTEGER;
   const onlineWaitOffset =
     selectedId?.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0) ?? 0;
   const waitingOnlineCycleMs = 45_000;
@@ -1303,7 +1350,7 @@ function BerichtenInner() {
     optimisticConversationId === selectedId && optimisticBatch.length > 0
   );
   const isPeerOnlineNow =
-    (sendingHere ? waitingPhaseOnline : false) ||
+    ((sendingHere || awaitingQueuedAssistantHere) ? waitingPhaseOnline : false) ||
     optimisticHere ||
     (peerOnlineUntil !== null && Date.now() < peerOnlineUntil);
 
@@ -1378,11 +1425,14 @@ function BerichtenInner() {
         outgoingAccumRef.current = [];
       }
 
+      assistantCountBeforeSendRef.current[sid] =
+        convForCost?.messages.filter((m) => m.role === 'assistant').length ?? 0;
+
       setInflightSends((prev) => new Set(prev).add(sid));
       setSendStartedAtByConv((prev) => ({ ...prev, [sid]: Date.now() }));
       setTypingVisibleAtByConv((prev) => ({
         ...prev,
-        [sid]: Date.now() + typingIndicatorDelayMs(messagesLenByConvRef.current[sid] ?? 0),
+        [sid]: Date.now() + assistantTypingVisibilityDelayMs(),
       }));
       setError(null);
 
@@ -1408,6 +1458,7 @@ function BerichtenInner() {
         }
       }
 
+      let keepTypingScheduleForQueuedAssistant = false;
       try {
         const res = await fetch(`/api/conversations/${sid}/messages`, {
           method: 'POST',
@@ -1436,7 +1487,7 @@ function BerichtenInner() {
               previewAvatar: conversationForUi.previewAvatar,
             }
           : null);
-      if (profileMeta) {
+      if (profileMeta && data.assistantMessage) {
         pushLiveNotification(profileMeta.profileName, profileMeta.previewAvatar, `${profileMeta.profileName} typt…`);
       }
         if (data.creditWall && CREDITS_PER_MESSAGE > 0) {
@@ -1446,6 +1497,14 @@ function BerichtenInner() {
         /** Meteen serverberichten tonen vóór optimistic wordt gewist (geen “gat” in de UI). */
         const u = data.userMessages ?? [];
         const a = data.assistantMessage;
+        if (a) {
+          awaitingQueuedAssistantRef.current.delete(sid);
+          delete assistantCountBeforeSendRef.current[sid];
+        } else if (!data.creditWall && (u.length ?? 0) > 0) {
+          keepTypingScheduleForQueuedAssistant = true;
+          awaitingQueuedAssistantRef.current.add(sid);
+          setAssistantTypingUiEpoch((x) => x + 1);
+        }
         if (u.length > 0 || a) {
           setConversation((c) => {
             if (!c || c.id !== sid) return c;
@@ -1483,7 +1542,7 @@ function BerichtenInner() {
             listRef.current.find((c) => c.id === sid)?.profileName ??
             conversationProfileNameRef.current;
           const activeSameChat = selectedIdRef.current === sid;
-          if (!activeSameChat) {
+          if (!activeSameChat && a) {
             setArrivalToast(`${pname} heeft je een berichtje gestuurd`);
             if (arrivalToastTimerRef.current) {
               window.clearTimeout(arrivalToastTimerRef.current);
@@ -1528,14 +1587,18 @@ function BerichtenInner() {
           next.delete(sid);
           return next;
         });
-        setTypingVisibleAtByConv((prev) => {
-          const { [sid]: _, ...rest } = prev;
-          return rest;
-        });
-        setSendStartedAtByConv((prev) => {
-          const { [sid]: _, ...rest } = prev;
-          return rest;
-        });
+        if (!keepTypingScheduleForQueuedAssistant) {
+          awaitingQueuedAssistantRef.current.delete(sid);
+          delete assistantCountBeforeSendRef.current[sid];
+          setTypingVisibleAtByConv((prev) => {
+            const { [sid]: _, ...rest } = prev;
+            return rest;
+          });
+          setSendStartedAtByConv((prev) => {
+            const { [sid]: _, ...rest } = prev;
+            return rest;
+          });
+        }
         if (!batchOverride) {
           outgoingConversationIdRef.current = null;
         }
@@ -1765,7 +1828,7 @@ function BerichtenInner() {
       ...prev,
       [selectedId]:
         Date.now() +
-        typingIndicatorDelayMs(messagesLenByConvRef.current[selectedId] ?? 0),
+        assistantTypingVisibilityDelayMs(),
     }));
     setInflightSends((prev) => new Set(prev).add(selectedId));
     setError(null);

@@ -116,7 +116,7 @@ export interface Conversation {
   pendingLockedPhotoNudgeAt?: string;
   pendingLockedPhotoMessageId?: string;
   pendingLockedPhotoNudgeText?: string;
-  /** Queue: send locked photo bubble after realistic delay (40-120s). */
+  /** Queue: send locked photo bubble after realistic delay (60-180s). */
   pendingLockedPhotoDeliveryAt?: string;
   pendingLockedPhotoDelivery?: {
     messageId: string;
@@ -125,6 +125,21 @@ export interface Conversation {
     height?: number;
     teaseText?: string;
     delayedNudgeText?: string;
+  };
+  /**
+   * Queue: tekstantwoord(en) van het profiel die met realistische vertraging
+   * (10-60s) in de chat verschijnen, zodat het niet voelt als instant bot.
+   * De API-call slaat dit op; `applyPendingAssistantReply` flush't ze later
+   * naar `messages` zodra de timer voorbij is en de user de inbox polled.
+   */
+  pendingAssistantReplyAt?: string;
+  pendingAssistantReply?: {
+    messages: Array<{
+      id: string;
+      content: string;
+      replyToId?: string;
+      typingEvents?: Array<{ startedAt: string; stoppedAt?: string; sent?: boolean }>;
+    }>;
   };
   /** Assistant asked user what kind of photo he wants; wait for concrete visual details. */
   pendingPhotoPreferenceRequest?: boolean;

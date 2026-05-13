@@ -3,6 +3,10 @@
     {
       "path": "/api/internal/engagement/dispatch",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/internal/daily-chat-prompt",
+      "schedule": "*/10 19-21 * * *"
     }
   ]
 }

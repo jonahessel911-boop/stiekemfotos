@@ -52,7 +52,21 @@ type PeriodRow = {
   signupToPaidPct: number | null;
   /** % cohort-signups dat een tweede keer is teruggekeerd (users.last_seen_at gevuld). */
   reSignPct: number | null;
+  /**
+   * % cohort-signups dat ten minste 100 credits heeft opgemaakt.
+   * Definitie: ≥1 foto-unlock.
+   */
+  used100CreditsPct: number | null;
+  /**
+   * % cohort-signups dat z'n 300 gratis credits volledig heeft opgemaakt.
+   * Definitie: ≥3 foto-unlocks (300 credits / 100 per unlock).
+   */
+  usedFreeCreditsPct: number | null;
 };
+
+/** Foto-unlocks per credit-bundel (1 unlock = 100 credits). */
+const UNLOCKS_FOR_100_CREDITS = 1;
+const UNLOCKS_FOR_300_CREDITS = 3;
 
 export async function GET() {
   const jar = await cookies();
@@ -64,6 +78,7 @@ export async function GET() {
   /** Pre-compute per-user metrics. */
   const userFirstUserMsgAt = new Map<string, number>();
   const userFirstUnlockAt = new Map<string, number>();
+  const userUnlockCount = new Map<string, number>();
   for (const c of conversations) {
     const uid = c.ownerUserId;
     if (!uid) continue;
@@ -80,6 +95,7 @@ export async function GET() {
         if (Number.isFinite(t)) {
           const prev = userFirstUnlockAt.get(uid);
           if (!prev || t < prev) userFirstUnlockAt.set(uid, t);
+          userUnlockCount.set(uid, (userUnlockCount.get(uid) ?? 0) + 1);
         }
       }
     }
@@ -158,6 +174,8 @@ export async function GET() {
     let unlockedPaid = 0;
     let paidUsers = 0;
     let reSigned = 0;
+    let used100Credits = 0;
+    let usedFreeCredits = 0;
     const lastSeenByUserId = new Map<string, string | undefined>();
     for (const u of users) lastSeenByUserId.set(u.id, u.lastSeenAt);
     for (const uid of cohortSet) {
@@ -168,6 +186,9 @@ export async function GET() {
       if (hasChat) withUserChat += 1;
       if (firstPaid) paidUsers += 1;
       if (lastSeenByUserId.get(uid)) reSigned += 1;
+      const unlocks = userUnlockCount.get(uid) ?? 0;
+      if (unlocks >= UNLOCKS_FOR_100_CREDITS) used100Credits += 1;
+      if (unlocks >= UNLOCKS_FOR_300_CREDITS) usedFreeCredits += 1;
 
       if (hasChat && firstUnlock) {
         // Free unlock: unlock vóór eerste betaalde checkout (of nog niet betaald).
@@ -206,6 +227,8 @@ export async function GET() {
       userChatToUnlockPaidPct: pct(unlockedPaid, withUserChat),
       signupToPaidPct: pct(paidUsers, signupCount || cohortSet.size),
       reSignPct: pct(reSigned, signupCount || cohortSet.size),
+      used100CreditsPct: pct(used100Credits, signupCount || cohortSet.size),
+      usedFreeCreditsPct: pct(usedFreeCredits, signupCount || cohortSet.size),
     };
   });
 
@@ -218,6 +241,8 @@ export async function GET() {
   let totalsUnlockedPaid = 0;
   let totalsPaid = 0;
   let totalsReSigned = 0;
+  let totalsUsed100Credits = 0;
+  let totalsUsedFreeCredits = 0;
   for (const uid of totalsCohort) {
     const firstUserMsg = userFirstUserMsgAt.get(uid);
     const firstUnlock = userFirstUnlockAt.get(uid);
@@ -226,6 +251,9 @@ export async function GET() {
     if (hasChat) totalsWithChat += 1;
     if (firstPaid) totalsPaid += 1;
     if (lastSeenByUserIdAll.get(uid)) totalsReSigned += 1;
+    const unlocks = userUnlockCount.get(uid) ?? 0;
+    if (unlocks >= UNLOCKS_FOR_100_CREDITS) totalsUsed100Credits += 1;
+    if (unlocks >= UNLOCKS_FOR_300_CREDITS) totalsUsedFreeCredits += 1;
     if (hasChat && firstUnlock) {
       if (!firstPaid || firstUnlock < firstPaid) totalsUnlockedFree += 1;
       if (firstPaid) {
@@ -260,6 +288,8 @@ export async function GET() {
     userChatToUnlockPaidPct: pct(totalsUnlockedPaid, totalsWithChat),
     signupToPaidPct: pct(totalsPaid, totalsSignups || totalsCohort.size),
     reSignPct: pct(totalsReSigned, totalsSignups || totalsCohort.size),
+    used100CreditsPct: pct(totalsUsed100Credits, totalsSignups || totalsCohort.size),
+    usedFreeCreditsPct: pct(totalsUsedFreeCredits, totalsSignups || totalsCohort.size),
   };
 
   return NextResponse.json({ periods: rows, totals });

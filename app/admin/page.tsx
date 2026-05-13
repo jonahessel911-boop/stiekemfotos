@@ -31,6 +31,8 @@ type PeriodRow = {
   userChatToUnlockPaidPct: number | null;
   signupToPaidPct: number | null;
   reSignPct: number | null;
+  used100CreditsPct: number | null;
+  usedFreeCreditsPct: number | null;
 };
 
 type PeriodOverview = {
@@ -41,7 +43,13 @@ type PeriodOverview = {
 type AdminData = {
   stats: { users: number; signups: number; purchases: number; conversations: number };
   analytics?: AdminAnalytics;
-  signups: Array<{ naam: string; email: string; leeftijd: number; createdAt: string }>;
+  signups: Array<{
+    naam: string;
+    email: string;
+    leeftijd: number;
+    createdAt: string;
+    creditsSpent?: number;
+  }>;
   users: Array<{
     id: string;
     email: string;
@@ -283,8 +291,14 @@ export default function AdminPage() {
 
         <Section title="Signups">
           <SimpleTable
-            headers={['Naam', 'E-mail', 'Leeftijd', 'Aangemaakt']}
-            rows={(data?.signups ?? []).map((s) => [s.naam, s.email, String(s.leeftijd), fmt(s.createdAt)])}
+            headers={['Naam', 'E-mail', 'Leeftijd', 'Credits gebruikt', 'Aangemaakt']}
+            rows={(data?.signups ?? []).map((s) => [
+              s.naam,
+              s.email,
+              String(s.leeftijd),
+              String(s.creditsSpent ?? 0),
+              fmt(s.createdAt),
+            ])}
           />
         </Section>
 
@@ -555,12 +569,24 @@ function PeriodOverviewTable({
               >
                 Re-sign
               </th>
+              <th
+                className="border-b border-gray-200 px-4 py-3 text-right font-semibold"
+                title="Van signups in deze maand: % dat ≥1 foto heeft ontgrendeld (= minimaal 100 credits opgemaakt)"
+              >
+                100 credits used
+              </th>
+              <th
+                className="border-b border-gray-200 px-4 py-3 text-right font-semibold"
+                title="Van signups in deze maand: % dat de 300 gratis credits volledig heeft opgemaakt (≥3 foto-unlocks)"
+              >
+                300 credits used
+              </th>
             </tr>
           </thead>
           <tbody>
             {overview && overview.periods.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-500">
+                <td colSpan={11} className="px-4 py-12 text-center text-sm text-gray-500">
                   {loading ? 'Laden…' : 'Nog geen data.'}
                 </td>
               </tr>
@@ -604,6 +630,12 @@ function PeriodOverviewTable({
                 <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
                   {formatPct(row.reSignPct)}
                 </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
+                  {formatPct(row.used100CreditsPct)}
+                </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
+                  {formatPct(row.usedFreeCreditsPct)}
+                </td>
               </tr>
             ))}
             {overview ? (
@@ -632,6 +664,12 @@ function PeriodOverviewTable({
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums">
                   {formatPct(overview.totals.reSignPct)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {formatPct(overview.totals.used100CreditsPct)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {formatPct(overview.totals.usedFreeCreditsPct)}
                 </td>
               </tr>
             ) : null}

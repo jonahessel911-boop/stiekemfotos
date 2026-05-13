@@ -917,6 +917,12 @@ export async function getConversation(
 ): Promise<Conversation | null> {
   if (ownerUserId) {
     await recordOwnerPolledConversation(id, ownerUserId);
+    /**
+     * Flush pending deliveries voor DEZE conversation zodat de 10-60s text-reply
+     * en 60-180s photo-bubble verschijnen zonder dat de user een nieuw bericht
+     * hoeft te sturen. Lichtgewicht (één conv via mutex, geen full inbox-scan).
+     */
+    await flushSingleConversationAutomations(id, ownerUserId).catch(() => {});
   }
   /** Zelfde laadpad als `unlockAssistantPhoto` / `updateConversationAtomic` — geen `loadList()` + andere normalisatie. */
   const c = await loadNormalizedConversationById(id);
@@ -927,6 +933,32 @@ export async function getConversation(
     return null;
   }
   return hydrateSingleConversationPreviewFromProfile(c);
+}
+
+/**
+ * Per-conversation variant van `flushInboxAutomationsForOwner`. Voert alleen
+ * automations uit die geen `loadList()` nodig hebben — perfect voor 5s polling
+ * vanaf de chatpagina.
+ */
+async function flushSingleConversationAutomations(
+  conversationId: string,
+  ownerUserId: string
+): Promise<void> {
+  try {
+    await updateConversationAtomic(conversationId, async (latestConv) => {
+      if (latestConv.ownerUserId !== ownerUserId) return;
+      const arr = [latestConv];
+      applyPendingAssistantReply(arr, ownerUserId);
+      applyPendingLockedPhotoDeliveries(arr, ownerUserId);
+      applyPendingLockedPhotoNudges(arr, ownerUserId);
+      applyNoReplyFollowups(arr, ownerUserId);
+    });
+  } catch (e) {
+    console.warn(
+      `[flushSingleConv] conv=${conversationId} skipped:`,
+      e instanceof Error ? e.message : e
+    );
+  }
 }
 
 export type ProfilePortfolioItem = {
@@ -1182,6 +1214,7 @@ export async function flushInboxAutomationsForOwner(ownerUserId: string): Promis
     try {
       await updateConversationAtomic(convId, async (latestConv) => {
         const arr = [latestConv];
+        applyPendingAssistantReply(arr, ownerUserId);
         applyPendingLockedPhotoDeliveries(arr, ownerUserId);
         applyPendingLockedPhotoNudges(arr, ownerUserId);
         applyNoReplyFollowups(arr, ownerUserId);
@@ -1194,6 +1227,76 @@ export async function flushInboxAutomationsForOwner(ownerUserId: string): Promis
       console.warn(`[flushInbox] conv=${convId} skipped:`, e instanceof Error ? e.message : e);
     }
   }
+}
+
+/**
+ * Realistische pauze (10-60s) tussen een user-bericht en het profiel-antwoord.
+ * Gebruikt voor alle text replies van het profiel zodat het minder bot-achtig voelt.
+ */
+function randomAssistantReplyDelayMs(): number {
+  return 10_000 + Math.floor(Math.random() * 50_001); // 10000..60000
+}
+
+/**
+ * Realistische pauze (60-180s) voordat het locked-photo bericht in de chat verschijnt
+ * (het profiel "maakt de foto"). Tijdens deze wachttijd kan de user gewoon doorchatten.
+ */
+function randomPhotoDeliveryDelayMs(): number {
+  return 60_000 + Math.floor(Math.random() * 120_001); // 60000..180000
+}
+
+/**
+ * Levert gequeued profiel-tekstantwoord(en) na hun timer. Wordt aangeroepen door
+ * `flushInboxAutomationsForOwner` op iedere inbox-poll/GET.
+ */
+function applyPendingAssistantReply(list: Conversation[], ownerUserId: string): boolean {
+  const now = Date.now();
+  const due = list
+    .filter(
+      (c) =>
+        c.ownerUserId === ownerUserId &&
+        c.pendingAssistantReplyAt &&
+        c.pendingAssistantReply &&
+        c.pendingAssistantReply.messages.length > 0 &&
+        now >= new Date(c.pendingAssistantReplyAt).getTime()
+    )
+    .sort((a, b) => {
+      const ta = new Date(a.pendingAssistantReplyAt!).getTime();
+      const tb = new Date(b.pendingAssistantReplyAt!).getTime();
+      if (ta !== tb) return ta - tb;
+      return a.id.localeCompare(b.id);
+    });
+
+  const conv = due[0];
+  const queued = conv?.pendingAssistantReply;
+  if (!conv || !queued) return false;
+
+  const baseMs = now;
+  const messagesToAdd: ChatMessage[] = queued.messages.map((m, idx) => ({
+    id: m.id,
+    role: "assistant",
+    content: m.content,
+    createdAt: new Date(baseMs + idx * 850).toISOString(),
+    ...(m.replyToId ? { replyToId: m.replyToId } : {}),
+    ...(m.typingEvents ? { typingEvents: m.typingEvents } : {}),
+  }));
+
+  conv.messages = [...conv.messages, ...messagesToAdd];
+  const tail = messagesToAdd[messagesToAdd.length - 1]!;
+  conv.updatedAt = tail.createdAt;
+  conv.pendingAssistantReplyAt = undefined;
+  conv.pendingAssistantReply = undefined;
+  conv.realismState = conv.realismState
+    ? {
+        ...conv.realismState,
+        lastReplyAt: tail.createdAt,
+        messagesSinceLastReply: 0,
+        energy: Math.min(100, (conv.realismState.energy ?? 60) + 15),
+      }
+    : conv.realismState;
+  scheduleNoReplyReminderAfterAssistant(conv, tail.id);
+  void maybeSendOfflineAssistantEmail(conv.id, messagesToAdd[0]!);
+  return true;
 }
 
 function applyPendingLockedPhotoDeliveries(list: Conversation[], ownerUserId: string): boolean {
@@ -3396,72 +3499,85 @@ export async function appendUserMessagesAndReply(
     createdAt: new Date().toISOString(),
   };
 
+  /**
+   * Realistische vertragingen:
+   *   - tekstantwoord: random 10-60s nadat de user een bericht stuurt
+   *   - foto: random 60-180s (en in de tussentijd kan de user gewoon doorchatten)
+   * Beide worden via de pending-queues afgeleverd door `applyPendingAssistantReply`
+   * en `applyPendingLockedPhotoDeliveries` bij de volgende inbox-poll.
+   */
+  const replyDelayMs = randomAssistantReplyDelayMs();
+  const photoDelayMs = immediateLockedPhotoDelivery ? randomPhotoDeliveryDelayMs() : 0;
+  void realisticDelay; // legacy 120-500ms wordt vervangen door de queue-delay hierboven
+
   await updateConversationAtomic(conversationId, async (latestConv) => {
     markPendingUserMessagesAsReadByPeer(latestConv);
 
-    // Add realistic typing events to the assistant message
-    const typingEvents = simulateTypingBehavior(realismState, realisticDelay);
+    /** Typing events op het queued bericht — UI kan "X typt…" tonen rond de drop-tijd. */
+    const typingEvents = simulateTypingBehavior(realismState, replyDelayMs);
     assistantMessage.typingEvents = typingEvents;
+    if (assistantMessages[0]) assistantMessages[0].typingEvents = typingEvents;
 
-    const messagesToAdd: ChatMessage[] = [...assistantMessages];
-
-    if (immediateLockedPhotoDelivery) {
-      const baseMs = Date.now() + assistantMessages.length * 850;
-      const lockedPhotoMessage: ChatMessage = {
-        id: immediateLockedPhotoDelivery.messageId,
-        role: "assistant",
-        content: "",
-        createdAt: new Date(baseMs + 250).toISOString(),
-        photoLock: { credits: CREDITS_PER_PHOTO_UNLOCK },
-        photoGeneration: {
-          prompt: immediateLockedPhotoDelivery.prompt,
-          width: immediateLockedPhotoDelivery.width ?? 1024,
-          height: immediateLockedPhotoDelivery.height ?? 1024,
-        },
+    /** Queue: tekstantwoord(en) verschijnen na replyDelayMs in de chat. */
+    if (assistantMessages.length > 0) {
+      latestConv.pendingAssistantReplyAt = new Date(Date.now() + replyDelayMs).toISOString();
+      latestConv.pendingAssistantReply = {
+        messages: assistantMessages.map((m) => ({
+          id: m.id,
+          content: m.content,
+          ...(m.replyToId ? { replyToId: m.replyToId } : {}),
+          ...(m.typingEvents ? { typingEvents: m.typingEvents } : {}),
+        })),
       };
-      messagesToAdd.push(lockedPhotoMessage);
-
-      if (immediateLockedPhotoDelivery.teaseText?.trim()) {
-        messagesToAdd.push({
-          id: randomUUID(),
-          role: "assistant",
-          content: immediateLockedPhotoDelivery.teaseText.trim(),
-          createdAt: new Date(baseMs + 1300).toISOString(),
-          replyToId: immediateLockedPhotoDelivery.messageId,
-        });
-      }
     }
 
-    latestConv.messages = [...latestConv.messages, ...messagesToAdd];
-    const tail = messagesToAdd[messagesToAdd.length - 1];
-    latestConv.updatedAt = tail?.createdAt ?? new Date().toISOString();
     latestConv.realismState = {
       ...realismState,
-      lastReplyAt: tail?.createdAt ?? new Date().toISOString(),
+      lastReplyAt: new Date().toISOString(),
       messagesSinceLastReply: 0,
-      energy: Math.min(100, realismState.energy + 15),
+      energy: Math.min(100, realismState.energy + 5),
     };
 
-    const lastAssistantAnchor = tail?.id ?? assistantMessage.id;
-    scheduleNoReplyReminderAfterAssistant(latestConv, lastAssistantAnchor);
     if (shouldSendPhotoNow) {
       latestConv.pendingPhotoPreferenceRequest = false;
       latestConv.pendingPhotoCycleIntent = undefined;
     }
+
     if (immediateLockedPhotoDelivery) {
-      latestConv.pendingLockedPhotoDeliveryAt = undefined;
-      latestConv.pendingLockedPhotoDelivery = undefined;
-      latestConv.pendingLockedPhotoMessageId = immediateLockedPhotoDelivery.messageId;
-      latestConv.pendingLockedPhotoNudgeAt = new Date(Date.now() + 60 * 1000).toISOString();
-      latestConv.pendingLockedPhotoNudgeText =
-        immediateLockedPhotoDelivery.delayedNudgeText ?? LOCKED_PHOTO_DELAYED_NUDGE_FALLBACK;
+      /**
+       * Queue de locked foto met 60-180s vertraging. `applyPendingLockedPhotoDeliveries`
+       * plaatst de bubble in de chat zodra de timer voorbij is, en zet daarbij ook
+       * `pendingLockedPhotoNudgeAt` voor de delayed unlock-nudge.
+       */
+      latestConv.pendingLockedPhotoDeliveryAt = new Date(
+        Date.now() + photoDelayMs
+      ).toISOString();
+      latestConv.pendingLockedPhotoDelivery = {
+        messageId: immediateLockedPhotoDelivery.messageId,
+        prompt: immediateLockedPhotoDelivery.prompt,
+        width: immediateLockedPhotoDelivery.width ?? 1024,
+        height: immediateLockedPhotoDelivery.height ?? 1024,
+        ...(immediateLockedPhotoDelivery.teaseText
+          ? { teaseText: immediateLockedPhotoDelivery.teaseText }
+          : {}),
+        ...(immediateLockedPhotoDelivery.delayedNudgeText
+          ? { delayedNudgeText: immediateLockedPhotoDelivery.delayedNudgeText }
+          : {}),
+      };
+      latestConv.pendingLockedPhotoMessageId = undefined;
+      latestConv.pendingLockedPhotoNudgeAt = undefined;
+      latestConv.pendingLockedPhotoNudgeText = undefined;
     }
   });
-  void maybeSendOfflineAssistantEmail(conversationId, assistantMessage);
+  /**
+   * Offline e-mail wordt verstuurd vanuit `applyPendingAssistantReply` zodra het
+   * bericht echt zichtbaar is. Hier niet meer triggeren — anders krijgt een offline
+   * user de mail vóór het profiel "geantwoord" heeft.
+   */
 
   return {
     userMessages,
-    assistantMessage: assistantMessages[0] ?? assistantMessage,
+    assistantMessage: null,
   };
 }
 
@@ -3485,7 +3601,7 @@ export async function appendUserMessageAndReply(
   }
   return {
     userMessage: r.userMessages[0]!,
-    assistantMessage: r.assistantMessage!,
+    assistantMessage: r.assistantMessage,
     speakAssistantReply: r.speakAssistantReply,
   };
 }

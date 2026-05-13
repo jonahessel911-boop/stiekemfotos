@@ -1,13 +1,21 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { usePlatformOnboardingControls } from "@/components/PlatformOnboardingContext";
 
 type MeUser = {
   needsPlatformOnboarding?: boolean;
 };
+
+const TOTAL_STEPS = 6;
+
+const ONBOARDING_IMAGES = [
+  "/onboarding/hoe-werkt-1.png",
+  "/onboarding/hoe-werkt-2.png",
+  "/onboarding/hoe-werkt-3.png",
+] as const;
 
 function shouldSkipPath(pathname: string): boolean {
   return (
@@ -25,7 +33,7 @@ export default function PlatformOnboardingGate() {
   const pathname = usePathname() ?? "/";
   const skip = useMemo(() => shouldSkipPath(pathname), [pathname]);
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const { setPlatformOnboardingActive } = usePlatformOnboardingControls();
 
@@ -95,52 +103,103 @@ export default function PlatformOnboardingGate() {
 
   if (step === 1) {
     return (
-      <div
-        className="fixed inset-0 z-[200] flex flex-col bg-[var(--surface)]"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="platform-onboarding-title"
-      >
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-8 pb-28 md:px-8 md:py-12 md:pb-12">
-          <div className="mx-auto flex w-full max-w-lg flex-col items-center text-center">
-            <div className="relative mb-8 h-28 w-28 shrink-0 overflow-hidden rounded-full ring-4 ring-primary/30 shadow-xl shadow-primary/20">
-              <Image
-                src="/logo-stiekemefotos.png"
-                alt=""
-                width={112}
-                height={112}
-                className="h-full w-full object-cover"
-                priority
-              />
-            </div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary">
-              Stap 1 van 2
-            </p>
-            <h1
-              id="platform-onboarding-title"
-              className="mb-4 text-2xl font-bold tracking-tight text-gray-900 md:text-3xl"
-            >
-              Welkom op Stiekemefotos
-            </h1>
-            <p className="mb-3 text-base leading-relaxed text-gray-600">
-              Hier chat je privé met echte profielen: onbeperkt praten, flirten en foto&apos;s
-              ontgrendelen die ze speciaal voor jou maken. Credits gebruik je voor persoonlijke
-              plaatjes — chatten zelf kost geen credits.
-            </p>
-            <p className="mb-10 text-sm leading-relaxed text-gray-500">
-              Even door deze korte intro, daarna zie je wat je allemaal kunt verwachten op het
-              platform.
-            </p>
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              className="rounded-2xl bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-primary/25 transition hover:bg-primary/90"
-            >
-              Verder
-            </button>
-          </div>
+      <OnboardingShell step={1} ariaTitleId="onboarding-how-title">
+        <div className="mx-auto flex w-full max-w-lg flex-col items-center text-center">
+          <h1
+            id="onboarding-how-title"
+            className="mb-4 text-3xl font-extrabold tracking-tight text-gray-900 md:text-4xl"
+          >
+            Hoe werkt het
+          </h1>
+          <p className="mb-10 text-base leading-relaxed text-gray-600">
+            In een paar korte stappen zie je hoe privéchat en persoonlijke foto&apos;s werken op
+            Stiekemefotos. Daarna volgt de korte welkomst — even doorlezend en je bent klaar.
+          </p>
+          <button
+            type="button"
+            onClick={() => setStep(2)}
+            className="rounded-2xl bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-primary/25 transition hover:bg-primary/90"
+          >
+            Volgende
+          </button>
         </div>
-      </div>
+      </OnboardingShell>
+    );
+  }
+
+  if (step === 2) {
+    return (
+      <PhotoHowStep
+        step={2}
+        title="Vertel je geilste wensen"
+        imageSrc={ONBOARDING_IMAGES[0]}
+        imageAlt="Voorbeeldchat: vertel wat je wilt"
+        onNext={() => setStep(3)}
+      />
+    );
+  }
+
+  if (step === 3) {
+    return (
+      <PhotoHowStep
+        step={3}
+        title="Bekijk wat de meid naar je toestuurt"
+        imageSrc={ONBOARDING_IMAGES[1]}
+        imageAlt="Voorbeeldchat: ontvangen foto"
+        onNext={() => setStep(4)}
+      />
+    );
+  }
+
+  if (step === 4) {
+    return (
+      <PhotoHowStep
+        step={4}
+        title="De meid doet er alles aan om je geil te maken. Vertel wat je wilt en ze maakt het x"
+        imageSrc={ONBOARDING_IMAGES[2]}
+        imageAlt="Voorbeeldchat: persoonlijke foto"
+        onNext={() => setStep(5)}
+      />
+    );
+  }
+
+  if (step === 5) {
+    return (
+      <OnboardingShell step={5} ariaTitleId="platform-onboarding-title">
+        <div className="mx-auto flex w-full max-w-lg flex-col items-center text-center">
+          <div className="relative mb-8 h-28 w-28 shrink-0 overflow-hidden rounded-full ring-4 ring-primary/30 shadow-xl shadow-primary/20">
+            <Image
+              src="/logo-stiekemefotos.png"
+              alt=""
+              width={112}
+              height={112}
+              className="h-full w-full object-cover"
+              priority
+            />
+          </div>
+          <h1
+            id="platform-onboarding-title"
+            className="mb-4 text-2xl font-bold tracking-tight text-gray-900 md:text-3xl"
+          >
+            Welkom op Stiekemefotos
+          </h1>
+          <p className="mb-3 text-base leading-relaxed text-gray-600">
+            Hier chat je privé met echte profielen: onbeperkt praten, flirten en foto&apos;s
+            ontgrendelen die ze speciaal voor jou maken. Credits gebruik je voor persoonlijke
+            plaatjes — chatten zelf kost geen credits.
+          </p>
+          <p className="mb-10 text-sm leading-relaxed text-gray-500">
+            Nog één scherm met de belangrijkste voordelen — daarna ga je direct verder in de app.
+          </p>
+          <button
+            type="button"
+            onClick={() => setStep(6)}
+            className="rounded-2xl bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-primary/25 transition hover:bg-primary/90"
+          >
+            Verder
+          </button>
+        </div>
+      </OnboardingShell>
     );
   }
 
@@ -151,7 +210,6 @@ export default function PlatformOnboardingGate() {
       aria-modal="true"
       aria-labelledby="platform-onboarding-title"
     >
-      {/* Zachte rose/red glow accents in de hoeken — branding kleuren, geen donkere bg */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -164,7 +222,7 @@ export default function PlatformOnboardingGate() {
       <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-8 pb-32 md:px-8 md:pt-12 md:pb-12">
         <div className="mx-auto w-full max-w-xl">
           <p className="mb-3 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
-            Stap 2 van 2 · op stiekemefotos.nl
+            Stap {TOTAL_STEPS} van {TOTAL_STEPS} · op stiekemefotos.nl
           </p>
 
           <h1
@@ -189,7 +247,6 @@ export default function PlatformOnboardingGate() {
             </p>
           </div>
 
-          {/* HERO USP — dit is de "hoofd act". Groot, opvallend, gradient panel. */}
           <div className="mt-8">
             <div className="relative overflow-hidden rounded-3xl border-2 border-primary/30 bg-gradient-to-br from-primary/[0.08] via-rose-50 to-white p-6 shadow-[0_10px_40px_-20px_rgba(198,0,63,0.45)] md:p-8">
               <div
@@ -223,7 +280,6 @@ export default function PlatformOnboardingGate() {
             </div>
           </div>
 
-          {/* Voice memo highlight */}
           <div className="mt-4 flex items-center gap-3 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.06] via-rose-50 to-white px-4 py-3 shadow-sm">
             <span className="text-2xl leading-none" aria-hidden>
               🎤
@@ -236,7 +292,6 @@ export default function PlatformOnboardingGate() {
             </p>
           </div>
 
-          {/* Secundaire USP's */}
           <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <UspCard
               emoji="🔥"
@@ -251,7 +306,7 @@ export default function PlatformOnboardingGate() {
             <UspCard
               emoji="👯"
               title="150+ sexy meiden online"
-              body="Altijd iemand klaar voor jou. Kies wie je het lekkerst vindt en begin een privé chat."
+              body="Altijd iemand klaar voor jou. Kies wie je het lekkerst vindt en begin een privéchat."
             />
             <UspCard
               emoji="🔒"
@@ -288,6 +343,80 @@ export default function PlatformOnboardingGate() {
   );
 }
 
+function OnboardingShell({
+  step,
+  ariaTitleId,
+  children,
+}: {
+  step: number;
+  ariaTitleId: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex flex-col bg-[var(--surface)]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={ariaTitleId}
+    >
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-8 pb-28 md:px-8 md:py-12 md:pb-12">
+        <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wider text-primary">
+          Stap {step} van {TOTAL_STEPS}
+        </p>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function PhotoHowStep({
+  step,
+  title,
+  imageSrc,
+  imageAlt,
+  onNext,
+}: {
+  step: number;
+  title: string;
+  imageAlt: string;
+  imageSrc: string;
+  onNext: () => void;
+}) {
+  return (
+    <OnboardingShell step={step} ariaTitleId={`onboarding-photo-title-${step}`}>
+      <div className="mx-auto flex w-full max-w-lg flex-col items-stretch">
+        <h1
+          id={`onboarding-photo-title-${step}`}
+          className="mb-5 text-balance text-center text-xl font-bold leading-snug text-gray-900 md:text-2xl"
+        >
+          {title}
+        </h1>
+        <div className="relative mx-auto w-full max-w-[min(100%,22rem)] overflow-hidden rounded-2xl border border-gray-200/80 bg-gray-100 shadow-lg shadow-black/10">
+          <Image
+            src={imageSrc}
+            alt={imageAlt}
+            width={440}
+            height={956}
+            className="h-auto w-full object-cover object-top"
+            sizes="(max-width: 768px) 100vw, 22rem"
+            priority={step === 2}
+            unoptimized
+          />
+        </div>
+        <div className="mt-10 flex justify-center">
+          <button
+            type="button"
+            onClick={onNext}
+            className="rounded-2xl bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-lg shadow-primary/25 transition hover:bg-primary/90"
+          >
+            Volgende
+          </button>
+        </div>
+      </div>
+    </OnboardingShell>
+  );
+}
+
 type UspCardProps = {
   emoji: string;
   title: string;
@@ -310,7 +439,7 @@ function UspCard({ emoji, title, body }: UspCardProps) {
   );
 }
 
-function HeroChip({ children }: { children: React.ReactNode }) {
+function HeroChip({ children }: { children: ReactNode }) {
   return (
     <li className="flex items-center gap-2 rounded-xl border border-primary/15 bg-white/80 px-3 py-2 text-[13px] font-medium text-gray-800 shadow-sm backdrop-blur-sm">
       {children}

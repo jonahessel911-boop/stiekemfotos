@@ -22,12 +22,33 @@ export function amsterdamCalendarDay(now = new Date()): string {
   }).format(now);
 }
 
+/** Huidige uur + minuut in Europe/Amsterdam (0-23, 0-59). */
+export function amsterdamHourMinute(now = new Date()): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Amsterdam",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "0";
+  const minStr = parts.find((p) => p.type === "minute")?.value ?? "0";
+  return {
+    hour: parseInt(hourStr, 10) || 0,
+    minute: parseInt(minStr, 10) || 0,
+  };
+}
+
 function hashToNonNegative(input: string): number {
   let h = 0;
   for (let i = 0; i < input.length; i++) {
     h = (h * 31 + input.charCodeAt(i)) >>> 0;
   }
   return h;
+}
+
+/** Stabiel “random” minuutslot 0-59 voor deze user op deze dag. */
+export function scheduledMinuteForUserOnDay(userId: string, todayKey: string): number {
+  return hashToNonNegative(`${userId}|${todayKey}|minute`) % 60;
 }
 
 export async function loadProfilesForDailyPrompt(max = 400): Promise<Profile[]> {

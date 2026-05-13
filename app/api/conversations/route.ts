@@ -4,6 +4,7 @@ import {
   ensureSeedConversations,
   ensureUserInboxForOwner,
   findOrCreateConversation,
+  flushInboxAutomationsForOwner,
   listSummaries,
 } from "@/lib/server/conversations";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
@@ -36,6 +37,14 @@ export async function GET() {
        *
        * Nudges moeten alleen via aparte trigger/cron komen, niet via GET inbox.
        */
+    }
+    if (userId) {
+      /**
+       * Flush pending deliveries (10-60s tekst, 60-180s foto) zodat de inbox-preview
+       * up-to-date is met de laatste profiel-reactie die intussen "door de timer is
+       * gevallen". Best-effort: bij fout gewoon de bestaande state tonen.
+       */
+      await flushInboxAutomationsForOwner(userId).catch(() => {});
     }
     const conversations = await listSummaries(userId);
     return NextResponse.json({ conversations });

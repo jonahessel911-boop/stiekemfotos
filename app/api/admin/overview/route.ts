@@ -18,6 +18,20 @@ export async function GET() {
   const paid = checkouts.filter((x) => Boolean(x.paidAt));
   const usersMap = new Map(users.map((u) => [u.id, u]));
 
+  /** Hoeveel credits heeft een user opgemaakt? 1 foto-unlock = 100 credits. */
+  const CREDITS_PER_UNLOCK = 100;
+  const unlockCountByUserId = new Map<string, number>();
+  for (const c of conversations) {
+    const uid = c.ownerUserId;
+    if (!uid) continue;
+    for (const m of c.messages) {
+      if (m.role === "assistant" && m.photoLock?.unlockedAt) {
+        unlockCountByUserId.set(uid, (unlockCountByUserId.get(uid) ?? 0) + 1);
+      }
+    }
+  }
+  const usersByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
+
   const usersSummary = users.map((u) => {
     const convs = conversations.filter((c) => c.ownerUserId === u.id);
     const purchases = paid.filter((p) => p.userId === u.id);
@@ -72,9 +86,13 @@ export async function GET() {
     }))
     .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
 
-  const signupsTable = [...signups].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  const signupsTable = [...signups]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((s) => {
+      const u = usersByEmail.get(s.email.toLowerCase());
+      const unlocks = u ? unlockCountByUserId.get(u.id) ?? 0 : 0;
+      return { ...s, creditsSpent: unlocks * CREDITS_PER_UNLOCK };
+    });
 
   const conversationAnalytics = computeConversationAnalytics(conversations);
   const chartDays = 30;
