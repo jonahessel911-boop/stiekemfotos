@@ -12,6 +12,8 @@ export type AdminUserRow = {
   createdAt: string;
   emailVerifiedAt?: string;
   emailVerifyToken?: string;
+  /** Wordt door `touchUserSeen` gezet bij elk app-bezoek na signup; gebruikt voor re-sign %. */
+  lastSeenAt?: string;
 };
 
 export type AdminSignupRow = {
@@ -135,7 +137,7 @@ async function loadFromSupabase(): Promise<AdminDataset | null> {
   const usersPromise = supabase
     .from("users")
     .select(
-      "id,email,naam,leeftijd,created_at,email_verified_at,email_verify_token"
+      "id,email,naam,leeftijd,created_at,email_verified_at,email_verify_token,last_seen_at"
     )
     .order("created_at", { ascending: false });
 
@@ -173,6 +175,7 @@ async function loadFromSupabase(): Promise<AdminDataset | null> {
     createdAt: u.created_at,
     ...(u.email_verified_at ? { emailVerifiedAt: u.email_verified_at } : {}),
     ...(u.email_verify_token ? { emailVerifyToken: u.email_verify_token } : {}),
+    ...(u.last_seen_at ? { lastSeenAt: u.last_seen_at } : {}),
   }));
 
   let signups: AdminSignupRow[] = [];

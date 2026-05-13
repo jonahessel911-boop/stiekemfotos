@@ -30,6 +30,7 @@ type PeriodRow = {
   userChatToUnlockFreePct: number | null;
   userChatToUnlockPaidPct: number | null;
   signupToPaidPct: number | null;
+  reSignPct: number | null;
 };
 
 type PeriodOverview = {
@@ -548,12 +549,18 @@ function PeriodOverviewTable({
               >
                 Signup → Paid
               </th>
+              <th
+                className="border-b border-gray-200 px-4 py-3 text-right font-semibold"
+                title="Van signups in deze maand: % dat ten minste 1× is teruggekeerd (users.last_seen_at is gevuld)"
+              >
+                Re-sign
+              </th>
             </tr>
           </thead>
           <tbody>
             {overview && overview.periods.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-500">
+                <td colSpan={9} className="px-4 py-12 text-center text-sm text-gray-500">
                   {loading ? 'Laden…' : 'Nog geen data.'}
                 </td>
               </tr>
@@ -594,6 +601,9 @@ function PeriodOverviewTable({
                 <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums font-semibold text-gray-900">
                   {formatPct(row.signupToPaidPct)}
                 </td>
+                <td className="border-b border-gray-100 px-4 py-3 text-right tabular-nums text-gray-700">
+                  {formatPct(row.reSignPct)}
+                </td>
               </tr>
             ))}
             {overview ? (
@@ -619,6 +629,9 @@ function PeriodOverviewTable({
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums font-bold">
                   {formatPct(overview.totals.signupToPaidPct)}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {formatPct(overview.totals.reSignPct)}
                 </td>
               </tr>
             ) : null}
