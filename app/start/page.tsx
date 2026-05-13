@@ -15,14 +15,13 @@ type Step =
   | 'q3'
   | 'q4'
   | 'fotoVoorkeur'
-  | 'zoekLeeftijd'
   | 'zoekEigenschappen'
   | 'loadingMatches'
   | 'signupForm'
   | 'akkoord';
 
-/** Vier ja/nee-vragen + foto-voorkeur + leeftijdscategorie + eigenschappen */
-const ONBOARDING_VRAAG_TOTAAL = 7;
+/** Drie ja/nee-vragen + Q4 (info) + foto-voorkeur + eigenschappen */
+const ONBOARDING_VRAAG_TOTAAL = 6;
 
 const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   { id: 'q1', tekst: 'Ben je ouder dan 27?' },
@@ -34,22 +33,17 @@ const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   {
     id: 'q3',
     tekst:
-      'Op het platform heb je alleen toegang tot vrouwen die interesse hebben in persoonlijk & fysiek contact. Ben je daar oké mee?',
+      'Deze vrouwen willen stiekeme foto\u2019s met je delen, en luisteren goed naar je wensen. Ben je daar oké mee?',
   },
   {
     id: 'q4',
     tekst:
-      'Kun je omgaan met vrouwen die pit hebben? De meeste zijn Oost-Europees.',
+      'Hoe specifieker je bent, hoe beter de meiden weten wat je écht geil vindt.',
   },
 ];
 
-const LEEFTIJD_CATEGORIEEN = [
-  { id: '18-24', label: '18–24 jaar' },
-  { id: '25-34', label: '25–34 jaar' },
-  { id: '35-44', label: '35–44 jaar' },
-  { id: '45-54', label: '45–54 jaar' },
-  { id: '55plus', label: '55 jaar en ouder' },
-] as const;
+/** Vragen-index waarvoor we i.p.v. Ja/Nee één bevestigingsknop tonen. */
+const ACK_QUESTION_IDS: Array<keyof Answers> = ['q4'];
 
 const EIGENSCHAP_OPTIES = [
   { id: 'goede-rondingen', label: 'Goede rondingen' },
@@ -93,7 +87,6 @@ export default function StartPage() {
     q4: null,
   });
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [zoekLeeftijdIds, setZoekLeeftijdIds] = useState<Set<string>>(() => new Set());
   const [eigenschapIds, setEigenschapIds] = useState<Set<string>>(() => new Set());
   const [fotoVoorkeurId, setFotoVoorkeurId] = useState<string | null>(null);
   const [maandFotoCount, setMaandFotoCount] = useState<number | null>(null);
@@ -138,10 +131,7 @@ export default function StartPage() {
       if (elapsed < duration) requestAnimationFrame(tick);
       else {
         const base = randomMatchCount();
-        const preferenceBonus = Math.min(
-          6,
-          Math.max(0, zoekLeeftijdIds.size - 1) + Math.max(0, eigenschapIds.size - 1)
-        );
+        const preferenceBonus = Math.min(6, Math.max(0, eigenschapIds.size - 1));
         setMatchCount(Math.min(50, base + preferenceBonus));
         setStep('signupForm');
       }
@@ -172,6 +162,10 @@ export default function StartPage() {
     }
   };
 
+  const acknowledgeCurrentQuestion = () => {
+    answerJaNee(true);
+  };
+
   const handleFotoVoorkeurNext = () => {
     setError(null);
     if (!fotoVoorkeurId) {
@@ -186,7 +180,7 @@ export default function StartPage() {
     };
     const [min, max] = ranges[fotoVoorkeurId] ?? [30, 200];
     setMaandFotoCount(randomInt(min, max));
-    setStep('zoekLeeftijd');
+    setStep('zoekEigenschappen');
   };
 
   const toggleEigenschap = (id: string) => {
@@ -196,25 +190,6 @@ export default function StartPage() {
       else next.add(id);
       return next;
     });
-  };
-
-  const toggleLeeftijdCategorie = (id: string) => {
-    setZoekLeeftijdIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    setError(null);
-  };
-
-  const handleZoekLeeftijdNext = () => {
-    setError(null);
-    if (zoekLeeftijdIds.size === 0) {
-      setError('Kies minimaal één leeftijdscategorie.');
-      return;
-    }
-    setStep('zoekEigenschappen');
   };
 
   const handleEigenschappenNext = () => {
@@ -256,10 +231,6 @@ export default function StartPage() {
       return;
     }
     const age = parseInt(leeftijd, 10);
-    const leeftijdLabels = LEEFTIJD_CATEGORIEEN.filter((c) => zoekLeeftijdIds.has(c.id)).map(
-      (c) => c.label
-    );
-    const categorieLabel = leeftijdLabels.length ? leeftijdLabels.join(', ') : '';
     const eigenschappenLabels = EIGENSCHAP_OPTIES.filter((o) => eigenschapIds.has(o.id)).map(
       (o) => o.label
     );
@@ -276,7 +247,6 @@ export default function StartPage() {
           wachtwoord,
           discreetAkkoord: discreetVink,
           voorwaardenAkkoord: voorwaardenVink,
-          zoekLeeftijdCategorie: categorieLabel || undefined,
           zoekEigenschappen: eigenschappenLabels.length ? eigenschappenLabels : undefined,
           geschatteMatches: matchCount ?? undefined,
         }),
@@ -317,10 +287,6 @@ export default function StartPage() {
 
   const fotoVoorkeurLabel =
     FOTO_VOORKEUR_OPTIES.find((opt) => opt.id === fotoVoorkeurId)?.label.toLowerCase() ?? null;
-
-  const zoekLeeftijdSamenvatting = LEEFTIJD_CATEGORIEEN.filter((c) => zoekLeeftijdIds.has(c.id))
-    .map((c) => c.label)
-    .join(', ');
 
   return (
     <div className="min-h-screen bg-[var(--onboarding-bg)] flex flex-col">
@@ -367,22 +333,42 @@ export default function StartPage() {
               {VRAGEN[qIndex]?.tekst}
             </h2>
             <div className="flex flex-col gap-4 pt-2 max-w-md mx-auto w-full">
-              <button
-                type="button"
-                onClick={() => answerJaNee(true)}
-                className="group w-full flex items-center justify-between py-5 px-8 rounded-full bg-primary text-white font-semibold text-lg shadow-md shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all"
-              >
-                Ja
-                <ArrowRight className="w-5 h-5 opacity-90 group-hover:translate-x-0.5 transition-transform" />
-              </button>
-              <button
-                type="button"
-                onClick={() => answerJaNee(false)}
-                className="group w-full flex items-center justify-between py-5 px-8 rounded-full border-2 border-gray-300/80 bg-white text-gray-800 font-semibold text-lg hover:bg-gray-50 active:scale-[0.99] transition-all"
-              >
-                Nee
-                <ArrowRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
-              </button>
+              {(() => {
+                const currentVraag = VRAGEN[qIndex];
+                const isAck = !!currentVraag && ACK_QUESTION_IDS.includes(currentVraag.id);
+                if (isAck) {
+                  return (
+                    <button
+                      type="button"
+                      onClick={acknowledgeCurrentQuestion}
+                      className="group w-full flex items-center justify-between py-5 px-8 rounded-full bg-primary text-white font-semibold text-lg shadow-md shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all"
+                    >
+                      Ik snap het
+                      <ArrowRight className="w-5 h-5 opacity-90 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  );
+                }
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => answerJaNee(true)}
+                      className="group w-full flex items-center justify-between py-5 px-8 rounded-full bg-primary text-white font-semibold text-lg shadow-md shadow-primary/25 hover:bg-primary-hover active:scale-[0.99] transition-all"
+                    >
+                      Ja
+                      <ArrowRight className="w-5 h-5 opacity-90 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => answerJaNee(false)}
+                      className="group w-full flex items-center justify-between py-5 px-8 rounded-full border-2 border-gray-300/80 bg-white text-gray-800 font-semibold text-lg hover:bg-gray-50 active:scale-[0.99] transition-all"
+                    >
+                      Nee
+                      <ArrowRight className="w-5 h-5 text-gray-400 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
+                  </>
+                );
+              })()}
             </div>
             {showVraagVoettekst && (
               <p className="text-center text-sm text-gray-500 flex items-center justify-center gap-2 pt-4">
@@ -461,81 +447,13 @@ export default function StartPage() {
           </div>
         )}
 
-        {step === 'zoekLeeftijd' && (
-          <div className="w-full space-y-6 max-w-md mx-auto">
-            <div className="flex justify-center">
-              <Logo variant="hero" className="scale-90" />
-            </div>
-            <p className="text-center text-sm font-semibold text-gray-600">
-              Vraag 6 van {ONBOARDING_VRAAG_TOTAAL}
-            </p>
-            <div>
-              <h2 className="text-center text-xl md:text-2xl font-semibold text-gray-900 leading-snug">
-                In welke leeftijdscategorie zoek je vrouwen?
-              </h2>
-              <p className="text-center text-sm text-gray-600 mt-2">
-                Meerdere antwoorden mogelijk — hoe meer je selecteert, hoe breder je zoekprofiel.
-              </p>
-            </div>
-            {error && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-2xl px-4 py-2 border-2 border-red-100">
-                {error}
-              </p>
-            )}
-            <div className="space-y-2">
-              {LEEFTIJD_CATEGORIEEN.map((c) => {
-                const on = zoekLeeftijdIds.has(c.id);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={on}
-                    onClick={() => toggleLeeftijdCategorie(c.id)}
-                    className={`w-full flex items-center gap-3 rounded-2xl border-2 px-4 py-4 text-left transition-all ${
-                      on
-                        ? 'border-primary bg-primary/10'
-                        : 'border-gray-300 bg-[var(--onboarding-card)] hover:bg-gray-50'
-                    }`}
-                  >
-                    <span
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 ${
-                        on ? 'border-primary bg-primary text-white' : 'border-gray-400 bg-white'
-                      }`}
-                    >
-                      {on && <Check className="h-4 w-4" strokeWidth={3} />}
-                    </span>
-                    <span className="font-medium text-gray-900">{c.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setStep('fotoVoorkeur')}
-                className="flex-1 py-4 rounded-full border-2 border-gray-300 bg-white font-semibold text-gray-800"
-              >
-                Terug
-              </button>
-              <button
-                type="button"
-                onClick={handleZoekLeeftijdNext}
-                className="flex-1 py-4 rounded-full bg-primary text-white font-semibold shadow-md"
-              >
-                Volgende
-              </button>
-            </div>
-          </div>
-        )}
-
         {step === 'zoekEigenschappen' && (
           <div className="w-full space-y-6 max-w-md mx-auto">
             <div className="flex justify-center">
               <Logo variant="hero" className="scale-90" />
             </div>
             <p className="text-center text-sm font-semibold text-gray-600">
-              Vraag 7 van {ONBOARDING_VRAAG_TOTAAL}
+              Vraag 6 van {ONBOARDING_VRAAG_TOTAAL}
             </p>
             <div>
               <h2 className="text-center text-xl md:text-2xl font-semibold text-gray-900 leading-snug">
@@ -581,7 +499,7 @@ export default function StartPage() {
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setStep('zoekLeeftijd')}
+                onClick={() => setStep('fotoVoorkeur')}
                 className="flex-1 py-4 rounded-full border-2 border-gray-300 bg-white font-semibold text-gray-800"
               >
                 Terug
@@ -606,9 +524,9 @@ export default function StartPage() {
             <p className="text-lg font-medium text-gray-800 px-2 leading-relaxed">
               We zijn vrouwen aan het zoeken die bij je wensen passen…..
             </p>
-            {zoekLeeftijdSamenvatting ? (
+            {eigenschapIds.size > 0 ? (
               <p className="text-sm text-gray-600 px-2">
-                Leeftijd: {zoekLeeftijdSamenvatting} · {eigenschapIds.size}{' '}
+                {eigenschapIds.size}{' '}
                 {eigenschapIds.size === 1 ? 'wens' : 'wensen'} geselecteerd
               </p>
             ) : null}
@@ -629,11 +547,6 @@ export default function StartPage() {
                     {fotoVoorkeurLabel} foto&apos;s gestuurd door vrouwen op het platform.
                   </p>
                 ) : null}
-                <p className="text-center text-base md:text-lg text-gray-700 leading-relaxed px-2">
-                  We hebben{' '}
-                  <span className="text-primary font-bold tabular-nums">{matchCount}</span>{' '}
-                  vrouwen gevonden die bij je wensen passen.
-                </p>
                 <p className="text-center text-sm text-gray-600">
                   Maak hieronder een account om verder te gaan.
                 </p>
