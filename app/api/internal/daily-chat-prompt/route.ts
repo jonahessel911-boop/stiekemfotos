@@ -4,21 +4,19 @@ import {
   amsterdamHourMinute,
   loadProfilesForDailyPrompt,
   maybeSendDailyChatPromptForUser,
-  scheduledMinuteForUserOnDay,
 } from "@/lib/server/dailyChatPrompt";
 import { listUsers } from "@/lib/server/users";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Doelvenster: 21:00–22:00 Europe/Amsterdam (winter en zomertijd allebei).
- * Vercel cron draait in UTC; deze route checkt zelf de Amsterdam-tijd, dus de
- * crontab in `vercel.json` mag het venster ruim afdekken (we slaan binnen de
- * route alles buiten 21:xx Amsterdam over).
+ * Hobby (Vercel): max. één cron-run per dag (geen elke-10-minuten-schema).
+ * vercel.json triggert daarom 1× per dag rond 19:00 UTC; Vercel mag dat
+ * binnen dat uur ± uitstellen (Hobby-precision).
  *
- * Elke user krijgt 1 stabiele “random” minuutslot 0-59. Op de cron-run waarbij
- * `currentAmsterdamMinute >= slot` (en de mail vandaag nog niet ging),
- * wordt verstuurd.
+ * Avondvenster Europe/Amsterdam: uren 20–22 zodat zowel zomer (19 UTC ≈ 21)
+ * als winter (19 UTC ≈ 20) in het venster valt. Binnen één run verwerken we
+ * alle users die vandaag nog geen mail kregen (geen minuut-slots meer).
  */
 function isAuthorized(req: Request): boolean {
   const expected = process.env.ENGAGEMENT_CRON_SECRET?.trim();
@@ -36,7 +34,8 @@ export async function GET(req: Request) {
   const { hour, minute } = amsterdamHourMinute();
   const force = new URL(req.url).searchParams.get("force") === "1";
 
-  if (!force && hour !== 21) {
+  const inEveningWindow = hour >= 20 && hour <= 22;
+  if (!force && !inEveningWindow) {
     return NextResponse.json({
       ok: true,
       skipped: "outside-window",
@@ -49,7 +48,6 @@ export async function GET(req: Request) {
   const profiles = await loadProfilesForDailyPrompt();
 
   let sent = 0;
-  let skippedNotDue = 0;
   let skippedAlreadySent = 0;
   let skippedOther = 0;
   let errors = 0;
@@ -59,13 +57,6 @@ export async function GET(req: Request) {
     if (user.lastDailyChatPromptDay === todayKey) {
       skippedAlreadySent += 1;
       continue;
-    }
-    if (!force) {
-      const slot = scheduledMinuteForUserOnDay(user.id, todayKey);
-      if (minute < slot) {
-        skippedNotDue += 1;
-        continue;
-      }
     }
     try {
       const r = await maybeSendDailyChatPromptForUser(user, profiles, todayKey);
@@ -85,7 +76,6 @@ export async function GET(req: Request) {
     forced: force,
     sent,
     skippedAlreadySent,
-    skippedNotDue,
     skippedOther,
     errors,
   });

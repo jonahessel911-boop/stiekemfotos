@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/internal/daily-chat-prompt",
-      "schedule": "*/10 19-21 * * *"
+      "schedule": "0 19 * * *"
     }
   ]
 }
