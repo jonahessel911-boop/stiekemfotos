@@ -569,11 +569,12 @@ async function generateAiDistinctAppearance(input: {
   const extraConstraint = appearanceConstraintForPhenotype(input.phenotype);
   const everydayConstraint = input.everydayLook
     ? [
-        "UGLY/PLAIN LOOK (mandatory and STRONG): she should read as a distinctly UNATTRACTIVE everyday woman — clearly below catalogue-beauty average. NOT pretty, NOT magazine, NOT influencer.",
-        "BODY TYPE (mandatory): she is clearly on the heavier side — chubby/plus-size with soft thick midsection, visible belly roll, full hips and thighs, soft fleshy arms, round fuller face, double chin. She is NOT slim, NOT toned, NOT fit, NOT athletic.",
-        "FORBIDDEN beauty words: never use stunning, gorgeous, flawless, beautiful, pretty, attractive, supermodel, runway, goddess, perfect skin, sculpted, sharp jawline, plump lips, full lips, slim, slender, toned, fit, athletic, curvy hourglass.",
-        "REQUIRED unflattering traits (pick several, weave naturally): oily or blotchy skin with visible pores, scattered acne or blemishes, slightly crooked or yellowed teeth, asymmetric face, large or hooked nose, weak chin or double chin, tired puffy under-eyes with dark circles, thin lips, frizzy or greasy unwashed hair, mousy hair color, chubby plus-size body with belly roll and thick thighs, soft fleshy arms, no makeup or smudged old makeup, plain neutral expression, awkward posture.",
-        "Stay respectful and adult — she is a real ordinary heavier woman not a caricature. Describe plainly, do not mock.",
+        "PLAIN AVERAGE FACE (mandatory + STRONG): she must read as a totally average ordinary Dutch 20-something — the type of face you would scroll past on TikTok without a second look. NOT pretty, NOT cute, NOT magazine, NOT influencer, NOT model.",
+        "FACE (concrete tells of average-not-pretty): forgettable everyday features, round or pear-shaped face shape with no defined jawline, soft cheeks, ordinary nose (small forgettable OR slightly large round), thin or average lips (NEVER plump or full), small or average eyes with no eyeliner, slight facial asymmetry, NO makeup or only barely visible mascara, mild forehead/cheek acne or small blemishes, slightly puffy under-eyes, blotchy uneven skin tone, dull skin, light freckles ok, neutral relaxed mouth.",
+        "HAIR (concrete tells): stringy slightly greasy uncombed straight or limp wavy hair partly covering forehead or hanging flat against scalp, mousy dirty-blonde OR plain medium brown OR dull dark brown, no styling, no shine, no salon look.",
+        "BODY (mandatory): slightly heavier than runway-thin — average everyday build, soft natural body without gym tone, no abs, no hourglass, no model proportions. NOT slim, NOT toned, NOT fit, NOT athletic. Ordinary inexpensive non-flattering clothing.",
+        "FORBIDDEN beauty words (NEVER use): stunning, gorgeous, flawless, beautiful, pretty, attractive, cute, supermodel, runway, goddess, perfect skin, sculpted, sharp jawline, defined jawline, high cheekbones, plump lips, full lips, slim, slender, toned, fit, athletic, hourglass, perfect, striking, mesmerizing, captivating.",
+        "Stay respectful and adult — she is a real ordinary Dutch woman, NOT a caricature, NOT mocked. Just describe plainly as raw unfiltered average.",
       ].join(" ")
     : "";
 
@@ -768,8 +769,14 @@ const PROFILE_PROMPT_SINGLE_SHOT_LEAD =
  * tegenkomt in de supermarkt: gewoon, vermoeid, soms onhandig — maar wel een echt
  * mens, niet karikatuur of belachelijk gemaakt.
  */
+/**
+ * Doel: "echte gemiddelde NL meid" zoals een raw TikTok-frame zonder filter —
+ * geen modelgezicht, geen glamour, geen catalogus. Niet karikatuur, gewoon
+ * plain average. Heel concreet over GEZICHT (de belangrijkste tell van "te knap")
+ * en zachter over body (slightly heavier than runway-thin, maar niet karikatuur-dik).
+ */
 const PROFILE_PROMPT_EVERYDAY_LOOK_LEAD =
-  "Subject is a plain ordinary-looking woman, distinctly below catalogue-beauty average, not pretty in a magazine way. Body type is clearly on the heavier side: chubby plus-size build, soft thick midsection with visible belly roll, full hips and thicker thighs, soft fleshy arms, round fuller face, double chin tendency, NOT skinny, NOT toned, NOT fit. Visibly unflattering everyday traits: oily or blotchy skin with visible pores, scattered acne or blemishes, slightly crooked teeth, asymmetric face, tired puffy under-eyes with dark circles, frizzy or greasy unwashed hair, no makeup or smudged old makeup, dull lighting that makes her look washed out, neutral non-flattering expression, awkward posture, ordinary cheap clothing that stretches over her curves. Looks like a real average heavier woman not a model, deliberately unglamorous, plain Jane next-door energy. ";
+  "Subject is a plain average everyday woman, the kind of face you would scroll past without noticing. Face: forgettable average features, slightly round or pear-shaped face shape, no defined jawline, soft cheeks, small ordinary nose or slightly large round nose, thin or average lips not plump, small or average-spaced eyes with no eyeliner, slightly asymmetric features, NO makeup or only barely visible mascara, mild forehead acne or small blemishes, slightly puffy under-eyes, blotchy uneven skin tone, light freckles or dull skin, neutral non-expressive expression with mouth slightly closed or relaxed. Hair: stringy slightly greasy uncombed straight or limp wavy hair partly covering forehead or hanging flat against scalp, mousy dirty-blonde or plain medium brown, no styling, no shine, no salon look. Body: slightly heavier than runway-thin, average everyday build, soft natural body without gym tone, no abs, no model proportions, ordinary inexpensive non-flattering clothing. Overall vibe: raw unfiltered ordinary TikTok still of a normal Dutch 20-something with no glow-up, deliberately unremarkable, NOT pretty, NOT model, NOT influencer, NOT catalogue. ";
 
 /** Kort als budget krap is — lange lead wordt eerst hiernaartoe ingekort. */
 const PROFILE_PROMPT_STYLE_COMPACT =
@@ -1150,7 +1157,7 @@ export async function createRandomProfileWithPhotos(
     everydayLook,
   });
   const everydayIdentitySuffix = everydayLook
-    ? " — plain unattractive everyday woman, distinctly below catalogue-beauty average, chubby plus-size body with soft belly roll and thick thighs and full hips, soft fleshy arms, round fuller face with double chin tendency, visible skin imperfections, asymmetry, no makeup, NOT slim, NOT toned, NOT pretty, NOT model, NOT influencer"
+    ? " — plain average ordinary Dutch woman, raw unfiltered everyday face you would scroll past, forgettable average features, no defined jawline, soft cheeks, ordinary nose, thin or average lips, small ordinary eyes with no makeup, slightly asymmetric, slightly puffy under-eyes, blotchy skin with mild acne, stringy uncombed slightly greasy hair flat against scalp, average build slightly heavier than runway-thin without gym tone, NOT pretty, NOT cute, NOT model, NOT influencer, NOT catalogue, deliberately unglamorous TikTok-raw look"
     : "";
   const identityLock =
     aiLook && aiLook.length >= 32
