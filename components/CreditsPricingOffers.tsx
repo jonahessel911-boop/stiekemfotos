@@ -113,8 +113,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
     <div className="space-y-5">
       {showIntro ? (
         <p className="text-sm text-gray-600 leading-relaxed">
-          <strong>100 credits = €10</strong> per ontgrendelde foto. Chatten kost geen credits. Kies
-          een pakket om op te waarderen.{' '}
+          <strong>100 credits = €10</strong> per ontgrendelde foto. Kies een pakket om op te waarderen.{' '}
           <span className="font-semibold text-primary">
             Actie: 3 foto&apos;s (300 credits) voor €19,99 — adviesprijs €29,99.
           </span>

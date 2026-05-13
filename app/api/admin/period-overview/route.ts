@@ -58,8 +58,7 @@ type PeriodRow = {
    */
   used100CreditsPct: number | null;
   /**
-   * % cohort-signups dat z'n 300 gratis credits volledig heeft opgemaakt.
-   * Definitie: ≥3 foto-unlocks (300 credits / 100 per unlock).
+   * % cohort-signups dat ≥3 foto-unlocks heeft gedaan (300 credits aan foto's).
    */
   usedFreeCreditsPct: number | null;
 };

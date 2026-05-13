@@ -54,7 +54,7 @@ export default function CreditsPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Credits</h1>
             <p className="text-sm text-gray-600 mt-1">
-              Overzicht van je saldo. Chatten kost geen credits.
+              Overzicht van je saldo.
             </p>
           </div>
         </div>
@@ -83,9 +83,6 @@ export default function CreditsPage() {
             {balance}
           </p>
           <p className="text-sm text-gray-500 mt-1">credits over</p>
-          <p className="text-xs text-gray-400 mt-6">
-            Chatberichten kosten 0 credits
-          </p>
         </div>
 
         <section className="rounded-2xl border border-gray-200/80 bg-white shadow-sm overflow-hidden mb-10">
@@ -127,7 +124,7 @@ export default function CreditsPage() {
         <section className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-5 md:p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900 mb-1">Credits bijkopen</h2>
           <p className="text-sm text-gray-600 mb-6">
-            Koop credits voor foto-unlocks en extra&apos;s. Chatten kost geen credits.
+            Koop credits voor foto-unlocks en extra&apos;s.
           </p>
           <CreditsPricingOffers showIntro={false} onAfterPurchase={() => void refresh()} />
         </section>

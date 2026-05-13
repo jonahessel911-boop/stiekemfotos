@@ -577,7 +577,7 @@ function PeriodOverviewTable({
               </th>
               <th
                 className="border-b border-gray-200 px-4 py-3 text-right font-semibold"
-                title="Van signups in deze maand: % dat de 300 gratis credits volledig heeft opgemaakt (≥3 foto-unlocks)"
+                title="Van signups in deze maand: % dat ≥3 foto's heeft ontgrendeld (300 credits aan foto-unlocks)"
               >
                 300 credits used
               </th>

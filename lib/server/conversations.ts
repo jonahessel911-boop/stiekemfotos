@@ -2502,9 +2502,9 @@ function applyCreditsExhaustedNudgeForUser(
   ownerUserId: string,
   user: UserRecord
 ): boolean {
-  // Op het foto-platform is chatten gratis, dus deze "credits op"-nudge
-  // hoort niet meer thuis. We laten de functie wel staan zodat oude
-  // velden (creditsExhaustedNudgeSentAt) blijven werken.
+  // Chatberichten kosten credits (CREDITS_PER_MESSAGE). Zodra de user
+  // door zijn free-start-budget heen is en nog niets heeft gekocht,
+  // sturen we eenmalig een gentle nudge vanuit een profiel.
   if (CREDITS_PER_MESSAGE <= 0) return false;
   if (user.firstCreditPurchaseAt) return false;
   const mine = list.filter((c) => c.ownerUserId === ownerUserId);
@@ -3662,10 +3662,9 @@ export async function appendUserGiftMessage(
 }
 
 /**
- * Chatten is gratis op het foto-platform: deze deduct doet niets meer
- * zolang `CREDITS_PER_MESSAGE === 0`. Het wordt nog wel aangeroepen in
- * de flow zodat we hem snel kunnen aanzetten als we ooit terug willen
- * naar betaalde berichten.
+ * Trek `CREDITS_PER_MESSAGE` af voor elke verstuurde chat-message.
+ * Werkt alleen wanneer Supabase + credit_ledger geconfigureerd zijn;
+ * in lokale demo-mode wordt het alleen gelogd.
  */
 async function deductMessageCredits(
   userId: string | null,

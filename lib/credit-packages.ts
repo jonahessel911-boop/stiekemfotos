@@ -11,7 +11,7 @@ Andere pakketten:
 Koop via de prijzen in de app.`;
 
 export const CREDITS_VOICE_LINE_NL =
-  "Chatten kost geen credits. Credits gebruik je voor foto's ontgrendelen — open de prijzen om bij te kopen.";
+  "Credits gebruik je om foto's te ontgrendelen — 100 credits per foto. Open de prijzen om bij te kopen.";
 
 /** Actiebundel (popup / stemteksten): 300 credits, promo vs adviesprijs. */
 export const FEATURED_DEAL_CREDITS = 300;

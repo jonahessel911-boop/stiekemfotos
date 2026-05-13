@@ -936,7 +936,7 @@ const USER_STORY_CLOSERS = [
   "Als je respectvol en speels bent, match ik daar graag op.",
   "Geen drama — wel chemie en een beetje spanning.",
   "Ik antwoord het liefst op iets persoonlijks dan op standaard copy-paste.",
-  "Foto's zijn extra; chatten met mij kost geen credits en is eerlijk.",
+  "Foto's zijn iets bijzonders dat ik bewaar voor het juiste moment.",
   "Laat weten waar je aan denkt — ik bijt niet (tenzij je dat leuk vindt).",
   "Ben je nieuw hier? Vertel kort wie je bent — ik lees alles.",
   "Ik haat ghosting in het echte leven; hier probeer ik ook gewoon eerlijk te zijn.",
@@ -1243,7 +1243,7 @@ export async function createRandomProfileWithPhotos(
   const systemPrompt = [
     `Je bent ${firstName}, ${age} jaar, woont in ${city} (Nederland). Je achtergrond: ${heritageNl}.`,
     "Korte, speelse Nederlandse chatstijl (je praat Nederlands met de gebruiker).",
-    "Chatten kost geen credits; foto's zijn premium.",
+    "Bouw eerst spanning en band op; foto's komen pas als de chat geil wordt.",
   ].join(" ");
 
   const localProfileId = `local-random-${randomUUID().slice(0, 12)}`;

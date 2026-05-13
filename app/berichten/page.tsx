@@ -60,6 +60,7 @@ import {
   type ProfilePendingSend,
 } from '@/lib/profile-pending-send';
 import {
+  CONVERSATION_STARTER_OPTIONS,
   DEFAULT_PHOTO_REQUEST_DRAFT,
   PROFILE_PHOTO_REQUEST_NAV_KEY,
   type ProfilePhotoRequestNavPayload,
@@ -2746,6 +2747,32 @@ function BerichtenInner() {
                   </div>
                 )}
                 <div className="mx-auto w-full max-w-3xl space-y-2">
+                  {displayMessages.length === 0 && !sendingHere && !pendingImage && (
+                    <div className="flex flex-wrap items-center gap-2 px-1 pb-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                        Snel starten
+                      </span>
+                      {CONVERSATION_STARTER_OPTIONS.map((opener) => (
+                        <button
+                          key={opener}
+                          type="button"
+                          onClick={() => {
+                            setInput(opener);
+                            requestAnimationFrame(() => {
+                              try {
+                                composerTextareaRef.current?.focus({ preventScroll: true });
+                              } catch {
+                                composerTextareaRef.current?.focus();
+                              }
+                            });
+                          }}
+                          className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 active:scale-[0.97]"
+                        >
+                          {opener}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {replyToId && (
                     <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
                       <div className="min-w-0">
@@ -3103,8 +3130,7 @@ function CreditsSidebar({
               Foto’s ontgrendelen
             </div>
             <p className="text-xs opacity-85 mt-2 leading-snug">
-              Chatten kost geen credits · 1 foto = {CREDITS_PER_PHOTO_UNLOCK} credits (€10) · actie 3
-              foto&apos;s €19,99 i.p.v. €29,99
+              1 foto = {CREDITS_PER_PHOTO_UNLOCK} credits (€10) · actie 3 foto&apos;s €19,99 i.p.v. €29,99
             </p>
           </div>
           <CreditCard className="w-8 h-8 opacity-80" />
@@ -3128,13 +3154,13 @@ function CreditsSidebar({
         </ul>
         <ul className="space-y-4 text-sm mt-4">
           <li className="flex gap-3">
-            <span className="text-lg">💬</span> Chatten zonder credits
-          </li>
-          <li className="flex gap-3">
             <span className="text-lg">📸</span> Custom foto’s op aanvraag
           </li>
           <li className="flex gap-3">
             <span className="text-lg">⚡️</span> Direct te ontgrendelen
+          </li>
+          <li className="flex gap-3">
+            <span className="text-lg">🔒</span> Discreet & persoonlijk
           </li>
         </ul>
         <Button
@@ -3146,16 +3172,7 @@ function CreditsSidebar({
           Koop Credits <ArrowRight className="inline ml-1 w-4 h-4" />
         </Button>
         <p className="text-center text-xs mt-4 opacity-70">
-          {CREDITS_PER_MESSAGE <= 0 ? (
-            balance < CREDITS_PER_PHOTO_UNLOCK ? (
-              <span>
-                Nog {balance} credits. Voor het ontgrendelen van een foto heb je {CREDITS_PER_PHOTO_UNLOCK}{' '}
-                credits nodig (tarief: €10 per foto).
-              </span>
-            ) : (
-              <>Je hebt {balance} credits voor foto&apos;s.</>
-            )
-          ) : balance < CREDITS_PER_PHOTO_UNLOCK ? (
+          {balance < CREDITS_PER_PHOTO_UNLOCK ? (
             <span className="font-semibold">
               Te weinig credits voor een foto — open prijzen om bij te kopen.
             </span>

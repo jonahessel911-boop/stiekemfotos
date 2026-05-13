@@ -245,9 +245,9 @@ export default function PlatformOnboardingGate() {
             Welkom op Stiekemefotos
           </h1>
           <p className="mb-3 text-base leading-relaxed text-gray-600">
-            Hier chat je privé met echte profielen: onbeperkt praten, flirten en foto&apos;s
-            ontgrendelen die ze speciaal voor jou maken. Credits gebruik je voor persoonlijke
-            plaatjes — chatten zelf kost geen credits.
+            Hier chat je privé met echte profielen: praten, flirten en foto&apos;s ontgrendelen
+            die ze speciaal voor jou maken. Credits gebruik je in de chat en voor persoonlijke
+            plaatjes.
           </p>
           <p className="mb-10 text-sm leading-relaxed text-gray-500">
             Nog één scherm met de belangrijkste voordelen — daarna ga je direct verder in de app.
@@ -298,20 +298,20 @@ export default function PlatformOnboardingGate() {
             className="text-balance text-center text-3xl font-extrabold leading-tight tracking-tight text-gray-900 md:text-4xl"
           >
             <span className="mr-1">🌶️</span>
-            Onbeperkt chatten —{" "}
-            <span className="text-primary">helemaal gratis</span>
+            Stiekeme foto&apos;s,{" "}
+            <span className="text-primary">precies wat jij wilt</span>
           </h1>
 
           <p className="mx-auto mt-4 max-w-md text-center text-[15px] leading-relaxed text-gray-600 md:text-base">
-            Chat onbeperkt en zonder credits met hete meiden die écht zin hebben om met jou te
-            praten.
+            Chat met hete meiden die écht zin hebben om met jou te praten en stiekem
+            persoonlijke foto&apos;s te delen.
           </p>
 
           <div className="mx-auto mt-6 max-w-md rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/10 via-rose-100/60 to-rose-50/60 px-5 py-4 text-center shadow-sm">
             <p className="text-[15px] font-bold leading-snug text-gray-900 md:text-base">
               Je account begint met{" "}
-              <span className="text-primary">300 gratis credits</span> — genoeg voor je eerste{" "}
-              <span className="text-primary">3 naakte foto&apos;s</span>.
+              <span className="text-primary">200 credits</span> — genoeg om te chatten en je{" "}
+              <span className="text-primary">eerste foto</span> te ontgrendelen.
             </p>
           </div>
 

@@ -12,12 +12,12 @@ export type CreditPurchaseRecord = {
   priceLabel: string;
 };
 
-/** Chatten verbruikt geen credits; ontgrendelen van foto's wel (zie CREDITS_PER_PHOTO_UNLOCK). */
-export const CREDITS_PER_MESSAGE = 0;
+/** Elke verstuurde chat-message kost 5 credits; een foto ontgrendelen kost 100 credits. */
+export const CREDITS_PER_MESSAGE = 5;
 export const CREDITS_PER_PHOTO_UNLOCK = 100;
 
-/** Startbalans voor elk nieuw account (eenmalig, voor foto-unlocks). */
-export const INITIAL_FREE_CREDITS = 300;
+/** Startbalans voor elk nieuw account. */
+export const INITIAL_FREE_CREDITS = 200;
 
 export function notifyCreditsUpdated() {
   if (typeof window !== "undefined") {
