@@ -570,9 +570,10 @@ async function generateAiDistinctAppearance(input: {
   const everydayConstraint = input.everydayLook
     ? [
         "UGLY/PLAIN LOOK (mandatory and STRONG): she should read as a distinctly UNATTRACTIVE everyday woman — clearly below catalogue-beauty average. NOT pretty, NOT magazine, NOT influencer.",
-        "FORBIDDEN beauty words: never use stunning, gorgeous, flawless, beautiful, pretty, attractive, supermodel, runway, goddess, perfect skin, sculpted, sharp jawline, plump lips, full lips.",
-        "REQUIRED unflattering traits (pick several, weave naturally): oily or blotchy skin with visible pores, scattered acne or blemishes, slightly crooked or yellowed teeth, asymmetric face, large or hooked nose, weak chin or double chin, tired puffy under-eyes with dark circles, thin lips, frizzy or greasy unwashed hair, mousy hair color, untoned chubby body, soft arms, small belly, no makeup or smudged old makeup, plain neutral expression, awkward posture.",
-        "Stay respectful and adult — she is a real ordinary woman not a caricature. Describe plainly, do not mock.",
+        "BODY TYPE (mandatory): she is clearly on the heavier side — chubby/plus-size with soft thick midsection, visible belly roll, full hips and thighs, soft fleshy arms, round fuller face, double chin. She is NOT slim, NOT toned, NOT fit, NOT athletic.",
+        "FORBIDDEN beauty words: never use stunning, gorgeous, flawless, beautiful, pretty, attractive, supermodel, runway, goddess, perfect skin, sculpted, sharp jawline, plump lips, full lips, slim, slender, toned, fit, athletic, curvy hourglass.",
+        "REQUIRED unflattering traits (pick several, weave naturally): oily or blotchy skin with visible pores, scattered acne or blemishes, slightly crooked or yellowed teeth, asymmetric face, large or hooked nose, weak chin or double chin, tired puffy under-eyes with dark circles, thin lips, frizzy or greasy unwashed hair, mousy hair color, chubby plus-size body with belly roll and thick thighs, soft fleshy arms, no makeup or smudged old makeup, plain neutral expression, awkward posture.",
+        "Stay respectful and adult — she is a real ordinary heavier woman not a caricature. Describe plainly, do not mock.",
       ].join(" ")
     : "";
 
@@ -768,7 +769,7 @@ const PROFILE_PROMPT_SINGLE_SHOT_LEAD =
  * mens, niet karikatuur of belachelijk gemaakt.
  */
 const PROFILE_PROMPT_EVERYDAY_LOOK_LEAD =
-  "Subject is a plain ordinary-looking woman, distinctly below catalogue-beauty average, not pretty in a magazine way. Visibly unflattering everyday traits: oily or blotchy skin with visible pores, scattered acne or blemishes, slightly crooked teeth, asymmetric face, tired puffy under-eyes with dark circles, frizzy or greasy unwashed hair, untoned or chubby body with small belly roll and soft arms, double chin tendency, no makeup or smudged old makeup, dull lighting that makes her look washed out, neutral non-flattering expression, awkward posture, ordinary cheap clothing. Looks like a real average woman not a model, deliberately unglamorous, plain Jane next-door energy. ";
+  "Subject is a plain ordinary-looking woman, distinctly below catalogue-beauty average, not pretty in a magazine way. Body type is clearly on the heavier side: chubby plus-size build, soft thick midsection with visible belly roll, full hips and thicker thighs, soft fleshy arms, round fuller face, double chin tendency, NOT skinny, NOT toned, NOT fit. Visibly unflattering everyday traits: oily or blotchy skin with visible pores, scattered acne or blemishes, slightly crooked teeth, asymmetric face, tired puffy under-eyes with dark circles, frizzy or greasy unwashed hair, no makeup or smudged old makeup, dull lighting that makes her look washed out, neutral non-flattering expression, awkward posture, ordinary cheap clothing that stretches over her curves. Looks like a real average heavier woman not a model, deliberately unglamorous, plain Jane next-door energy. ";
 
 /** Kort als budget krap is — lange lead wordt eerst hiernaartoe ingekort. */
 const PROFILE_PROMPT_STYLE_COMPACT =
@@ -1149,7 +1150,7 @@ export async function createRandomProfileWithPhotos(
     everydayLook,
   });
   const everydayIdentitySuffix = everydayLook
-    ? " — plain unattractive everyday woman, distinctly below catalogue-beauty average, visible skin imperfections, asymmetry, untoned soft body, no makeup, NOT pretty, NOT model, NOT influencer"
+    ? " — plain unattractive everyday woman, distinctly below catalogue-beauty average, chubby plus-size body with soft belly roll and thick thighs and full hips, soft fleshy arms, round fuller face with double chin tendency, visible skin imperfections, asymmetry, no makeup, NOT slim, NOT toned, NOT pretty, NOT model, NOT influencer"
     : "";
   const identityLock =
     aiLook && aiLook.length >= 32
