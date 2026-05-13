@@ -738,11 +738,19 @@ function pickVerificationDirective(
 ): string {
   /** Papier mag alleen de voornaam tonen — geen andere woorden (anders kopieert het model promptregels). */
   const onlyName = `scrap shows ONLY messy handwritten "${profileName}" and no other text`;
+  /**
+   * EXPLICIET single shot — anders interpreteert het model "scrap with name"
+   * vaak als ID-card stijl met meerdere face-panels. We voorkomen dat door
+   * elke directive te beginnen met "one single full-frame photograph, just
+   * one face in the entire image".
+   */
+  const singleShotPrefix =
+    "one single full-frame photograph, just one face in the entire image, one whole woman from one camera, ";
   const variants = [
-    `mirror selfie one hand holds torn scrap ${onlyName} ballpoint ink`,
-    `small scrap resting on bare stomach ${onlyName} pencil scribble`,
-    `fingertips pinch folded lined scrap ${onlyName} uneven letters`,
-    `arm-length scrap note near chin ${onlyName} ugly natural handwriting`,
+    `${singleShotPrefix}mirror selfie one hand holds torn scrap ${onlyName} ballpoint ink`,
+    `${singleShotPrefix}small scrap resting on bare stomach ${onlyName} pencil scribble`,
+    `${singleShotPrefix}fingertips pinch folded lined scrap ${onlyName} uneven letters`,
+    `${singleShotPrefix}arm-length scrap note near chin ${onlyName} ugly natural handwriting`,
   ];
   return hashPick(identitySeed, `verify-${photoIndex}`, variants);
 }
@@ -860,7 +868,7 @@ function buildRandomProfileImagePrompt(params: {
   }
 
   const verifyLead = params.includeVerification
-    ? "Real torn paper prop messy pen or pencil only the first name written on it no other words. "
+    ? "One single full-frame candid mirror selfie of one whole woman holding a real torn paper prop. The paper has only her first name written on it in messy pen or pencil ink, no other words. The entire image is just this one woman in one frame from her own smartphone. "
     : "";
 
   const everydayLead = params.everydayLook ? PROFILE_PROMPT_EVERYDAY_LOOK_LEAD : "";
@@ -1151,17 +1159,26 @@ export async function createRandomProfileWithPhotos(
     "dark phone case in reflection",
     "matte case smartphone visible in mirror or hand",
   ]);
-  const aiLook = await generateAiDistinctAppearance({
-    firstName,
-    age,
-    heritageNl,
-    country,
-    city,
-    phenotype,
-    uniquenessNonce: `${randomUUID()}:${Date.now()}`,
-    anchors: appearanceAnchors,
-    everydayLook,
-  });
+  /**
+   * Bij `everydayLook` slaan we de AI-gegenereerde uiterlijk-beschrijving
+   * over. De Grok-output rendert per scene net iets anders en veroorzaakt
+   * identity-drift binnen één profiel. In plaats daarvan bouwen we de
+   * identity volledig uit deterministische hashPick anchors zodat élke
+   * foto exact dezelfde vrouw is.
+   */
+  const aiLook = everydayLook
+    ? null
+    : await generateAiDistinctAppearance({
+        firstName,
+        age,
+        heritageNl,
+        country,
+        city,
+        phenotype,
+        uniquenessNonce: `${randomUUID()}:${Date.now()}`,
+        anchors: appearanceAnchors,
+        everydayLook,
+      });
 
   /**
    * Concrete face-lock — voorkomt identity-drift tussen de 3-6 profielfoto's.
@@ -1256,15 +1273,23 @@ export async function createRandomProfileWithPhotos(
    * wegen zwaarder, en de prompt-budget shrink-logica knipt vanaf het einde
    * van de identity af). We zetten daarom de hard-anchor face-lock direct
    * vooraan zodat hij ook bij truncatie behouden blijft:
-   *   1. "One specific recurring woman, identical face in every shot…"
-   *   2. faceLock (neus/mond/kin/wenkbrauw/markeerteken — concreet)
-   *   3. AI-gegenereerde uniciteit (aiLook) of de generieke fallback
-   *   4. body/skin/hair pick (everydayIdentitySuffix — kort gehouden)
+   *   1. faceLock (neus/mond/kin/wenkbrauw/markeerteken — concreet)
+   *   2. Naam + leeftijd + phenotype-aanker + huid/ogen + jewelry/phone
+   *   3. body/skin/hair pick (everydayIdentitySuffix — kort gehouden)
+   *
+   * Voor everydayLook bouwen we de identity volledig uit deterministische
+   * hashPicks — geen Grok-aiLook en geen `buildVisualIdentityLockString`
+   * (die zou "slim hourglass" / "long loose waves" terugschuiven en met
+   * onze everyday body/hair pick conflicteren).
    */
-  const baseIdentity =
-    aiLook && aiLook.length >= 32
-      ? `One specific recurring woman ${firstName} ${age}, lives in Netherlands (${PHENOTYPE_TRAITS[phenotype].faceHint}): ${aiLook}; ${jewelry}; ${phone}`
-      : buildVisualIdentityLockString(identitySeed, firstName, age, heritageNl, phenotype);
+  let baseIdentity: string;
+  if (everydayLook) {
+    baseIdentity = `One specific recurring woman ${firstName} ${age}, Dutch (${PHENOTYPE_TRAITS[phenotype].faceHint}), ${appearanceAnchors.skin}, ${appearanceAnchors.eyes}; ${jewelry}; ${phone}`;
+  } else if (aiLook && aiLook.length >= 32) {
+    baseIdentity = `One specific recurring woman ${firstName} ${age}, lives in Netherlands (${PHENOTYPE_TRAITS[phenotype].faceHint}): ${aiLook}; ${jewelry}; ${phone}`;
+  } else {
+    baseIdentity = buildVisualIdentityLockString(identitySeed, firstName, age, heritageNl, phenotype);
+  }
   const identityLock = `${faceLock}. ${baseIdentity}${everydayIdentitySuffix}`;
   /** Same string prefixed on every profile photo prompt — persist for chat unlock images. */
   const identityCore = `${identityLock}, ${buildBaseAmateurStyle()}`;
