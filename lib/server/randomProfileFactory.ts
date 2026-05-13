@@ -569,9 +569,10 @@ async function generateAiDistinctAppearance(input: {
   const extraConstraint = appearanceConstraintForPhenotype(input.phenotype);
   const everydayConstraint = input.everydayLook
     ? [
-        "EVERYDAY LOOK (mandatory): she should read as an ordinary believable woman on a dating app, NOT magazine-cover or influencer-glamorous.",
-        "Avoid beauty-standard clichés: do NOT use words like stunning, gorgeous, flawless, supermodel, runway, goddess, perfect skin.",
-        "You MAY mention subtle realistic cues (skin texture, asymmetry, tired under-eyes, plain features) — stay respectful, not mocking.",
+        "UGLY/PLAIN LOOK (mandatory and STRONG): she should read as a distinctly UNATTRACTIVE everyday woman — clearly below catalogue-beauty average. NOT pretty, NOT magazine, NOT influencer.",
+        "FORBIDDEN beauty words: never use stunning, gorgeous, flawless, beautiful, pretty, attractive, supermodel, runway, goddess, perfect skin, sculpted, sharp jawline, plump lips, full lips.",
+        "REQUIRED unflattering traits (pick several, weave naturally): oily or blotchy skin with visible pores, scattered acne or blemishes, slightly crooked or yellowed teeth, asymmetric face, large or hooked nose, weak chin or double chin, tired puffy under-eyes with dark circles, thin lips, frizzy or greasy unwashed hair, mousy hair color, untoned chubby body, soft arms, small belly, no makeup or smudged old makeup, plain neutral expression, awkward posture.",
+        "Stay respectful and adult — she is a real ordinary woman not a caricature. Describe plainly, do not mock.",
       ].join(" ")
     : "";
 
@@ -606,7 +607,7 @@ async function generateAiDistinctAppearance(input: {
             ...(extraConstraint ? [extraConstraint] : []),
             ...(input.everydayLook
               ? [
-                  "Tone: ordinary-next-door energy; believable imperfections ok; explicitly not catalog-model attractiveness.",
+                  "Tone: distinctly below-average plain ordinary woman; visible everyday imperfections required (skin texture, asymmetry, body softness, plain hair); explicitly NOT attractive, NOT model, NOT pretty.",
                 ]
               : []),
             "Reply with ONLY the appearance description.",
@@ -759,9 +760,15 @@ function buildShortInteriorForNameCard(identitySeed: string, photoIndex: number)
 const PROFILE_PROMPT_SINGLE_SHOT_LEAD =
   "Ultra-realistic amateur smartphone photo grain sensor noise uneven warm lamp light handheld imperfect framing raw candid vibe at home not studio not catalogue. ";
 
-/** Extra voor “minder knap”: minder glamour in het beeld zelf. */
+/**
+ * Extra voor “minder knap”: aanzienlijk minder aantrekkelijk dan een standaard
+ * dating-app-foto. We willen GEEN model, GEEN influencer, GEEN catalogusfoto.
+ * Beeld moet voelen als de gemiddelde-tot-onaantrekkelijke vrouw die haar buurman
+ * tegenkomt in de supermarkt: gewoon, vermoeid, soms onhandig — maar wel een echt
+ * mens, niet karikatuur of belachelijk gemaakt.
+ */
 const PROFILE_PROMPT_EVERYDAY_LOOK_LEAD =
-  "Subject looks like an everyday person not a fashion model, natural skin texture visible, believable asymmetry, light or no makeup, avoid catalogue-beauty polish. ";
+  "Subject is a plain ordinary-looking woman, distinctly below catalogue-beauty average, not pretty in a magazine way. Visibly unflattering everyday traits: oily or blotchy skin with visible pores, scattered acne or blemishes, slightly crooked teeth, asymmetric face, tired puffy under-eyes with dark circles, frizzy or greasy unwashed hair, untoned or chubby body with small belly roll and soft arms, double chin tendency, no makeup or smudged old makeup, dull lighting that makes her look washed out, neutral non-flattering expression, awkward posture, ordinary cheap clothing. Looks like a real average woman not a model, deliberately unglamorous, plain Jane next-door energy. ";
 
 /** Kort als budget krap is — lange lead wordt eerst hiernaartoe ingekort. */
 const PROFILE_PROMPT_STYLE_COMPACT =
@@ -1079,7 +1086,13 @@ export type CreateRandomProfileOptions = {
 export async function createRandomProfileWithPhotos(
   opts?: CreateRandomProfileOptions
 ): Promise<CreatedRandomProfile> {
-  const everydayLook = Boolean(opts?.everydayLook);
+  /**
+   * Standaard "plain"/"lelijker" — random profielen mogen NIET als
+   * modellen ogen. Indien expliciet `everydayLook: false` wordt
+   * meegegeven (bijv. vanuit een admin-knop "knap"), gaan we terug
+   * naar de oude glamour-flow.
+   */
+  const everydayLook = opts?.everydayLook === false ? false : true;
   const writable = getSupabaseWritableClient();
   if (!writable) {
     throw new Error("Supabase niet beschikbaar. Zet SUPABASE_URL + sleutel in env.");
@@ -1136,7 +1149,7 @@ export async function createRandomProfileWithPhotos(
     everydayLook,
   });
   const everydayIdentitySuffix = everydayLook
-    ? " — ordinary believable appearance, not glamour-model or influencer-perfect; natural skin texture ok"
+    ? " — plain unattractive everyday woman, distinctly below catalogue-beauty average, visible skin imperfections, asymmetry, untoned soft body, no makeup, NOT pretty, NOT model, NOT influencer"
     : "";
   const identityLock =
     aiLook && aiLook.length >= 32
