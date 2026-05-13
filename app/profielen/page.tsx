@@ -240,10 +240,10 @@ export default function ProfielenPage() {
 
                 {isProfileDisplayedOnline(profile.id) ? (
                   <div
-                    className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 shadow-md ring-1 ring-primary/30"
+                    className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 shadow-md ring-1 ring-emerald-500/40"
                     title="Online"
                   >
-                    <span className="online-dot-pulse h-3 w-3 rounded-full bg-primary" />
+                    <span className="online-dot-pulse h-3 w-3 rounded-full bg-emerald-500" />
                   </div>
                 ) : null}
                 

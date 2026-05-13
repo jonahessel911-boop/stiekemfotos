@@ -216,7 +216,7 @@ export default function ProfielDetailPage() {
                   {profile.name}, {profile.age}
                 </h1>
                 {showOnlineUi ? (
-                  <span className="online-dot-pulse inline-block h-2.5 w-2.5 rounded-full bg-primary/70" />
+                  <span className="online-dot-pulse inline-block h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
                 ) : null}
               </div>
               <p className="mt-1 flex items-center gap-1 text-sm text-white/90">
@@ -393,7 +393,7 @@ export default function ProfielDetailPage() {
                   <h1 className="flex items-center gap-2 text-3xl font-bold text-gray-900">
                     {profile.name}, {profile.age}
                     {showOnlineUi ? (
-                      <span className="online-dot-pulse ml-1 inline-block h-3 w-3 rounded-full bg-primary" />
+                      <span className="online-dot-pulse ml-1 inline-block h-3 w-3 rounded-full bg-emerald-500" />
                     ) : null}
                   </h1>
                   <p className="text-sm font-medium text-primary-deep">Reageert meestal binnen enkele minuten</p>

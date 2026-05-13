@@ -2004,7 +2004,7 @@ function BerichtenInner() {
                       className="w-12 h-12 rounded-2xl object-cover ring-2 ring-white shadow-sm"
                     />
                     {chat.isOnline && (
-                      <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-primary border-2 border-white rounded-full" />
+                      <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -2088,7 +2088,7 @@ function BerichtenInner() {
                       className="h-14 w-14 rounded-2xl object-cover ring-2 ring-white shadow-sm"
                     />
                     {isPeerOnlineNow && (
-                      <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-primary" />
+                      <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
