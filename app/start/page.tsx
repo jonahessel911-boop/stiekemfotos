@@ -38,7 +38,7 @@ const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   {
     id: 'q4',
     tekst:
-      'Hoe specifieker je bent, hoe beter de meiden weten wat je écht geil vindt.',
+      'Hoe specifieker je bent over de wensen van de foto, hoe beter de meiden weten wat je écht geil vindt.',
   },
 ];
 
