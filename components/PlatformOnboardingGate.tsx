@@ -36,6 +36,24 @@ function shouldSkipPath(pathname: string): boolean {
   );
 }
 
+/** iOS/Safari: avoid `scrollTo({ behavior: "instant" })` — set scrollTop directly. */
+function resetHTMLElementScroll(el: HTMLElement | null) {
+  if (!el) return;
+  el.scrollTop = 0;
+  el.scrollLeft = 0;
+}
+
+function resetWindowAndDocumentScroll() {
+  window.scrollTo(0, 0);
+  const root = document.scrollingElement ?? document.documentElement;
+  root.scrollTop = 0;
+  root.scrollLeft = 0;
+  document.documentElement.scrollTop = 0;
+  document.documentElement.scrollLeft = 0;
+  document.body.scrollTop = 0;
+  document.body.scrollLeft = 0;
+}
+
 export default function PlatformOnboardingGate() {
   const pathname = usePathname() ?? "/";
   const skip = useMemo(() => shouldSkipPath(pathname), [pathname]);
@@ -81,10 +99,36 @@ export default function PlatformOnboardingGate() {
 
   useLayoutEffect(() => {
     if (!open || skip) return;
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    if (step === 6) {
-      step6ScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    }
+    resetWindowAndDocumentScroll();
+    if (step === 6) resetHTMLElementScroll(step6ScrollRef.current);
+  }, [open, skip, step]);
+
+  /** Mobile (iOS): layout + images settle after paint — retry scroll reset. */
+  useEffect(() => {
+    if (!open || skip) return;
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      resetWindowAndDocumentScroll();
+      if (step === 6) resetHTMLElementScroll(step6ScrollRef.current);
+    };
+    run();
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(run);
+    });
+    const t1 = setTimeout(run, 120);
+    const t2 = setTimeout(run, 320);
+    const t3 = setTimeout(run, 600);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, [open, skip, step]);
 
   useEffect(() => {
@@ -222,7 +266,7 @@ export default function PlatformOnboardingGate() {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex flex-col overflow-hidden bg-white text-gray-900"
+      className="fixed inset-0 z-[200] flex max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-white text-gray-900"
       role="dialog"
       aria-modal="true"
       aria-labelledby="platform-onboarding-title"
@@ -237,8 +281,12 @@ export default function PlatformOnboardingGate() {
       />
 
       <div
-        ref={step6ScrollRef}
-        className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-8 pb-32 md:px-8 md:pt-12 md:pb-12"
+        key="platform-onboarding-step-6-scroll"
+        ref={(el) => {
+          step6ScrollRef.current = el;
+          resetHTMLElementScroll(el);
+        }}
+        className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-4 pt-8 pb-32 [-webkit-overflow-scrolling:touch] [overflow-anchor:none] md:px-8 md:pt-12 md:pb-12"
       >
         <div className="mx-auto w-full max-w-xl">
           <p className="mb-3 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-primary">
@@ -372,22 +420,56 @@ function OnboardingShell({
   ariaTitleId: string;
   children: ReactNode;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const setScrollRoot = (el: HTMLDivElement | null) => {
+    scrollRef.current = el;
+    resetHTMLElementScroll(el);
+  };
 
   useLayoutEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    resetHTMLElementScroll(scrollRef.current);
+    resetWindowAndDocumentScroll();
+  }, [step]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      resetHTMLElementScroll(scrollRef.current);
+      resetWindowAndDocumentScroll();
+    };
+    run();
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(run);
+    });
+    const t1 = setTimeout(run, 120);
+    const t2 = setTimeout(run, 320);
+    const t3 = setTimeout(run, 600);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, [step]);
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex flex-col bg-[var(--surface)]"
+      className="fixed inset-0 z-[200] flex max-h-[100dvh] min-h-0 flex-col bg-[var(--surface)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby={ariaTitleId}
     >
       <div
-        ref={scrollRef}
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-8 pb-28 md:px-8 md:py-12 md:pb-12"
+        key={`onboarding-scroll-${step}-${ariaTitleId}`}
+        ref={setScrollRoot}
+        data-onboarding-scroll=""
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-4 py-8 pb-28 [-webkit-overflow-scrolling:touch] [overflow-anchor:none] md:px-8 md:py-12 md:pb-12"
       >
         <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wider text-primary">
           Stap {step} van {TOTAL_STEPS}
@@ -430,6 +512,13 @@ function PhotoHowStep({
             sizes="(max-width: 768px) 100vw, 22rem"
             priority={step === 2}
             unoptimized
+            onLoadingComplete={() => {
+              const root = document.querySelector("[data-onboarding-scroll]");
+              if (root instanceof HTMLElement) {
+                resetHTMLElementScroll(root);
+                resetWindowAndDocumentScroll();
+              }
+            }}
           />
         </div>
         <div className="mt-10 flex justify-center">
