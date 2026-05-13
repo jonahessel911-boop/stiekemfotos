@@ -569,12 +569,13 @@ async function generateAiDistinctAppearance(input: {
   const extraConstraint = appearanceConstraintForPhenotype(input.phenotype);
   const everydayConstraint = input.everydayLook
     ? [
-        "PLAIN AVERAGE FACE (mandatory + STRONG): she must read as a totally average ordinary Dutch 20-something — the type of face you would scroll past on TikTok without a second look. NOT pretty, NOT cute, NOT magazine, NOT influencer, NOT model.",
-        "FACE (concrete tells of average-not-pretty): forgettable everyday features, round or pear-shaped face shape with no defined jawline, soft cheeks, ordinary nose (small forgettable OR slightly large round), thin or average lips (NEVER plump or full), small or average eyes with no eyeliner, slight facial asymmetry, NO makeup or only barely visible mascara, mild forehead/cheek acne or small blemishes, slightly puffy under-eyes, blotchy uneven skin tone, dull skin, light freckles ok, neutral relaxed mouth.",
-        "HAIR (concrete tells): stringy slightly greasy uncombed straight or limp wavy hair partly covering forehead or hanging flat against scalp, mousy dirty-blonde OR plain medium brown OR dull dark brown, no styling, no shine, no salon look.",
-        "BODY (mandatory): slightly heavier than runway-thin — average everyday build, soft natural body without gym tone, no abs, no hourglass, no model proportions. NOT slim, NOT toned, NOT fit, NOT athletic. Ordinary inexpensive non-flattering clothing.",
-        "FORBIDDEN beauty words (NEVER use): stunning, gorgeous, flawless, beautiful, pretty, attractive, cute, supermodel, runway, goddess, perfect skin, sculpted, sharp jawline, defined jawline, high cheekbones, plump lips, full lips, slim, slender, toned, fit, athletic, hourglass, perfect, striking, mesmerizing, captivating.",
-        "Stay respectful and adult — she is a real ordinary Dutch woman, NOT a caricature, NOT mocked. Just describe plainly as raw unfiltered average.",
+        "DAY-TO-DAY ORDINARY DUTCH WOMAN — describe in POSITIVE day-to-day language. Image models ignore negations like 'not pretty' — instead say what she IS.",
+        "She is the woman you sit next to on the bus, see at the AH or Jumbo checkout, at the daycare picking up kids, behind the call-center desk, or working at the drogist. Working-class late-twenties vibe, ordinary income, ordinary apartment.",
+        "FACE descriptors (use these affirmatively): round soft face shape, full soft cheeks, ordinary forgettable features, small or wide-set eyes, average or slightly large round nose, thin to average lips, bare skin with the texture of a real working woman, slight oily forehead, a couple of visible pimples or post-acne marks on chin or cheek, light bags under the eyes, blotchy slightly uneven tone, neutral relaxed everyday expression, no salon makeup.",
+        "HAIR descriptors (use these affirmatively): two-day-old wash, slightly oily roots, tied in a quick low ponytail OR hanging flat past the shoulders OR a homecut blunt fringe, mousy dirty-blonde OR medium brown OR dull dark — household-mirror look, not salon.",
+        "BODY descriptors (use these affirmatively, lean naar dikker): the soft natural shape of a Dutch woman who eats normal and skips the gym — soft belly, full hips, soft thighs, soft upper arms, full natural chest, full round face. Body type 70–85 kilo, BMI in the higher-normal to slightly overweight range. Comfortable inexpensive clothing (sweater, oversized t-shirt and jeans, Action/H&M sale rack).",
+        "SETTING & POSE descriptors: candid raw smartphone selfie in her own apartment, household clutter visible, tired-after-work moment, casual.",
+        "Stay respectful and adult — describe her positively as 'an average everyday working-class Dutch woman', not as 'unattractive'. Avoid descriptors like beautiful / stunning / pretty / model / sharp jawline / plump lips — they pull the image toward catalogue look.",
       ].join(" ")
     : "";
 
@@ -775,8 +776,13 @@ const PROFILE_PROMPT_SINGLE_SHOT_LEAD =
  * plain average. Heel concreet over GEZICHT (de belangrijkste tell van "te knap")
  * en zachter over body (slightly heavier than runway-thin, maar niet karikatuur-dik).
  */
+/**
+ * Day-to-day positieve descriptoren — image-modellen negeren negaties
+ * grotendeels. We zeggen dus expliciet WIE ze is, niet wie ze niet is.
+ * Doel: gewone NL vrouw die je in de bus, supermarkt of op kantoor ziet.
+ */
 const PROFILE_PROMPT_EVERYDAY_LOOK_LEAD =
-  "Subject is a plain average ordinary Dutch woman, the kind you would scroll past on TikTok without a second look. Stick STRICTLY to the body type, skin and hair description from the identity above — do not slim her down, do not clear her skin, do not glamorize her hair. NO makeup or only barely visible mascara. Neutral non-expressive face. Ordinary inexpensive clothing. Raw unfiltered ordinary smartphone selfie vibe, no glow-up, NOT pretty, NOT model, NOT influencer, NOT catalogue. ";
+  "Subject is an everyday working-class Dutch woman in her twenties — the kind of person you sit next to on the bus, see at the supermarket checkout, or pass at the bakery. Day-to-day vibe: she has just come home from her shift at the supermarket / call center / daycare / office, tired after work, slightly bloated from sitting all day, wearing comfortable inexpensive clothing from the Action or H&M sale rack. Skin shows a normal day of work: a bit shiny on the forehead, no makeup retouching, possibly an active pimple or two she did not bother covering. Hair was washed two days ago, now flat and slightly oily at the roots, tied up casually or hanging straight without styling. Slight bags under the eyes from a late evening of scrolling. Body is the soft natural shape of a regular Dutch woman who eats normally and rarely goes to the gym. Strictly follow the identity body, skin and hair description above. Raw unedited smartphone selfie taken in 5 seconds in her own home, real ordinary Dutch household lighting, looks like a real candid moment a girl-next-door would send her friend. ";
 
 /** Kort als budget krap is — lange lead wordt eerst hiernaartoe ingekort. */
 const PROFILE_PROMPT_STYLE_COMPACT =
@@ -1162,30 +1168,36 @@ export async function createRandomProfileWithPhotos(
    * lichaamsbouw, huidstaat en haarstaat. Body-bucket is bewust scheef
    * getrokken naar de zwaardere kant zodat profielen "iets dikker" overkomen.
    */
+  /**
+   * Per-profiel variatie binnen het "average werkende NL vrouw" thema, in
+   * volledig positieve taal — image models negeren negaties dus we vermijden
+   * formuleringen als "NOT pretty". In plaats daarvan: concrete day-to-day
+   * trekken die het model wél kan renderen.
+   */
   const bodyPick = hashPick(identitySeed, "body-ed", [
-    "noticeably chubby body, soft belly roll visible, full hips and thicker thighs, soft fleshy arms, round fuller face, no gym tone",
-    "noticeably chubby body, soft belly roll visible, full hips and thicker thighs, soft fleshy arms, round fuller face, no gym tone",
-    "distinctly overweight build, thick midsection, full hips and large thighs, soft heavy arms, double chin, fuller cheeks",
-    "average build slightly heavier than runway-thin, soft natural body without gym tone, gentle belly softness, no abs",
-    "plus-size body, soft belly, wider hips, thick arms, fuller round face with double chin tendency",
+    "around 75 kilo soft natural body, gentle belly, full hips, soft thighs, full chest with natural shape, round fuller face",
+    "around 80 kilo soft natural body, soft belly with gentle roll, full hips and thicker thighs, soft fleshy upper arms, fuller round face",
+    "around 85 kilo build, thick midsection, full wide hips, fuller thighs, soft heavier upper arms, double chin, full cheeks",
+    "around 78 kilo soft Dutch build, soft belly softness, wider hips, full natural chest, fuller cheeks",
+    "around 82 kilo plus-size build, soft belly, wider hips, thicker arms, double chin, full round face",
   ]);
   const skinPick = hashPick(identitySeed, "skin-ed", [
-    "blotchy uneven skin tone, one or two visible pimples on cheek or chin, slight forehead shine",
-    "oily forehead with scattered small pimples and clogged pores around nose, mild blemishes",
-    "slightly puffy under-eyes with light dark circles, otherwise relatively clear skin but dull",
-    "blotchy uneven skin, redness on cheeks and around nose, one prominent visible pimple, no makeup to cover",
-    "tired washed-out skin tone with light freckles, slight forehead shine, no makeup",
+    "bare skin texture of a real woman after a long workday, oily forehead, one visible pimple on chin, blotchy uneven tone, light bags under the eyes",
+    "oily forehead with several small pimples and clogged pores around the nose, light post-acne marks on cheeks, no makeup",
+    "light bags under the eyes, dull tired tone, slight forehead shine, otherwise clear skin",
+    "blotchy skin with redness on cheeks and around the nose, one prominent active pimple, no makeup",
+    "tired washed-out skin tone with light freckles, slight forehead shine, soft puffy under-eyes",
   ]);
   const hairPick = hashPick(identitySeed, "hair-ed", [
-    "stringy slightly greasy uncombed hair hanging flat against scalp, mousy dirty-blonde",
-    "frizzy unruly medium-length hair sticking out at the sides, plain medium brown, no styling",
-    "greasy unwashed hair pulled back into a messy low ponytail with loose strands across face, dull dark brown",
-    "limp dry damaged hair with visible split ends, mousy color, hanging lifelessly past shoulders",
-    "awkward home-cut blunt bangs partly covering forehead, lifeless straight hair, dirty-blonde",
-    "thin stringy hair partly hiding face, oily roots, dull dark brown",
+    "two-day-old wash, slightly oily roots, hair hanging flat past the shoulders, mousy dirty-blonde",
+    "frizzy unruly medium-length hair, plain medium brown, untouched after a day at work",
+    "messy low ponytail with loose strands across the face, slightly greasy at the roots, dull dark brown",
+    "limp dry hair with visible split ends, mousy color, hanging lifelessly past the shoulders",
+    "homecut blunt fringe partly covering the forehead, straight household-mirror hair, dirty-blonde",
+    "thin straight hair partly hiding the face, oily roots, dull dark brown",
   ]);
   const everydayIdentitySuffix = everydayLook
-    ? ` — plain average ordinary Dutch woman, raw unfiltered everyday look you would scroll past, forgettable face: no defined jawline, soft cheeks, ordinary nose, thin or average lips, small ordinary eyes with no makeup, slight facial asymmetry; ${skinPick}; ${hairPick}; ${bodyPick}; ordinary cheap non-flattering clothing; NOT pretty, NOT cute, NOT model, NOT influencer, NOT catalogue, deliberately unglamorous TikTok-raw look`
+    ? ` — average everyday working-class Dutch woman, the kind you see at the AH or Jumbo checkout or on the bus after a long shift; ordinary forgettable face with round soft shape, full soft cheeks, average or slightly large round nose, thin to average lips, small or wide-set eyes, light facial asymmetry, neutral relaxed expression, no salon makeup; ${skinPick}; ${hairPick}; ${bodyPick}; comfortable inexpensive everyday clothing from Action or H&M sale rack; raw candid smartphone selfie at home, household clutter visible in the background, ordinary Dutch household lighting`
     : "";
   const identityLock =
     aiLook && aiLook.length >= 32
