@@ -20,35 +20,60 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * Dagelijkse engagement-mail. CTA gaat naar `/profielen` zodat de user weer
+ * binnen het platform belandt — de page-load triggert `touchUserSeen` (KPI:
+ * re-sign %). Eventueel kan je een paar profielnamen + avatars meegeven die
+ * "vandaag zijn toegevoegd" om de mail persoonlijker te maken.
+ */
 export async function sendDailyChatPromptEmail(input: {
   to: string;
   naam: string;
-  profileName: string;
-  conversationId: string;
+  /** Optioneel: 1-4 profiel-previews om in de mail te tonen. */
+  newProfiles?: Array<{ name: string; avatarUrl?: string | null }>;
 }): Promise<void> {
-  const chatUrl = `${APP_URL}/berichten?chat=${encodeURIComponent(input.conversationId)}`;
-  const pn = escapeHtml(input.profileName);
-  const nm = escapeHtml(input.naam);
-  const t = shellTemplate(
-    `${pn} wil met je chatten 💬`,
-    `${pn} wil met je chatten of een foto sturen, wat wil jij?`,
-    "Ga naar chat",
-    chatUrl,
-    `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
+  const ctaUrl = `${APP_URL}/profielen?utm_source=email&utm_medium=daily&utm_campaign=new-women`;
+  const nm = escapeHtml(input.naam || "schat");
+  const previews = (input.newProfiles ?? []).slice(0, 4);
+  const previewHtml = previews.length
+    ? `<table role="presentation" cellspacing="0" cellpadding="0" style="margin:8px 0 14px 0;border-collapse:collapse;">
+        <tr>${previews
+          .map((p) => {
+            const name = escapeHtml(p.name);
+            const avatar = p.avatarUrl && /^https?:\/\//i.test(p.avatarUrl)
+              ? `<img src="${escapeHtml(p.avatarUrl)}" alt="" width="64" height="64" style="display:block;width:64px;height:64px;object-fit:cover;border-radius:999px;border:2px solid #fce7f3;" />`
+              : `<div style="width:64px;height:64px;border-radius:999px;background:#fce7f3;display:inline-block;"></div>`;
+            return `<td style="padding:0 6px;text-align:center;">
+              ${avatar}
+              <div style="margin-top:6px;font-size:12px;font-weight:700;color:#0f172a;">${name}</div>
+            </td>`;
+          })
+          .join("")}</tr>
+      </table>`
+    : "";
+  const body = `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
       Hey ${nm},
     </p>
-    <p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
-      <b>${pn}</b> wil met je chatten of een foto sturen — wat wil jij?
+    <p style="margin:0 0 8px 0;font-size:15px;line-height:1.6;">
+      <b>Deze vrouwen hebben zichzelf vandaag aangemeld</b> op stiekemefotos.nl
+      en willen graag chatten — en foto's voor je maken.
     </p>
+    ${previewHtml}
     <p style="margin:0;font-size:15px;line-height:1.6;">
-      Open de chat en zeg het haar zelf…
-    </p>`
+      Klik hieronder en zie wie er nu online is.
+    </p>`;
+  const t = shellTemplate(
+    "Deze vrouwen hebben zichzelf vandaag aangemeld 💋",
+    "Nieuwe profielen online — wie spreek jij vanavond?",
+    "Bekijk profielen",
+    ctaUrl,
+    body
   );
   await sendMail({
     to: input.to,
-    subject: `${input.profileName} wil met je chatten — stiekemefotos.nl`,
+    subject: "Deze vrouwen hebben zichzelf vandaag aangemeld — stiekemefotos.nl",
     html: t.html,
-    text: `${input.profileName} wil met je chatten of een foto sturen, wat wil jij?\n\nGa naar chat: ${chatUrl}`,
+    text: `Deze vrouwen hebben zichzelf vandaag aangemeld op stiekemefotos.nl.\n\nBekijk profielen: ${ctaUrl}`,
   });
 }
 

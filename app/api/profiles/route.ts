@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { isSupabaseProfilesEnabled, listDbProfiles } from "@/lib/server/profilesDb";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
+import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
+import { touchUserSeen } from "@/lib/server/users";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  /**
+   * Re-sign KPI: een ingelogde user die de profielenpagina opent (bv. via de
+   * dagelijkse "Bekijk profielen"-mail) telt als terugkerend bezoek. Werkt met
+   * de TOUCH_SEEN_MIN_MS-throttle in `users.ts`, dus we hameren Supabase niet.
+   */
+  try {
+    const jar = await cookies();
+    const userId = parseSessionValue(jar.get(SESSION_COOKIE_NAME)?.value);
+    if (userId) {
+      await touchUserSeen(userId);
+    }
+  } catch {
+    /* best effort */
+  }
   const vercelEnv = process.env.VERCEL_ENV ?? "";
   const configured = isSupabaseProfilesEnabled();
   const serviceRole = Boolean(getSupabaseAdmin());

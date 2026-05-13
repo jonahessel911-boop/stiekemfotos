@@ -78,8 +78,25 @@ export async function maybeSendDailyChatPromptForUser(
   const lineIdx = hashToNonNegative(`${user.email}|${todayKey}`) % DAILY_ASSISTANT_LINES.length;
   const content = DAILY_ASSISTANT_LINES[lineIdx] ?? DAILY_ASSISTANT_LINES[0]!;
 
+  /**
+   * Mail-previews: drie deterministisch "vandaag aangemelde" vrouwen op basis
+   * van een dag-seed. Stabiel binnen één dag, varieert per dag.
+   */
+  const startSeed = hashToNonNegative(`mail|${user.id}|${todayKey}`) % profiles.length;
+  const previewProfiles: Array<{ name: string; avatarUrl?: string | null }> = [];
+  const seenIds = new Set<string>();
+  for (let i = 0; i < profiles.length && previewProfiles.length < 4; i++) {
+    const p = profiles[(startSeed + i) % profiles.length];
+    if (!p || seenIds.has(p.id)) continue;
+    seenIds.add(p.id);
+    previewProfiles.push({
+      name: p.name,
+      avatarUrl: p.photo && /^https?:\/\//i.test(p.photo) ? p.photo : null,
+    });
+  }
+
   try {
-    const { conversationId } = await appendAssistantOutboundForOwner({
+    await appendAssistantOutboundForOwner({
       ownerUserId: user.id,
       profileId: profile.id,
       content,
@@ -90,8 +107,7 @@ export async function maybeSendDailyChatPromptForUser(
       await sendDailyChatPromptEmail({
         to: user.email.trim().toLowerCase(),
         naam: user.naam,
-        profileName: profile.name,
-        conversationId,
+        newProfiles: previewProfiles,
       });
     } catch (e) {
       console.error("[dailyChatPrompt] e-mail mislukt user=", user.id, e);

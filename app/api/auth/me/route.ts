@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
-import { findUserById, toPublicUser } from "@/lib/server/users";
+import { findUserById, toPublicUser, touchUserSeen } from "@/lib/server/users";
 
 /**
  * Lichte endpoint: geen inbox-/engagement-werk (dat zit op GET /api/conversations).
- * Geen touchUserSeen hier: dat zou "altijd online" geven voor offline e-mailnotificaties.
+ * Wel: re-sign KPI bijwerken (`lastSeenAt`). Offline-mailthrottling kijkt naar
+ * `ownerLastPollAt` per conversatie (niet `lastSeenAt`), dus dit beïnvloedt
+ * de offline-notificaties niet.
  */
 export async function GET() {
   const jar = await cookies();
@@ -13,6 +15,11 @@ export async function GET() {
   const userId = parseSessionValue(raw);
   if (!userId) {
     return NextResponse.json({ user: null });
+  }
+  try {
+    await touchUserSeen(userId);
+  } catch {
+    /* best effort */
   }
   const user = await findUserById(userId);
   if (!user) {
