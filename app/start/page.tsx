@@ -623,17 +623,15 @@ export default function StartPage() {
             {matchCount != null ? (
               <>
                 {maandFotoCount != null && fotoVoorkeurLabel ? (
-                  <p className="text-center text-sm md:text-base text-gray-700 leading-relaxed px-2">
+                  <p className="text-balance text-center text-2xl md:text-3xl font-extrabold leading-tight tracking-tight text-gray-900 px-2">
                     Deze maand zijn er al{' '}
-                    <span className="font-bold text-primary tabular-nums">{maandFotoCount}</span>{' '}
-                    {fotoVoorkeurLabel} foto's gestuurd door vrouwen op het platform.
+                    <span className="text-primary tabular-nums">{maandFotoCount}</span>{' '}
+                    {fotoVoorkeurLabel} foto&apos;s gestuurd door vrouwen op het platform.
                   </p>
                 ) : null}
-                <p className="text-center text-lg md:text-xl text-gray-900 leading-relaxed font-medium px-2">
+                <p className="text-center text-base md:text-lg text-gray-700 leading-relaxed px-2">
                   We hebben{' '}
-                  <span className="text-primary font-bold tabular-nums text-2xl md:text-3xl">
-                    {matchCount}
-                  </span>{' '}
+                  <span className="text-primary font-bold tabular-nums">{matchCount}</span>{' '}
                   vrouwen gevonden die bij je wensen passen.
                 </p>
                 <p className="text-center text-sm text-gray-600">
