@@ -1921,7 +1921,7 @@ function BerichtenInner() {
   };
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-[var(--surface)]">
+    <div className="flex min-h-0 flex-col overflow-hidden bg-[var(--surface)] h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))] max-h-[calc(100dvh-4.25rem-env(safe-area-inset-bottom,0px))] md:h-[100dvh] md:max-h-[100dvh]">
       <Navbar />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden pt-12 sm:pt-14 lg:pt-20">
@@ -2642,7 +2642,7 @@ function BerichtenInner() {
                 </div>
               </div>
 
-              <div className="shrink-0 border-t border-gray-200/70 bg-[var(--surface-card)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px)+4.25rem)] md:p-4 md:pb-4">
+              <div className="shrink-0 border-t border-gray-200/70 bg-[var(--surface-card)] p-3 md:p-4">
                 <input
                   ref={imageInputRef}
                   type="file"
