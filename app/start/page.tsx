@@ -398,7 +398,7 @@ export default function StartPage() {
                 <p className="text-balance text-center text-2xl md:text-3xl font-extrabold leading-tight tracking-tight text-gray-900 px-2">
                   Er zijn{' '}
                   <span className="text-primary tabular-nums">{matchCount}</span>{' '}
-                  vrouwen op deze app die voldoen aan je wensen.
+                  vrouwen die wachten om benaderd te worden door mannen als jij.
                 </p>
                 <p className="text-center text-sm text-gray-600">
                   Maak hieronder een account om verder te gaan.

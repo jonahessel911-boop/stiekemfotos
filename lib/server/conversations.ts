@@ -51,7 +51,7 @@ import {
   sanitizeIdentityForZImagePrompt,
   zModelMaxUserPromptBodyChars,
 } from "@/lib/server/imageGen";
-import { callGrokResponses, callXaiResponses, buildProfileInstructions } from "@/lib/grok";
+import { callGrokResponses, callXaiResponses, buildProfileInstructions, sanitizeAssistantChatText } from "@/lib/grok";
 import { buildStableVisualIdentityForProfile } from "@/lib/server/profileVisualIdentity";
 import { sendGiftReceivedEmail, sendOfflineNewMessageEmail } from "@/lib/server/email";
 import { upsertAppUserToSupabaseUsers } from "@/lib/server/supabaseUserSync";
@@ -867,12 +867,25 @@ function inboxPreviewLastLine(last: ChatMessage | undefined): string {
   return text.length > 80 ? `${text.slice(0, 80)}…` : text;
 }
 
+function inboxLastActivityIsoForSummary(c: Conversation): string {
+  const sorted =
+    c.messages.length === 0 ? [] : sortChatMessagesChronologically(c.messages);
+  const last = sorted[sorted.length - 1];
+  if (last?.createdAt) return last.createdAt;
+  return c.threadCreatedAt ?? c.updatedAt;
+}
+
+function inboxLastActivityMs(c: Conversation): number {
+  return new Date(inboxLastActivityIsoForSummary(c)).getTime();
+}
+
 export async function listSummaries(ownerUserId: string | null): Promise<ConversationSummary[]> {
   const mapRow = (c: Conversation): ConversationSummary => {
     const sorted =
       c.messages.length === 0 ? [] : sortChatMessagesChronologically(c.messages);
     const last = sorted[sorted.length - 1];
     const lastMessage = inboxPreviewLastLine(last);
+    const lastActivityIso = inboxLastActivityIsoForSummary(c);
     return {
       id: c.id,
       profileId: c.profileId,
@@ -882,7 +895,7 @@ export async function listSummaries(ownerUserId: string | null): Promise<Convers
       /** Laatste regel in de thread (na sorteren op tijd), of van jou of van haar. */
       lastMessageFromAssistant: last?.role === "assistant",
       timestamp: last ? timeLabel(last.createdAt) : "",
-      updatedAt: c.updatedAt,
+      updatedAt: lastActivityIso,
       unread: 0,
       isOnline: summaryOnlineState(c),
     };
@@ -897,7 +910,7 @@ export async function listSummaries(ownerUserId: string | null): Promise<Convers
     // We willen geen lege legacy seed-chats tonen, maar wél user-gesprekken die nog geen bericht hebben.
     const mine = list.filter((c) => c.ownerUserId === ownerUserId);
     return mine
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .sort((a, b) => inboxLastActivityMs(b) - inboxLastActivityMs(a))
       .map(mapRow);
   }
 
@@ -907,7 +920,7 @@ export async function listSummaries(ownerUserId: string | null): Promise<Convers
   );
   const guest = list.filter((c) => !c.ownerUserId);
   return guest
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .sort((a, b) => inboxLastActivityMs(b) - inboxLastActivityMs(a))
     .map(mapRow);
 }
 
@@ -1112,6 +1125,7 @@ export async function findOrCreateConversation(
     ownerUserId,
     messages: [],
     updatedAt: now,
+    threadCreatedAt: now,
   };
 
   await withConversationLock(conv.id, () =>
@@ -2968,9 +2982,21 @@ export async function appendUserMessagesAndReply(
       const voiceMime = (payload.voiceMime || "audio/webm").toLowerCase();
       await saveConversationVoiceInput(conversationId, userMessage.id, voiceBuffer, voiceMime);
       userMessage.content = "🎤 Spraakbericht";
+      /**
+       * Schoon transcript-veld: als de voice route bij een STT-fout een
+       * Grok-instructie als "text" meestuurt (zodat de AI alsnog kan
+       * reageren), willen we die instructie NIET als chat-transcript tonen.
+       * Markers zoals "transcriptie", "spraakbericht", "vraag of hij" zijn
+       * tekenen dat dit een prompt-instructie was — bewaar in dat geval geen
+       * transcript op het user-bericht.
+       */
+      const looksLikePromptInstruction =
+        /transcriptie|reageer vriendelijk|typen|inspreken/i.test(textTrim) &&
+        /spraakbericht/i.test(textTrim);
+      const cleanTranscript = looksLikePromptInstruction ? "" : textTrim;
       userMessage.voice = {
         language: "nl",
-        transcript: textTrim || undefined,
+        transcript: cleanTranscript || undefined,
         mimeType: voiceMime,
         durationMs:
           typeof payload.voiceDurationMs === "number" && Number.isFinite(payload.voiceDurationMs)
@@ -3350,7 +3376,9 @@ export async function appendUserMessagesAndReply(
     });
 
     console.info(`[responses] SUCCESS conv=${conversationId} responseLen=${r.response.length} hasImagePrompt=${!!r.image_prompt}`);
-    replyText = normalizeDutchVoiceWording(sparsifyEmojis(r.response));
+    replyText = sanitizeAssistantChatText(
+      normalizeDutchVoiceWording(sparsifyEmojis(r.response))
+    );
     imagePromptFromModel = r.image_prompt;
   } catch (e) {
     // Responses API faalde → minimale veilige reply, geen completeChat fallback.
@@ -3506,6 +3534,20 @@ export async function appendUserMessagesAndReply(
   const sentPhotoThisTurn = Boolean(immediateLockedPhotoDelivery);
   if (!sentPhotoThisTurn && containsSentPhotoFollowup(replyText)) {
     replyText = removeSentPhotoFollowupLines(replyText);
+  }
+
+  /**
+   * Veiligheidsklep: als de tekstreply na alle sanitizers leeg is (bv. Grok
+   * gaf een puur boolean-veld terug of de hele response werd uitgepoetst),
+   * stuur dan toch een korte fallback zodat het profiel niet "stil" blijft —
+   * vooral van belang bij voice-input waarbij de user anders denkt dat het
+   * profiel niets ontvangen heeft.
+   */
+  if (!replyText.trim()) {
+    const hasVoicePayload = payloads.some((p) => Boolean(p.voiceAudioBase64?.trim()));
+    replyText = hasVoicePayload
+      ? "haha je stem is leuk, wat zei je precies? typ het even kort voor me"
+      : "haha leuk";
   }
 
   // Support for multiple short messages in a row (ultra-realistic texting)

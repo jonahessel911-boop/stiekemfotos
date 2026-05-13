@@ -265,9 +265,15 @@ export async function transcribeUserVoiceMemoWithGrokChat(
           filename: opts.filename,
           language,
           format: true,
+          timeoutMs: 22_000,
         })
       ).trim();
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[stt] tryStt(${language}) failed mime=${opts.mimeType ?? "audio/webm"} bytes=${audio.byteLength} err=${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
       return "";
     }
   };
@@ -280,7 +286,13 @@ export async function transcribeUserVoiceMemoWithGrokChat(
 
   const browser = (opts.browserDraftTranscript ?? "").trim();
   if (result) return result;
-  if (browser) return browser;
+  if (browser) {
+    console.info(`[stt] STT empty — falling back to browser draft (chars=${browser.length})`);
+    return browser;
+  }
+  console.warn(
+    `[stt] STT + browser draft both empty mime=${opts.mimeType ?? "audio/webm"} bytes=${audio.byteLength}`
+  );
   return "";
 }
 
@@ -346,7 +358,8 @@ Hard niet doen: niet klantenservice-toon, niet emotioneloos antwoorden, niet all
 
 **KRITIEK — RESPONSE-VELD MAG GEEN JSON-RESIDU BEVATTEN:**
 - In het \`response\`-veld staat ALLEEN de gewone chat-tekst die de user moet zien.
-- Gebruik NOOIT de woorden "true", "false" of "null" letterlijk in het \`response\`-veld.
+- Gebruik NOOIT de woorden "true", "false" of "null" letterlijk in het \`response\`-veld — ook niet als grap, typo of afkapping ("fals", "tru").
+- Het \`response\`-veld mag NOOIT beginnen met true/false/null, markdown-sterretjes daaromheen, of een komma daarachter.
 - Gebruik NOOIT JSON-keys of fragmenten zoals \`"image_prompt":\`, \`"response":\`, \`{\`, \`}\` of losse aanhalingstekens in het \`response\`-veld.
 - \`image_prompt\` MOET een echte string-prompt zijn (zoals beschreven) of de JSON-waarde \`null\` — NOOIT \`true\` of \`false\`.
 
@@ -501,6 +514,70 @@ export async function callXaiResponses(params: {
 }
 
 /**
+ * Verwijdert JSON/boolean-lekken uit assistant-chat (true/false/null, afkap­pingen
+ * als "fals", `**false**`, image_prompt-keyresten, CJK). Ook gebruikt na
+ * normalisatie in `conversations.ts` als tweede verdedigingslaag.
+ */
+export function sanitizeAssistantChatText(raw: string): string {
+  if (typeof raw !== "string") return "";
+  let s = raw;
+
+  const stripBody = (input: string) =>
+    input
+      .replace(/"image_prompt"\s*:\s*(?:null|true|false)/gi, "")
+      .replace(/"image_prompt"\s*:\s*"[^"]*"/gi, "")
+      .replace(/"response"\s*:\s*"?/gi, "")
+      .replace(/"image_prompt"\s*:\s*/gi, "")
+      .replace(/\bundefined\b/gi, "")
+      .replace(/\btrue\b/gi, "")
+      .replace(/\bfalse\b/gi, "")
+      .replace(/\bnull\b/gi, "")
+      // Afgekapte / typo boolean-lekken (stream/model)
+      .replace(/\bfals\b/gi, "")
+      .replace(/\btru\b/gi, "")
+      .replace(/\bture\b/gi, "")
+      .replace(/\bflase\b/gi, "")
+      .replace(/[{}]/g, "")
+      .replace(/^\s*["',:\s]+/g, "")
+      .replace(/["',:\s]+$/g, "")
+      .replace(/[\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7AF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF]/g, "")
+      .replace(/\bword\s+(?:er\s+)?hard\b/gi, "word er geil")
+      .replace(/\bwerd\s+(?:er\s+)?(?:zelf\s+)?hard\s+van\b/gi, "werd er zelf geil van")
+      .replace(/\bwerd\s+(?:er\s+)?hard\b/gi, "werd er geil")
+      .replace(/\bben\s+(?:zo\s+)?hard\b/gi, "ben zo geil")
+      .replace(/\bik\s+ben\s+hard\b/gi, "ik ben geil")
+      .replace(/\bik\s+krijg\s+(?:er\s+)?een\s+stijve\b/gi, "ik word er zo nat van")
+      .replace(/\bstijve\b/gi, "natte plek")
+      .replace(/\b(?:m'n|mijn|me)\s+(?:pik|lul|piemel)\b/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+([.,!?;:])/g, "$1")
+      .trim();
+
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < 18; i++) {
+      const before = s;
+      s = s.replace(
+        /^\s*(?:\*{1,3})?\s*(?:true|false|null|undefined|fals|tru|ture|flase)(?:e|se)?(?:\s*[,.:;!?…]*)?\s*(?:\*{1,3})?\s*/i,
+        ""
+      );
+      s = s.replace(/^\s*[,:"'{}[\]]+\s*/, "");
+      if (s === before) break;
+    }
+    s = stripBody(s);
+  }
+
+  return s.trim();
+}
+
+function parsedResponseFieldToPlainText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "boolean" || typeof v === "number") return "";
+  if (typeof v === "object") return "";
+  return String(v);
+}
+
+/**
  * Nieuwe Responses API (structured JSON output).
  * Retourneert altijd { response: string, image_prompt: string | null }.
  * Als image_prompt !== null → genereer de foto met die prompt en toon unlock.
@@ -541,46 +618,6 @@ export async function callGrokResponses(params: {
   const stripCjk = (s: string): string =>
     s.replace(/[\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7AF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF]/g, "");
 
-  /**
-   * Hard chat-text sanitizer. Wordt gebruikt op zowel de geparste `response`
-   * als op de raw `innerText`-fallback wanneer JSON parsing faalt. Doel:
-   * - Geen `true`/`false`/`null` (lekken van JSON-booleans uit image_prompt).
-   * - Geen JSON-key/scaffolding remnants (`"response":`, `"image_prompt":`, etc.).
-   * - Geen losse haakjes/quotes/lone commas die in de chat lekken als JSON
-   *   half rendert.
-   * - Geen CJK karakters (Grok lekt soms 前面 e.d. in NL-chat).
-   * - Mannelijk erotisch taalgebruik vrouwelijk maken (vrouwen: geil/nat, niet hard).
-   */
-  const sanitizeChatText = (s: string): string =>
-    s
-      // Strip JSON key labels en scaffolding eerst, vóór de woord-strips
-      .replace(/"image_prompt"\s*:\s*(?:null|true|false)/gi, "")
-      .replace(/"image_prompt"\s*:\s*"[^"]*"/gi, "")
-      .replace(/"response"\s*:\s*"?/gi, "")
-      .replace(/"image_prompt"\s*:\s*/gi, "")
-      // Standalone JSON literals
-      .replace(/\btrue\b/gi, "")
-      .replace(/\bfalse\b/gi, "")
-      .replace(/\bnull\b/gi, "")
-      // Losse JSON-haakjes / lone trailing quotes en kommas
-      .replace(/[{}]/g, "")
-      .replace(/^\s*["',:\s]+/g, "")
-      .replace(/["',:\s]+$/g, "")
-      // CJK Unified Ideographs (Chinees / Kanji), Hiragana, Katakana, Hangul, CJK punctuation.
-      .replace(/[\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uA000-\uA4CF\uAC00-\uD7AF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF]/g, "")
-      // Mannelijk erotisch taalgebruik vrouwelijk maken — vrouwen zeggen "geil" / "nat", niet "hard".
-      .replace(/\bword\s+(?:er\s+)?hard\b/gi, "word er geil")
-      .replace(/\bwerd\s+(?:er\s+)?(?:zelf\s+)?hard\s+van\b/gi, "werd er zelf geil van")
-      .replace(/\bwerd\s+(?:er\s+)?hard\b/gi, "werd er geil")
-      .replace(/\bben\s+(?:zo\s+)?hard\b/gi, "ben zo geil")
-      .replace(/\bik\s+ben\s+hard\b/gi, "ik ben geil")
-      .replace(/\bik\s+krijg\s+(?:er\s+)?een\s+stijve\b/gi, "ik word er zo nat van")
-      .replace(/\bstijve\b/gi, "natte plek")
-      .replace(/\b(?:m'n|mijn|me)\s+(?:pik|lul|piemel)\b/gi, "")
-      .replace(/\s{2,}/g, " ")
-      .replace(/\s+([.,!?;:])/g, "$1")
-      .trim();
-
   // Probeer de inner text te parsen als onze verwachte JSON {response, image_prompt}
   let parsed: { response?: string; image_prompt?: string | null } | null = null;
   try {
@@ -592,7 +629,7 @@ export async function callGrokResponses(params: {
     console.warn(`[responses] JSON parse failed on innerText. Falling back to sanitized raw. raw="${innerText.slice(0, 300)}" error=${parseErr}`);
     // Als het niet parseert, sanitize de hele inner text als response — anders
     // lekken JSON-snippers, `true`/`false` en CJK door in de chat.
-    const cleaned = sanitizeChatText(innerText);
+    const cleaned = sanitizeAssistantChatText(innerText);
     return {
       response: cleaned || "haha leuk",
       image_prompt: null,
@@ -604,11 +641,21 @@ export async function callGrokResponses(params: {
     console.info(`[responses] model returned image_prompt as boolean (${parsed.image_prompt}) — treating as no image`);
   }
 
-  const imagePrompt = parsed && parsed.image_prompt && typeof parsed.image_prompt === "string" && parsed.image_prompt.trim().length > 10
-    ? stripCjk(parsed.image_prompt).replace(/\s{2,}/g, " ").trim()
-    : null;
+  const rawIp = parsed?.image_prompt;
+  let imagePrompt: string | null = null;
+  if (typeof rawIp === "string") {
+    const t = stripCjk(rawIp).replace(/\s{2,}/g, " ").trim();
+    if (
+      t.length > 10 &&
+      !/^(?:true|false|null|undefined|fals|none)$/i.test(t)
+    ) {
+      imagePrompt = t;
+    }
+  }
 
-  const responseText = sanitizeChatText((parsed?.response || "").trim());
+  const responseText = sanitizeAssistantChatText(
+    parsedResponseFieldToPlainText(parsed?.response).trim()
+  );
 
   if (!responseText) {
     // Als na sanitizing niets overblijft, gebruik een veilige fallback tekst

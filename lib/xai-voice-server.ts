@@ -75,6 +75,8 @@ export async function xaiSpeechToText(
     language?: string;
     /** `true` (default) → geformatteerde, natuurlijke tekst van xAI. */
     format?: boolean;
+    /** Max wachttijd voor STT-call (default 25s); voorkomt hangen van /messages/voice. */
+    timeoutMs?: number;
   }
 ): Promise<string> {
   const key = requireXaiApiKey();
@@ -85,9 +87,15 @@ export async function xaiSpeechToText(
     "nl";
   const formatted = options?.format ?? true;
 
-  const filename = options?.filename || "voice.webm";
-  const mime = options?.mimeType || "audio/webm";
-  const blob = new Blob([audio], { type: mime });
+  /**
+   * Browser MediaRecorder produceert vaak `audio/webm;codecs=opus`,
+   * `audio/mp4;codecs=mp4a.40.2`, etc. Strip de codec-suffix; xAI accepteert
+   * de basis MIME (`audio/webm`, `audio/mp4`, `audio/ogg`, ...).
+   */
+  const rawMime = (options?.mimeType || "audio/webm").toLowerCase();
+  const baseMime = rawMime.split(";")[0]!.trim() || "audio/webm";
+  const filename = options?.filename || `voice.${baseMime.split("/")[1] || "webm"}`;
+  const blob = new Blob([audio], { type: baseMime });
 
   // xAI vereist dat `file` het LAATSTE veld is in de multipart-form.
   const form = new FormData();
@@ -95,15 +103,36 @@ export async function xaiSpeechToText(
   form.append("language", language);
   form.append("file", blob, filename);
 
-  const res = await fetch("https://api.x.ai/v1/stt", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}` },
-    body: form,
-  });
+  const timeoutMs = options?.timeoutMs ?? 25_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch("https://api.x.ai/v1/stt", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if ((err as { name?: string }).name === "AbortError") {
+      console.warn(
+        `[stt] xAI STT abort/timeout (${timeoutMs}ms) mime=${baseMime} bytes=${audio.byteLength}`
+      );
+      throw new Error(`STT timeout (${timeoutMs}ms)`);
+    }
+    throw err;
+  }
+  clearTimeout(timer);
 
   const raw = await res.text();
   if (!res.ok) {
     const snippet = raw.slice(0, 400);
+    console.warn(
+      `[stt] xAI STT HTTP ${res.status} mime=${baseMime} bytes=${audio.byteLength} body=${snippet}`
+    );
     if (res.status === 401) {
       throw new Error(
         `STT 401: ongeldige of ontbrekende XAI_API_KEY (zie console.x.ai → API Keys). ${snippet}`
@@ -120,7 +149,11 @@ export async function xaiSpeechToText(
 
   try {
     const json = JSON.parse(raw) as { text?: string; transcript?: string };
-    return (json.text || json.transcript || "").trim();
+    const t = (json.text || json.transcript || "").trim();
+    console.info(
+      `[stt] xAI STT ok mime=${baseMime} bytes=${audio.byteLength} chars=${t.length}`
+    );
+    return t;
   } catch {
     return raw.trim();
   }

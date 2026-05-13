@@ -9,6 +9,7 @@ type ConversationRow = {
   profile_id: string;
   profile_name: string;
   profile_avatar: string | null;
+  created_at: string;
   updated_at: string;
   metadata: Record<string, unknown> | null;
 };
@@ -36,6 +37,7 @@ function extractConversationMetadata(c: Conversation): Record<string, unknown> {
     messages,
     updatedAt: _ua,
     ownerUserId: _ou,
+    threadCreatedAt: _tc,
     ...rest
   } = c;
   void messages;
@@ -59,6 +61,7 @@ function conversationFromRow(row: ConversationRow, messages: ChatMessage[]): Con
     isOnline: Boolean(base.isOnline),
     messages: sorted,
     updatedAt: row.updated_at,
+    threadCreatedAt: row.created_at,
     ownerUserId: row.owner_user_id ?? undefined,
   } as Conversation;
 }

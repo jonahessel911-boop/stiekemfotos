@@ -3,15 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Logo from './Logo';
-import { Home, MessageCircle, Users, CreditCard, Images } from 'lucide-react';
+import { MessageCircle, Users, CreditCard } from 'lucide-react';
 import { getStoredUser } from '@/lib/onboarding-client';
 import { useI18n } from '@/components/I18nProvider';
 
 const navItems = [
   { icon: Users, key: 'profiles', href: '/profielen' },
   { icon: MessageCircle, key: 'messages', href: '/berichten' },
-  { icon: Images, key: 'gallery', href: '/gallerij' },
-  { icon: Home, key: 'feed', href: '/nieuwsfeed' },
   { icon: CreditCard, key: 'credits', href: '/credits' },
 ] as const;
 
@@ -19,9 +17,7 @@ type NavKey = (typeof navItems)[number]['key'];
 
 function keyForPathname(pathname: string): NavKey | null {
   if (pathname === '/' || pathname.startsWith('/profielen')) return 'profiles';
-  if (pathname.startsWith('/nieuwsfeed')) return 'feed';
   if (pathname.startsWith('/berichten')) return 'messages';
-  if (pathname.startsWith('/gallerij') || pathname.startsWith('/mijn-fotos')) return 'gallery';
   if (pathname.startsWith('/credits')) return 'credits';
   return null;
 }
@@ -29,8 +25,6 @@ function keyForPathname(pathname: string): NavKey | null {
 const MOBILE_TAB_SHORT: Record<NavKey, string> = {
   profiles: 'Profielen',
   messages: 'Chat',
-  gallery: 'Gallerij',
-  feed: 'Verzoeken',
   credits: 'Credits',
 };
 

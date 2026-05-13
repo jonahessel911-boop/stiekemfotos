@@ -20,6 +20,11 @@ const poppins = Poppins({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  minimumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#ffffff",
 };
 
 export const metadata: Metadata = {
@@ -45,6 +50,16 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} className={poppins.variable}>
+      <head>
+        {/* Preconnect naar Supabase Storage zodat de eerste image-request geen DNS+TLS hick-up heeft. */}
+        <link
+          rel="preconnect"
+          href="https://vdytntxetjpokjwafrfd.supabase.co"
+          crossOrigin=""
+        />
+        <link rel="dns-prefetch" href="https://vdytntxetjpokjwafrfd.supabase.co" />
+        {/* Voorkomt zoomen op iOS bij inputs (font-size>=16 helpt extra; viewport meta dekt de rest). */}
+      </head>
       <body
         className={`${poppins.className} font-sans antialiased text-gray-900 bg-[var(--surface)] min-h-screen`}
       >

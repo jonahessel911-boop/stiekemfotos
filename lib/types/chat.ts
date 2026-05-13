@@ -80,6 +80,8 @@ export interface Conversation {
   isOnline: boolean;
   messages: ChatMessage[];
   updatedAt: string;
+  /** DB `conversations.created_at` — stabiel voor inbox-sort als er nog geen berichten zijn. */
+  threadCreatedAt?: string;
   /** Ingelogde gebruiker die dit gesprek ziet; ontbreekt = legacy demo-seed voor gasten. */
   ownerUserId?: string;
   /** Na assistent-antwoord: optionele follow-up timer als gebruiker niet reageert. */
@@ -170,7 +172,7 @@ export interface ConversationSummary {
   lastMessageFromAssistant?: boolean;
   /** HH:mm voor UI; voor sorteren/dedup gebruik `updatedAt`. */
   timestamp: string;
-  /** ISO-tijd laatste activiteit (server), voor betrouwbare dedup per profiel. */
+  /** ISO: laatste bericht in de thread (user of assistant), anders thread-aanmaak — niet rij-`updated_at` (die springt bij openen/poll). */
   updatedAt: string;
   unread: number;
   isOnline: boolean;

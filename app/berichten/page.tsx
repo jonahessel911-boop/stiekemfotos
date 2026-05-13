@@ -815,6 +815,7 @@ function BerichtenInner() {
 
         conversationCacheRef.current[conv.id] = conv;
 
+        const threadIso = conv.threadCreatedAt ?? conv.updatedAt;
         const summary: ConversationSummary = {
           id: conv.id,
           profileId: conv.profileId,
@@ -822,16 +823,17 @@ function BerichtenInner() {
           previewAvatar: conv.previewAvatar,
           lastMessage: '',
           lastMessageFromAssistant: false,
-          timestamp: formatMessageTime(conv.updatedAt),
-          updatedAt: conv.updatedAt,
+          timestamp: formatMessageTime(threadIso),
+          updatedAt: threadIso,
           unread: 0,
           isOnline: conv.isOnline,
         };
         setList((prev) => {
           const without = prev.filter((c) => c.profileId !== conv.profileId);
           const next = [summary, ...without];
-          listRef.current = next;
-          return next;
+          const sorted = [...next].sort((a, b) => summaryActivityMs(b) - summaryActivityMs(a));
+          listRef.current = sorted;
+          return sorted;
         });
 
         setLoadingList(false);
@@ -1336,13 +1338,16 @@ function BerichtenInner() {
     }
   }, [list, selectedId, router, loadingList]);
 
-  const filteredList = dedupedList.filter((c) => {
+  const filteredList = useMemo(() => {
     const q = query.toLowerCase();
-    return (
-      (c.profileName ?? '').toLowerCase().includes(q) ||
-      (c.lastMessage ?? '').toLowerCase().includes(q)
-    );
-  });
+    const filtered = dedupedList.filter((c) => {
+      return (
+        (c.profileName ?? '').toLowerCase().includes(q) ||
+        (c.lastMessage ?? '').toLowerCase().includes(q)
+      );
+    });
+    return [...filtered].sort((a, b) => summaryActivityMs(b) - summaryActivityMs(a));
+  }, [dedupedList, query]);
 
   const totalUnread = dedupedList.reduce((a, c) => a + (c.unread || 0), 0);
 

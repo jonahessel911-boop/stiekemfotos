@@ -12,8 +12,8 @@ export type CreditPurchaseRecord = {
   priceLabel: string;
 };
 
-/** Elke verstuurde chat-message kost 5 credits; een foto ontgrendelen kost 100 credits. */
-export const CREDITS_PER_MESSAGE = 5;
+/** Elke verstuurde chat-message kost 10 credits; een foto ontgrendelen kost 100 credits. */
+export const CREDITS_PER_MESSAGE = 10;
 export const CREDITS_PER_PHOTO_UNLOCK = 100;
 
 /** Startbalans voor elk nieuw account. */

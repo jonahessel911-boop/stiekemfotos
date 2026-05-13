@@ -51,6 +51,7 @@ export async function POST(
 
     const audioArrayBuffer = await audioFile.arrayBuffer();
     let transcript = "";
+    let sttFailed = false;
     try {
       transcript = await transcribeUserVoiceMemoWithGrokChat(audioArrayBuffer, {
         mimeType: audioFile.type || "audio/webm",
@@ -58,14 +59,29 @@ export async function POST(
         language: String(form.get("language") ?? "nl"),
         browserDraftTranscript: fallbackText || undefined,
       });
-    } catch {
+    } catch (err) {
+      sttFailed = true;
+      console.warn(
+        `[voice] STT pipeline threw conv=${id} bytes=${audioArrayBuffer.byteLength} err=${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
       transcript = fallbackText;
     }
 
+    /**
+     * Wanneer er geen transcript is, geven we Grok een korte, schone instructie
+     * (niet de oude placeholder met `[Spraakbericht — niet verstaanbaar...]`,
+     * die soms door de tekstsanitizer leeg werd opgeschoond waardoor er geen
+     * antwoord meer terugkwam).
+     */
     const transcriptForAi =
       transcript.trim() ||
       fallbackText.trim() ||
-      "[Spraakbericht — niet verstaanbaar. Reageer vriendelijk en vraag hem om hetzelfde kort in tekst te typen.]";
+      "Hij stuurde een spraakbericht maar de transcriptie is niet duidelijk. Reageer vriendelijk en plagerig: vraag of hij het kort wil typen of nog eens opnieuw wil inspreken.";
+    console.info(
+      `[voice] conv=${id} mime=${audioFile.type || "audio/webm"} bytes=${audioArrayBuffer.byteLength} sttFailed=${sttFailed} transcriptChars=${transcript.trim().length} fallbackChars=${fallbackText.length}`
+    );
 
     const audioBuffer = Buffer.from(audioArrayBuffer);
     const audioBase64 = audioBuffer.toString("base64");
