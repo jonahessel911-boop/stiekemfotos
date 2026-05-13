@@ -879,6 +879,24 @@ function inboxLastActivityMs(c: Conversation): number {
   return new Date(inboxLastActivityIsoForSummary(c)).getTime();
 }
 
+function computeUnreadCount(c: Conversation): number {
+  /**
+   * Hoeveel assistant-berichten zijn er sinds de eigenaar deze thread voor het
+   * laatst opende (`ownerLastPollAt`). Wordt bijgewerkt door
+   * `recordOwnerPolledConversation`. Geen ownerLastPollAt → tel alle assistant-
+   * berichten (eerste keer), maar cap bij 9 zodat de badge niet ontploft.
+   */
+  const cutoffMs = c.ownerLastPollAt ? new Date(c.ownerLastPollAt).getTime() : 0;
+  let count = 0;
+  for (const m of c.messages) {
+    if (m.role !== "assistant") continue;
+    const t = new Date(m.createdAt).getTime();
+    if (!Number.isFinite(t)) continue;
+    if (t > cutoffMs) count += 1;
+  }
+  return count;
+}
+
 export async function listSummaries(ownerUserId: string | null): Promise<ConversationSummary[]> {
   const mapRow = (c: Conversation): ConversationSummary => {
     const sorted =
@@ -896,7 +914,7 @@ export async function listSummaries(ownerUserId: string | null): Promise<Convers
       lastMessageFromAssistant: last?.role === "assistant",
       timestamp: last ? timeLabel(last.createdAt) : "",
       updatedAt: lastActivityIso,
-      unread: 0,
+      unread: ownerUserId ? computeUnreadCount(c) : 0,
       isOnline: summaryOnlineState(c),
     };
   };

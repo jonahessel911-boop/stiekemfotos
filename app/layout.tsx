@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { CreditsPricingProvider } from "@/components/CreditsPricingProvider";
 import TikTokPixel from "@/components/TikTokPixel";
 import { I18nProvider } from "@/components/I18nProvider";
+import ZoomLock from "@/components/ZoomLock";
 import { detectLocaleFromAcceptLanguage } from "@/lib/i18n";
 import { nl } from "@/lib/messages/nl";
 import { en } from "@/lib/messages/en";
@@ -66,6 +67,7 @@ export default async function RootLayout({
         <Suspense fallback={null}>
           <TikTokPixel />
         </Suspense>
+        <ZoomLock />
         <I18nProvider locale={locale} messages={messages}>
           {/* Desktop left sidebar lives in Navbar; offset content accordingly */}
           <div className="md:pl-56">

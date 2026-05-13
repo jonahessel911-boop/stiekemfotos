@@ -3,10 +3,12 @@
 @tailwind utilities;
 
 /* Zoom uitschakelen op de hele app — voorkomt onbedoeld zoomen tijdens scrollen/
-   tikken op mobiel, dat de chat- en swipepagina laggy laat aanvoelen. */
+   tikken op mobiel, dat de chat- en swipepagina laggy laat aanvoelen.
+   `pan-x pan-y` blokkeert pinch-zoom én dubbeltik-zoom; `manipulation` zou
+   pinch nog doorlaten. */
 html,
 body {
-  touch-action: manipulation;
+  touch-action: pan-x pan-y;
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
   text-size-adjust: 100%;

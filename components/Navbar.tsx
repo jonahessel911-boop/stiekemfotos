@@ -35,6 +35,7 @@ export default function Navbar() {
   const [activeItem, setActiveItem] = useState<NavKey>(() => keyForPathname(pathname) ?? 'profiles');
   const [naamKort, setNaamKort] = useState('');
   const [initial, setInitial] = useState('');
+  const [unreadChat, setUnreadChat] = useState(0);
 
   useEffect(() => {
     let cancel = false;
@@ -69,6 +70,43 @@ export default function Navbar() {
     if (key) setActiveItem(key);
   }, [pathname]);
 
+  /**
+   * Poll het ongelezen-aantal zodat het badge op het Chat-icoon ook bijwerkt
+   * als de gebruiker op /profielen of /credits zit. Op /berichten zetten we het
+   * direct op 0 — die pagina markeert via getConversation zelf als gelezen.
+   */
+  useEffect(() => {
+    if (pathname.startsWith('/berichten')) {
+      setUnreadChat(0);
+      return;
+    }
+    let cancel = false;
+    const fetchUnread = async () => {
+      try {
+        const r = await fetch('/api/inbox/unread-count', { credentials: 'include' });
+        if (!r.ok) return;
+        const d = (await r.json()) as { total?: number };
+        if (cancel) return;
+        if (typeof d.total === 'number' && Number.isFinite(d.total)) {
+          setUnreadChat(Math.max(0, Math.floor(d.total)));
+        }
+      } catch {
+        /* zwijg */
+      }
+    };
+    void fetchUnread();
+    const id = window.setInterval(fetchUnread, 25_000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void fetchUnread();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancel = true;
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [pathname]);
+
   const mobileBar = (
     <div
       className="md:hidden fixed bottom-0 left-0 right-0 z-[90] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(249,115,22,0.35)]"
@@ -83,19 +121,31 @@ export default function Navbar() {
             locale === 'nl'
               ? (MOBILE_TAB_SHORT[item.key] ?? t(`nav.${item.key}`))
               : t(`nav.${item.key}`);
+          const badge = item.key === 'messages' && unreadChat > 0 ? unreadChat : 0;
+          const badgeLabel = badge > 99 ? '99+' : String(badge);
           return (
             <a
               key={item.key}
               href={item.href}
               onClick={() => setActiveItem(item.key)}
-              className={`flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-white transition-colors active:scale-[0.98] ${
+              className={`relative flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-white transition-colors active:scale-[0.98] ${
                 isActive ? 'bg-white/20 text-white' : 'text-white active:bg-white/10'
               }`}
             >
-              <Icon
-                className="h-7 w-7 shrink-0 text-white"
-                strokeWidth={isActive ? 2.35 : 2}
-              />
+              <div className="relative">
+                <Icon
+                  className="h-7 w-7 shrink-0 text-white"
+                  strokeWidth={isActive ? 2.35 : 2}
+                />
+                {badge > 0 && (
+                  <span
+                    aria-label={`${badge} ongelezen berichten`}
+                    className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-extrabold leading-none text-primary shadow ring-2 ring-primary"
+                  >
+                    {badgeLabel}
+                  </span>
+                )}
+              </div>
               <span className="max-w-full truncate text-[10px] font-semibold leading-tight text-white">
                 {short}
               </span>
@@ -118,6 +168,8 @@ export default function Navbar() {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeItem === item.key;
+              const badge = item.key === 'messages' && unreadChat > 0 ? unreadChat : 0;
+              const badgeLabel = badge > 99 ? '99+' : String(badge);
               return (
                 <a
                   key={item.key}
@@ -131,6 +183,14 @@ export default function Navbar() {
                 >
                   <Icon className={`h-5 w-5 ${isActive ? 'text-primary' : 'text-gray-500'}`} />
                   <span className="truncate">{t(`nav.${item.key}`)}</span>
+                  {badge > 0 && (
+                    <span
+                      aria-label={`${badge} ongelezen berichten`}
+                      className="ml-auto inline-flex min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-extrabold leading-none text-white"
+                    >
+                      {badgeLabel}
+                    </span>
+                  )}
                 </a>
               );
             })}
