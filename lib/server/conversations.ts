@@ -3264,6 +3264,19 @@ export async function appendUserMessagesAndReply(
   let replyText: string;
   let imagePromptFromModel: string | null = null;
 
+  /**
+   * Foto-onderhandeling: tel hoeveel berichten de user al heeft gestuurd in
+   * dit gesprek (inclusief de huidige batch). Onder de 10 zit de chat nog in
+   * een "onderhandel-fase" en mag er geen foto worden gestuurd, ongeacht hoe
+   * expliciet zijn vraag is. Vanaf 10 is het profiel vrij om foto's te sturen
+   * wanneer de spanning klopt. Buiten de try-block geplaatst zodat de
+   * server-side guard verderop deze variabelen ook kan inzien.
+   */
+  const negotiationThreshold = 10;
+  const userMessageCount =
+    conv.messages.filter((m) => m.role === "user").length + userMessages.length;
+  const negotiationPhase = userMessageCount < negotiationThreshold;
+
   try {
     /**
      * Bouw chat history vanaf NA de laatst geleverde foto (= huidige photo cycle).
@@ -3293,6 +3306,11 @@ export async function appendUserMessagesAndReply(
       .join("\n");
 
     const userLatest = (joinedUserText || lastUserTextLower || "").trim();
+
+    const negotiationLine = negotiationPhase
+      ? `⚠️ ONDERHANDEL-FASE ACTIEF: dit is pas zijn ${userMessageCount}e user-bericht. JE STUURT NU GEEN FOTO. image_prompt MOET null zijn. Plaag in plaats daarvan: speels uitstellen ("oeh zo snel al haha", "doe ik straks", "geef me eerst een reden", "eerst leren kennen schat"), doorvragen wat hij wil, hem opgeilen — maar GEEN foto deze beurt.`
+      : `Onderhandel-fase voorbij (${userMessageCount} user-berichten ≥ ${negotiationThreshold}). Je mag een foto sturen wanneer de spanning klopt en hij erom vraagt of jij hem hebt opgegeild en hij ja zegt.`;
+
     const latestInput = [
       "=== HUIDIGE CHAT CYCLUS (sinds laatste foto) ===",
       recentHistory || "(begin van gesprek)",
@@ -3300,12 +3318,18 @@ export async function appendUserMessagesAndReply(
       "=== ALLERLAATSTE USER BERICHT (DIT IS DE WENS DIE JE MOET UITVOEREN) ===",
       userLatest || "(geen bericht)",
       "",
+      `=== USER_MESSAGE_COUNT = ${userMessageCount} (drempel: ${negotiationThreshold}) ===`,
+      negotiationLine,
+      "",
       "=== INSTRUCTIES ===",
       "1. Geef een normale chat 'response' (1-4 zinnen, Nederlands, vrouwelijk, in karakter).",
-      "2. Als de user om een foto vraagt OF zegt dat hij geil is OF iets seksueels van je wil zien:",
-      "   - Genereer een 'image_prompt' die LETTERLIJK beschrijft wat de user vraagt in de allerlaatste boodschap.",
+      "2. Foto-regels:",
+      negotiationPhase
+        ? "   - image_prompt = null (we zitten in onderhandel-fase, NOOIT een foto deze beurt)."
+        : "   - Als de user om een foto vraagt OF jij hem in een vorige beurt opgegeild hebt en hij zegt ja: maak image_prompt die LETTERLIJK een SELFIE beschrijft van wat de user vraagt. Anders: image_prompt = null.",
+      "   - Image_prompt MOET, indien niet null, altijd beschrijven als zelfgemaakte selfie (vrouw houdt zelf de telefoon vast, arm in beeld of mirror selfie). NOOIT 3rd-party fotograaf of professionele setup.",
       "   - Niet meer focussen op vorige foto-wensen, alleen op de huidige wens.",
-      "   - Voorbeelden: 'naakt voor spiegel' → 'fully naked mirror selfie', 'roze string' → 'wearing only pink thong', 'billen' → 'back view of bare buttocks'.",
+      "   - Voorbeelden: 'naakt voor spiegel' → 'fully naked self-mirror selfie holding phone', 'roze string' → 'wearing only pink thong, selfie, arm extended into frame', 'billen' → 'back view of bare buttocks, mirror selfie with phone visible'.",
       "3. Anders: image_prompt = null.",
     ].join("\n").slice(0, 2000);
 
@@ -3349,6 +3373,19 @@ export async function appendUserMessagesAndReply(
   let shouldSendPhotoNow = Boolean(imagePromptFromModel && imagePromptFromModel.trim().length > 20);
   if (activePhotoPipeline) {
     shouldSendPhotoNow = false;
+  }
+  /**
+   * Server-side guard voor de onderhandel-fase: zelfs als Grok per ongeluk
+   * een image_prompt teruggeeft terwijl `userMessageCount < 10`, sturen we
+   * geen foto. Dit garandeert de "eerst onderhandelen" UX onafhankelijk van
+   * eventuele drift in het Grok-antwoord.
+   */
+  if (negotiationPhase && shouldSendPhotoNow) {
+    console.info(
+      `[photoFlow] conv=${conversationId} negotiationPhase=true userMsg=${userMessageCount} — image_prompt genegeerd (te vroeg voor foto)`
+    );
+    shouldSendPhotoNow = false;
+    imagePromptFromModel = null;
   }
   /**
    * Stuur de vergrendelde foto direct in dezelfde server-response.
