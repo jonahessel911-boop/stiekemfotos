@@ -6,14 +6,14 @@ export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.stiekemefotos.nl";
 
-/** Tarief: 100 credits = €10 (één foto). Bundel 3 foto’s: €29,99 advies, tijdelijk €19,99. */
+/** Tarief: 100 credits = €10 (één foto). Speciale aanbieding: 200 credits voor €4,99 (was €22,99 → 78% korting). */
 export const CREDIT_PACKAGES: Record<
   CreditPackageId,
   { credits: number; priceEurCents: number; title: string }
 > = {
   left: { credits: 100, priceEurCents: 1000, title: "1 foto" },
-  middle: { credits: 300, priceEurCents: 1999, title: "3 foto's" },
-  right: { credits: 200, priceEurCents: 2000, title: "2 foto's" },
+  middle: { credits: 200, priceEurCents: 499, title: "2 foto's" },
+  right: { credits: 300, priceEurCents: 2999, title: "3 foto's" },
 };
 
 let stripeSingleton: Stripe | null = null;

@@ -1,20 +1,21 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Flame, Sparkles } from 'lucide-react';
 import { addCredits } from '@/lib/credits-client';
 
 const PACKAGES = [
   { id: 'left', credits: 100, priceLabel: '€10,00', title: '1 foto', featured: false as const },
   {
     id: 'middle',
-    credits: 300,
-    priceLabel: '€19,99',
-    wasPriceLabel: '€29,99',
-    title: "3 foto's",
+    credits: 200,
+    priceLabel: '€4,99',
+    wasPriceLabel: '€22,99',
+    discountPercent: 78,
+    title: "2 foto's",
     featured: true as const,
   },
-  { id: 'right', credits: 200, priceLabel: '€20,00', title: "2 foto's", featured: false as const },
+  { id: 'right', credits: 300, priceLabel: '€29,99', title: "3 foto's", featured: false as const },
 ] as const;
 
 type Props = {
@@ -113,9 +114,9 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
     <div className="space-y-5">
       {showIntro ? (
         <p className="text-sm text-gray-600 leading-relaxed">
-          <strong>100 credits = €10</strong> per ontgrendelde foto. Kies een pakket om op te waarderen.{' '}
+          Kies een pakket om op te waarderen.{' '}
           <span className="font-semibold text-primary">
-            Actie: 3 foto&apos;s (300 credits) voor €19,99 — adviesprijs €29,99.
+            Speciale aanbieding: 200 credits voor €4,99 — 78% korting (was €22,99).
           </span>
         </p>
       ) : null}
@@ -134,38 +135,65 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
         {PACKAGES.map((pkg) => (
           <div
             key={pkg.id}
-            className={`relative rounded-2xl border p-5 shadow-sm ${
+            className={`relative rounded-2xl p-5 shadow-sm ${
               pkg.featured
-                ? 'border-primary bg-primary/[0.06] ring-2 ring-primary/25'
-                : 'border-gray-200 bg-white'
+                ? 'border-4 border-primary bg-gradient-to-br from-primary/[0.08] via-orange-50 to-white ring-4 ring-primary/40 shadow-xl shadow-primary/15 lg:scale-[1.03]'
+                : 'border border-gray-200 bg-white'
             }`}
           >
             {pkg.featured ? (
-              <span className="absolute -top-2.5 left-4 inline-flex items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                <Sparkles className="h-3 w-3" />
-                Actie
-              </span>
+              <>
+                {/* Hoekige "78% KORTING" sticker rechtsboven */}
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -right-3 -top-3 z-10 flex h-16 w-16 rotate-12 items-center justify-center rounded-full bg-primary text-center text-[11px] font-extrabold uppercase leading-tight tracking-tight text-white shadow-lg shadow-primary/40 ring-2 ring-white"
+                >
+                  <span className="flex flex-col items-center">
+                    <span className="text-base leading-none">{pkg.discountPercent}%</span>
+                    <span className="text-[9px] leading-tight">korting</span>
+                  </span>
+                </span>
+                {/* "Speciale aanbieding" badge bovenaan */}
+                <span className="absolute -top-3 left-4 inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-md shadow-primary/30">
+                  <Flame className="h-3.5 w-3.5" />
+                  Speciale aanbieding
+                </span>
+              </>
             ) : null}
-            {pkg.featured ? (
-              <span className="absolute right-4 top-4 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-deep">
-                Was €29,99
-              </span>
-            ) : null}
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <p
+              className={`text-xs font-semibold uppercase tracking-wide ${
+                pkg.featured ? 'pt-4 text-primary-deep' : 'text-gray-500'
+              }`}
+            >
               {pkg.title}
             </p>
             <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-0">
-              <span className="text-3xl font-bold text-gray-900">{pkg.priceLabel}</span>
+              <span
+                className={`font-bold ${pkg.featured ? 'text-4xl text-primary' : 'text-3xl text-gray-900'}`}
+              >
+                {pkg.priceLabel}
+              </span>
               {'wasPriceLabel' in pkg ? (
                 <span className="text-lg font-semibold text-gray-400 line-through">
                   {pkg.wasPriceLabel}
                 </span>
               ) : null}
             </div>
-            <div className="mt-1 text-sm font-semibold text-primary">
+            <div
+              className={`mt-1 text-sm font-semibold ${pkg.featured ? 'text-primary-deep' : 'text-primary'}`}
+            >
               {pkg.credits.toLocaleString('nl-NL')} credits
             </div>
-            <p className="mt-1 text-xs text-gray-500">Voor foto&apos;s, unlocks en gifts</p>
+            <p className={`mt-1 text-xs ${pkg.featured ? 'text-gray-700' : 'text-gray-500'}`}>
+              {pkg.featured ? (
+                <>
+                  <Sparkles className="-mt-0.5 mr-0.5 inline h-3 w-3 text-primary" />
+                  Beste deal — bespaar {pkg.discountPercent}% nu
+                </>
+              ) : (
+                "Voor foto's, unlocks en gifts"
+              )}
+            </p>
             <button
               type="button"
               onClick={() => void handleBuy(pkg.id)}
@@ -176,7 +204,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
                   : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
               }`}
             >
-              {busyId === pkg.id ? 'Even geduld…' : 'Koop nu'}
+              {busyId === pkg.id ? 'Even geduld…' : pkg.featured ? 'Pak deze deal' : 'Koop nu'}
             </button>
           </div>
         ))}

@@ -16,8 +16,6 @@ import {
   type ProfilePhotoRequestNavPayload,
 } from '@/lib/profile-photo-request';
 
-const DEFAULT_PHOTO_UNLOCK_CREDITS = 100;
-
 type PortfolioItem = {
   conversationId: string;
   messageId: string;
@@ -146,10 +144,6 @@ export default function ProfielDetailPage() {
   const avatarUrl = profilePhotoSrc(profile.photo, { widthCss: 128, heightCss: 160 });
   const tag1 = `${1990 + (idSeed % 10)}-0${1 + (idSeed % 9)}-1`;
   const interestTag = profile.interests[0] ?? 'Creatief';
-  const unlockCredits =
-    typeof profile.photoUnlockCredits === 'number' && Number.isFinite(profile.photoUnlockCredits)
-      ? Math.max(1, Math.floor(profile.photoUnlockCredits))
-      : DEFAULT_PHOTO_UNLOCK_CREDITS;
   const profilePhotos = (() => {
     const raw = [profile.photo, ...(profile.photoGallery ?? [])].filter(Boolean) as string[];
     const unique = [...new Set(raw)];
@@ -232,9 +226,6 @@ export default function ProfielDetailPage() {
               </span>
               <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-800">
                 {interestTag}
-              </span>
-              <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-                {unlockCredits} credits per foto
               </span>
             </div>
             {profile.bio ? <p className="text-sm leading-relaxed text-gray-700">{profile.bio}</p> : null}
@@ -413,9 +404,6 @@ export default function ProfielDetailPage() {
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-4 py-1.5 text-sm text-gray-700">
                 <Briefcase className="h-4 w-4" /> {interestTag}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary">
-                {unlockCredits} credits per foto
               </span>
             </div>
 
