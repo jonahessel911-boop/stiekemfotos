@@ -56,10 +56,6 @@ function randomMatchCount(): number {
   return Math.floor(11 + Math.random() * (50 - 11 + 1));
 }
 
-function randomInt(min: number, max: number): number {
-  return Math.floor(min + Math.random() * (max - min + 1));
-}
-
 export default function StartPage() {
   const [step, setStep] = useState<Step>('splash');
   const [answers, setAnswers] = useState<Answers>({
@@ -69,7 +65,6 @@ export default function StartPage() {
   });
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [eigenschapIds, setEigenschapIds] = useState<Set<string>>(() => new Set());
-  const [maandFotoCount, setMaandFotoCount] = useState<number | null>(null);
   const [matchCount, setMatchCount] = useState<number | null>(null);
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
@@ -149,7 +144,6 @@ export default function StartPage() {
       setError('Kies minimaal één eigenschap.');
       return;
     }
-    setMaandFotoCount(randomInt(60, 220));
     setStep('loadingMatches');
   };
 
@@ -401,13 +395,11 @@ export default function StartPage() {
             </div>
             {matchCount != null ? (
               <>
-                {maandFotoCount != null ? (
-                  <p className="text-balance text-center text-2xl md:text-3xl font-extrabold leading-tight tracking-tight text-gray-900 px-2">
-                    Deze maand zijn er al{' '}
-                    <span className="text-primary tabular-nums">{maandFotoCount}</span>{' '}
-                    foto&apos;s gestuurd door vrouwen op het platform.
-                  </p>
-                ) : null}
+                <p className="text-balance text-center text-2xl md:text-3xl font-extrabold leading-tight tracking-tight text-gray-900 px-2">
+                  Er zijn{' '}
+                  <span className="text-primary tabular-nums">{matchCount}</span>{' '}
+                  vrouwen op deze app die voldoen aan je wensen.
+                </p>
                 <p className="text-center text-sm text-gray-600">
                   Maak hieronder een account om verder te gaan.
                 </p>
