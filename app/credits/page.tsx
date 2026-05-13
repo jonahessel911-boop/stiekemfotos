@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { CreditsPricingOffers } from '@/components/CreditsPricingOffers';
@@ -10,7 +10,9 @@ import {
   INITIAL_FREE_CREDITS,
   type CreditPurchaseRecord,
 } from '@/lib/credits-client';
-import { ArrowUpRight, Wallet } from 'lucide-react';
+import { clearStoredUser } from '@/lib/onboarding-client';
+import { useI18n } from '@/components/I18nProvider';
+import { ArrowUpRight, LogOut, Wallet } from 'lucide-react';
 
 
 function formatWhen(iso: string) {
@@ -28,8 +30,10 @@ function formatWhen(iso: string) {
 }
 
 export default function CreditsPage() {
+  const { t } = useI18n();
   const [balance, setBalance] = useState(INITIAL_FREE_CREDITS);
   const [purchases, setPurchases] = useState<CreditPurchaseRecord[]>([]);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const refresh = useCallback(async () => {
     setBalance(getCreditsBalance());
@@ -42,6 +46,28 @@ export default function CreditsPage() {
     window.addEventListener('dm-credits-updated', onUp);
     return () => window.removeEventListener('dm-credits-updated', onUp);
   }, [refresh]);
+
+  const handleLogout = useCallback(async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+    } catch {
+      /* netwerkfout negeren — client-side forceren we alsnog uitlog */
+    }
+    try {
+      clearStoredUser();
+    } catch {
+      /* noop */
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = '/start';
+    }
+  }, [loggingOut]);
 
   return (
     <div className="min-h-screen bg-[var(--surface)] pb-28 md:pb-10">
@@ -128,6 +154,18 @@ export default function CreditsPage() {
           </p>
           <CreditsPricingOffers showIntro={false} onAfterPurchase={() => void refresh()} />
         </section>
+
+        <div className="mt-10 flex justify-center">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <LogOut className="h-4 w-4" />
+            {loggingOut ? '…' : t('common.logout')}
+          </button>
+        </div>
       </main>
     </div>
   );

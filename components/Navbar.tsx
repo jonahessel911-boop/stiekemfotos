@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Logo from './Logo';
-import { Home, MessageCircle, Users, CreditCard, LogOut, Images } from 'lucide-react';
-import { clearStoredUser, getStoredUser } from '@/lib/onboarding-client';
+import { Home, MessageCircle, Users, CreditCard, Images } from 'lucide-react';
+import { getStoredUser } from '@/lib/onboarding-client';
 import { useI18n } from '@/components/I18nProvider';
 import { usePlatformOnboardingBlocking } from '@/components/PlatformOnboardingContext';
 
@@ -204,44 +204,6 @@ export default function Navbar() {
                   <div className="-mt-0.5 text-[10px] text-primary">{t('common.online')}</div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  /**
-                   * Hard logout: eerst wachten tot de server het session cookie
-                   * heeft gewist (anders herstelt het beschermde server-rendered
-                   * route de oude sessie alsnog), dan localStorage opschonen,
-                   * dan een echte page-load naar /start zodat ALLE server state
-                   * opnieuw zonder auth wordt opgehaald. `router.push` werkt hier
-                   * onbetrouwbaar op productie omdat sommige routes server-side
-                   * gecached blijven.
-                   */
-                  try {
-                    await fetch('/api/auth/logout', {
-                      method: 'POST',
-                      credentials: 'include',
-                      cache: 'no-store',
-                    });
-                  } catch {
-                    /** Negeer netwerkfout — we forceren alsnog client-side logout. */
-                  }
-                  try {
-                    clearStoredUser();
-                  } catch {
-                    /* noop */
-                  }
-                  if (typeof window !== 'undefined') {
-                    window.location.href = '/start';
-                  }
-                }}
-                className="inline-flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 sm:min-h-0 sm:min-w-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:shadow-none sm:underline md:text-xs md:font-semibold"
-                aria-label={t('common.logout')}
-              >
-                <LogOut className="h-[1.125rem] w-[1.125rem] sm:hidden" />
-                <span className="hidden px-3 py-2 text-xs font-semibold sm:inline sm:px-0 sm:py-0 sm:text-sm sm:font-normal">
-                  {t('common.logout')}
-                </span>
-              </button>
             </div>
           </div>
         </div>
