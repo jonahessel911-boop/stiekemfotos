@@ -3308,8 +3308,8 @@ export async function appendUserMessagesAndReply(
     const userLatest = (joinedUserText || lastUserTextLower || "").trim();
 
     const negotiationLine = negotiationPhase
-      ? `⚠️ ONDERHANDEL-FASE ACTIEF: dit is pas zijn ${userMessageCount}e user-bericht. JE STUURT NU GEEN FOTO. image_prompt MOET null zijn. Plaag in plaats daarvan: speels uitstellen ("oeh zo snel al haha", "doe ik straks", "geef me eerst een reden", "eerst leren kennen schat"), doorvragen wat hij wil, hem opgeilen — maar GEEN foto deze beurt.`
-      : `Onderhandel-fase voorbij (${userMessageCount} user-berichten ≥ ${negotiationThreshold}). Je mag een foto sturen wanneer de spanning klopt en hij erom vraagt of jij hem hebt opgegeild en hij ja zegt.`;
+      ? `⚠️ ONDERHANDEL-FASE ACTIEF: dit is pas zijn ${userMessageCount}e user-bericht. JE STUURT NU GEEN FOTO. image_prompt MOET null zijn. Kies per beurt een ANDERE tactiek (varieer!): (A) diep doorvragen op zijn wens en de fantasie opbouwen in tekst, (B) speels weigeren/uitstellen ("nee doe ik nu niet schat", "doe ik straks"), of (C) het script omdraaien ("stuur jij eerst maar wat", "spreek eerst iets in", "vertel eerst je stoutste fantasie"). Doel: hem geëngageerd houden, hem laten investeren — niet leveren.`
+      : `Onderhandel-fase voorbij (${userMessageCount} user-berichten ≥ ${negotiationThreshold}). Je mag een foto sturen wanneer de spanning klopt en hij erom vraagt of jij hem hebt opgegeild en hij ja zegt. Ook hier blijf je variëren met tactieken A/B/C — niet elke vraag direct belonen, anders verdwijnt de spanning.`;
 
     const latestInput = [
       "=== HUIDIGE CHAT CYCLUS (sinds laatste foto) ===",
