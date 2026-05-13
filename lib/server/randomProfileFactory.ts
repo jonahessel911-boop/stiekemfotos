@@ -876,7 +876,7 @@ function buildRandomProfileImagePrompt(params: {
   const coreShot = `${params.sceneEn}, ${directive}, ${framingHint}`;
 
   /** Alleen hier vandaan mag worden afgekapt (vanaf het einde). Verificatie/headshot vóór de lange lead. */
-  let styleTail = `${verifyLead}${params.headshotLead}${PROFILE_PROMPT_SINGLE_SHOT_LEAD}${everydayLead}${closing}, same facial identity as woman described above`;
+  let styleTail = `${verifyLead}${params.headshotLead}${PROFILE_PROMPT_SINGLE_SHOT_LEAD}${everydayLead}${closing}, identical face every shot, same exact nose mouth chin eyebrows and skin marks as the recurring woman described above, same hair color and texture, same body proportions`;
 
   const maxBody = zModelMaxUserPromptBodyChars();
   let identityFull = sanitizeIdentityForZImagePrompt(params.identityCore.replace(/\s+/g, " ").trim());
@@ -1162,6 +1162,58 @@ export async function createRandomProfileWithPhotos(
     anchors: appearanceAnchors,
     everydayLook,
   });
+
+  /**
+   * Concrete face-lock — voorkomt identity-drift tussen de 3-6 profielfoto's.
+   * Image-modellen renderen bij elke nieuwe scene een lichtjes andere variant
+   * van een vage "ordinary face"-beschrijving. Door concrete deterministische
+   * gezichtskenmerken (neus, mond, kin, distinctief mark) hard te pinnen
+   * krijgt elke scene dezelfde vrouw. Deze 4-5 anchors worden voor- én
+   * achteraan in de identity geplakt zodat het model ze niet kan vergeten.
+   */
+  const noseLock = hashPick(identitySeed, "nose-lock", [
+    "small slightly upturned button nose",
+    "straight medium-length nose with a small rounded tip",
+    "slightly larger rounded nose with visible nostrils",
+    "narrow straight nose with a small bump on the bridge",
+    "short wide nose with a soft rounded tip",
+  ]);
+  const mouthLock = hashPick(identitySeed, "mouth-lock", [
+    "small thin lips with the corners slightly downturned at rest",
+    "medium-thin lips, top lip thinner than bottom, no cupid's bow",
+    "wide thin mouth with a faint asymmetry on the right side",
+    "small mouth with a slight overbite visible when relaxed",
+    "narrow lips with a tiny natural pout",
+  ]);
+  const chinLock = hashPick(identitySeed, "chin-lock", [
+    "soft rounded chin blending into the jawline",
+    "small receding chin with a soft second chin line",
+    "wide square-ish chin without a defined jaw point",
+    "small pointed chin with soft cheeks above",
+    "weak chin with a soft jaw and full cheeks",
+  ]);
+  const markLock = hashPick(identitySeed, "mark-lock", [
+    "a small dark beauty mark on the left cheek near the mouth",
+    "light scattered freckles across the nose bridge and cheeks",
+    "a small mole below the right eye",
+    "a tiny scar at the left eyebrow tail",
+    "faint freckles only on the upper cheekbones",
+    "no distinguishing marks, plain bare skin",
+  ]);
+  const browLock = hashPick(identitySeed, "brow-lock", [
+    "thin sparse natural eyebrows, slightly arched, no makeup",
+    "medium thick natural unplucked eyebrows, straight shape",
+    "uneven natural eyebrows, left slightly higher than right",
+    "thin over-plucked eyebrows with light gaps",
+    "soft medium eyebrows tapering at the ends",
+  ]);
+  /**
+   * Compact face-lock dat in élke prompt vooraan EN achteraan herhaald wordt.
+   * Houd het kort (~180–220 chars) zodat het door `finalizePromptForZModel`
+   * niet wordt afgekapt.
+   */
+  const faceLock = `Same recurring woman across every photo, identical face every shot: ${noseLock}; ${mouthLock}; ${chinLock}; ${browLock}; ${markLock}`;
+
   /**
    * Per-profiel variatie binnen het "plain/minder knap" thema: niet ieder
    * profiel ziet er hetzelfde uit. We picken deterministisch per profiel een
@@ -1197,12 +1249,23 @@ export async function createRandomProfileWithPhotos(
     "thin straight hair partly hiding the face, oily roots, dull dark brown",
   ]);
   const everydayIdentitySuffix = everydayLook
-    ? ` — average everyday working-class Dutch woman, the kind you see at the AH or Jumbo checkout or on the bus after a long shift; ordinary forgettable face with round soft shape, full soft cheeks, average or slightly large round nose, thin to average lips, small or wide-set eyes, light facial asymmetry, neutral relaxed expression, no salon makeup; ${skinPick}; ${hairPick}; ${bodyPick}; comfortable inexpensive everyday clothing from Action or H&M sale rack; raw candid smartphone selfie at home, household clutter visible in the background, ordinary Dutch household lighting`
+    ? ` — average everyday working-class Dutch woman; ${skinPick}; ${hairPick}; ${bodyPick}; comfortable inexpensive everyday clothing from Action or H&M sale rack; raw candid smartphone selfie at home, household clutter visible`
     : "";
-  const identityLock =
+  /**
+   * IdentityLock-structuur (volgorde belangrijk voor Z Image — vroege tokens
+   * wegen zwaarder, en de prompt-budget shrink-logica knipt vanaf het einde
+   * van de identity af). We zetten daarom de hard-anchor face-lock direct
+   * vooraan zodat hij ook bij truncatie behouden blijft:
+   *   1. "One specific recurring woman, identical face in every shot…"
+   *   2. faceLock (neus/mond/kin/wenkbrauw/markeerteken — concreet)
+   *   3. AI-gegenereerde uniciteit (aiLook) of de generieke fallback
+   *   4. body/skin/hair pick (everydayIdentitySuffix — kort gehouden)
+   */
+  const baseIdentity =
     aiLook && aiLook.length >= 32
-      ? `One woman ${firstName} ${age}, lives in Netherlands (${PHENOTYPE_TRAITS[phenotype].faceHint}): ${aiLook}; ${jewelry}; ${phone} — same woman every photo, same face and body proportions${everydayIdentitySuffix}`
-      : `${buildVisualIdentityLockString(identitySeed, firstName, age, heritageNl, phenotype)}${everydayIdentitySuffix}`;
+      ? `One specific recurring woman ${firstName} ${age}, lives in Netherlands (${PHENOTYPE_TRAITS[phenotype].faceHint}): ${aiLook}; ${jewelry}; ${phone}`
+      : buildVisualIdentityLockString(identitySeed, firstName, age, heritageNl, phenotype);
+  const identityLock = `${faceLock}. ${baseIdentity}${everydayIdentitySuffix}`;
   /** Same string prefixed on every profile photo prompt — persist for chat unlock images. */
   const identityCore = `${identityLock}, ${buildBaseAmateurStyle()}`;
   const userProfileBio = buildRandomUserBio(
