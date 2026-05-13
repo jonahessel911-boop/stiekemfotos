@@ -216,7 +216,7 @@ export default function PlatformOnboardingGate() {
     return (
       <PhotoHowStep
         step={4}
-        title="De meid doet er alles aan om je geil te maken. Vertel wat je wilt en ze maakt het x"
+        title="De meid doet er alles aan om je geil te maken. Vertel wat je wilt en ze maakt het."
         imageSrc={ONBOARDING_IMAGES[2]}
         imageAlt="Voorbeeldchat: persoonlijke foto"
         onNext={() => setStep(5)}
