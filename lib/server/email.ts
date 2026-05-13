@@ -12,6 +12,46 @@ type MailPayload = {
   text: string;
 };
 
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export async function sendDailyChatPromptEmail(input: {
+  to: string;
+  naam: string;
+  profileName: string;
+  conversationId: string;
+}): Promise<void> {
+  const chatUrl = `${APP_URL}/berichten?chat=${encodeURIComponent(input.conversationId)}`;
+  const pn = escapeHtml(input.profileName);
+  const nm = escapeHtml(input.naam);
+  const t = shellTemplate(
+    `${pn} wil met je chatten 💬`,
+    `${pn} wil met je chatten of een foto sturen, wat wil jij?`,
+    "Ga naar chat",
+    chatUrl,
+    `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
+      Hey ${nm},
+    </p>
+    <p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
+      <b>${pn}</b> wil met je chatten of een foto sturen — wat wil jij?
+    </p>
+    <p style="margin:0;font-size:15px;line-height:1.6;">
+      Open de chat en zeg het haar zelf…
+    </p>`
+  );
+  await sendMail({
+    to: input.to,
+    subject: `${input.profileName} wil met je chatten — stiekemefotos.nl`,
+    html: t.html,
+    text: `${input.profileName} wil met je chatten of een foto sturen, wat wil jij?\n\nGa naar chat: ${chatUrl}`,
+  });
+}
+
 function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref: string, body: string) {
   const safeHref = ctaHref.startsWith("http") ? ctaHref : APP_URL;
   return {

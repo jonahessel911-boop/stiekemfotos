@@ -1093,6 +1093,8 @@ export async function appendAssistantOutboundForOwner(params: {
   profileId: string;
   content: string;
   replyToId?: string;
+  /** Geen automatische “offline nieuw bericht”-mail (bv. bij geplande dagelijkse reactivation-mail). */
+  skipOfflineAssistantEmail?: boolean;
 }): Promise<{ conversationId: string; message: ChatMessage }> {
   const ownerUserId = params.ownerUserId?.trim();
   const profileId = params.profileId?.trim();
@@ -1115,7 +1117,9 @@ export async function appendAssistantOutboundForOwner(params: {
     latestConv.updatedAt = message.createdAt;
     scheduleNoReplyReminderAfterAssistant(latestConv, message.id);
   });
-  void maybeSendOfflineAssistantEmail(conversation.id, message);
+  if (!params.skipOfflineAssistantEmail) {
+    void maybeSendOfflineAssistantEmail(conversation.id, message);
+  }
   return { conversationId: conversation.id, message };
 }
 

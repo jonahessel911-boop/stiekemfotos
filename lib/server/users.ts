@@ -40,6 +40,11 @@ export type UserRecord = {
    * Max. 1 per uur; los van verificatie- en wachtwoordmails.
    */
   lastInboxNotificationEmailAt?: string;
+  /**
+   * Dagelijkse reactivation-mail (Europe/Amsterdam kalenderdag `yyyy-MM-dd`);
+   * max. 1× per dag per user.
+   */
+  lastDailyChatPromptDay?: string;
   reactionNudges?: ReactionNudge[];
   passwordResetToken?: string;
   passwordResetExpiresAt?: string;
@@ -281,6 +286,15 @@ export async function updateUserEngagementOutboundLog(
   if (i === -1) return;
   const user = list[i]!;
   list[i] = { ...user, engagementOutboundLog: log };
+  await save(list);
+  await upsertAppUserToSupabaseUsers(list[i]!);
+}
+
+export async function updateUserLastDailyChatPromptDay(userId: string, day: string): Promise<void> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return;
+  list[i] = { ...list[i]!, lastDailyChatPromptDay: day.trim() };
   await save(list);
   await upsertAppUserToSupabaseUsers(list[i]!);
 }
