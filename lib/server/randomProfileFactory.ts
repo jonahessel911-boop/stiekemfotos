@@ -776,7 +776,7 @@ const PROFILE_PROMPT_SINGLE_SHOT_LEAD =
  * en zachter over body (slightly heavier than runway-thin, maar niet karikatuur-dik).
  */
 const PROFILE_PROMPT_EVERYDAY_LOOK_LEAD =
-  "Subject is a plain average everyday woman, the kind of face you would scroll past without noticing. Face: forgettable average features, slightly round or pear-shaped face shape, no defined jawline, soft cheeks, small ordinary nose or slightly large round nose, thin or average lips not plump, small or average-spaced eyes with no eyeliner, slightly asymmetric features, NO makeup or only barely visible mascara, mild forehead acne or small blemishes, slightly puffy under-eyes, blotchy uneven skin tone, light freckles or dull skin, neutral non-expressive expression with mouth slightly closed or relaxed. Hair: stringy slightly greasy uncombed straight or limp wavy hair partly covering forehead or hanging flat against scalp, mousy dirty-blonde or plain medium brown, no styling, no shine, no salon look. Body: slightly heavier than runway-thin, average everyday build, soft natural body without gym tone, no abs, no model proportions, ordinary inexpensive non-flattering clothing. Overall vibe: raw unfiltered ordinary TikTok still of a normal Dutch 20-something with no glow-up, deliberately unremarkable, NOT pretty, NOT model, NOT influencer, NOT catalogue. ";
+  "Subject is a plain average ordinary Dutch woman, the kind you would scroll past on TikTok without a second look. Stick STRICTLY to the body type, skin and hair description from the identity above — do not slim her down, do not clear her skin, do not glamorize her hair. NO makeup or only barely visible mascara. Neutral non-expressive face. Ordinary inexpensive clothing. Raw unfiltered ordinary smartphone selfie vibe, no glow-up, NOT pretty, NOT model, NOT influencer, NOT catalogue. ";
 
 /** Kort als budget krap is — lange lead wordt eerst hiernaartoe ingekort. */
 const PROFILE_PROMPT_STYLE_COMPACT =
@@ -1156,8 +1156,36 @@ export async function createRandomProfileWithPhotos(
     anchors: appearanceAnchors,
     everydayLook,
   });
+  /**
+   * Per-profiel variatie binnen het "plain/minder knap" thema: niet ieder
+   * profiel ziet er hetzelfde uit. We picken deterministisch per profiel een
+   * lichaamsbouw, huidstaat en haarstaat. Body-bucket is bewust scheef
+   * getrokken naar de zwaardere kant zodat profielen "iets dikker" overkomen.
+   */
+  const bodyPick = hashPick(identitySeed, "body-ed", [
+    "noticeably chubby body, soft belly roll visible, full hips and thicker thighs, soft fleshy arms, round fuller face, no gym tone",
+    "noticeably chubby body, soft belly roll visible, full hips and thicker thighs, soft fleshy arms, round fuller face, no gym tone",
+    "distinctly overweight build, thick midsection, full hips and large thighs, soft heavy arms, double chin, fuller cheeks",
+    "average build slightly heavier than runway-thin, soft natural body without gym tone, gentle belly softness, no abs",
+    "plus-size body, soft belly, wider hips, thick arms, fuller round face with double chin tendency",
+  ]);
+  const skinPick = hashPick(identitySeed, "skin-ed", [
+    "blotchy uneven skin tone, one or two visible pimples on cheek or chin, slight forehead shine",
+    "oily forehead with scattered small pimples and clogged pores around nose, mild blemishes",
+    "slightly puffy under-eyes with light dark circles, otherwise relatively clear skin but dull",
+    "blotchy uneven skin, redness on cheeks and around nose, one prominent visible pimple, no makeup to cover",
+    "tired washed-out skin tone with light freckles, slight forehead shine, no makeup",
+  ]);
+  const hairPick = hashPick(identitySeed, "hair-ed", [
+    "stringy slightly greasy uncombed hair hanging flat against scalp, mousy dirty-blonde",
+    "frizzy unruly medium-length hair sticking out at the sides, plain medium brown, no styling",
+    "greasy unwashed hair pulled back into a messy low ponytail with loose strands across face, dull dark brown",
+    "limp dry damaged hair with visible split ends, mousy color, hanging lifelessly past shoulders",
+    "awkward home-cut blunt bangs partly covering forehead, lifeless straight hair, dirty-blonde",
+    "thin stringy hair partly hiding face, oily roots, dull dark brown",
+  ]);
   const everydayIdentitySuffix = everydayLook
-    ? " — plain average ordinary Dutch woman, raw unfiltered everyday face you would scroll past, forgettable average features, no defined jawline, soft cheeks, ordinary nose, thin or average lips, small ordinary eyes with no makeup, slightly asymmetric, slightly puffy under-eyes, blotchy skin with mild acne, stringy uncombed slightly greasy hair flat against scalp, average build slightly heavier than runway-thin without gym tone, NOT pretty, NOT cute, NOT model, NOT influencer, NOT catalogue, deliberately unglamorous TikTok-raw look"
+    ? ` — plain average ordinary Dutch woman, raw unfiltered everyday look you would scroll past, forgettable face: no defined jawline, soft cheeks, ordinary nose, thin or average lips, small ordinary eyes with no makeup, slight facial asymmetry; ${skinPick}; ${hairPick}; ${bodyPick}; ordinary cheap non-flattering clothing; NOT pretty, NOT cute, NOT model, NOT influencer, NOT catalogue, deliberately unglamorous TikTok-raw look`
     : "";
   const identityLock =
     aiLook && aiLook.length >= 32
