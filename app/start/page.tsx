@@ -32,7 +32,7 @@ const VRAGEN: { id: keyof Answers; tekst: string }[] = [
   {
     id: 'q3',
     tekst:
-      'Deze vrouwen houden van persoonlijk contact, en als je er een goede connectie mee hebt zijn ze soms ook bereid om pikante foto\u2019s te sturen. Ben je hier oké mee?',
+      'Deze vrouwen houden van persoonlijk contact, en vinden een goede connectie belangrijk en geil. Ben je daar oke mee?',
   },
 ];
 
