@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Logo from '@/components/Logo';
 import { ArrowRight } from 'lucide-react';
 import ClickFlareCapture from '@/components/ClickFlareCapture';
+import ClickFlareLanderScript from '@/components/ClickFlareLanderScript';
 
 const CTA_URL = 'https://911-for-me.com/cf/click';
 
@@ -36,6 +37,7 @@ export default function StartPage() {
   return (
     <div className="min-h-screen bg-[var(--onboarding-bg)] flex flex-col">
       <ClickFlareCapture />
+      <ClickFlareLanderScript />
       <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 max-w-lg mx-auto w-full">
         <div className="w-full space-y-8 max-w-md mx-auto px-1 text-center">
           <div className="flex justify-center">
