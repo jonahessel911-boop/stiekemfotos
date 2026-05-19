@@ -228,3 +228,126 @@
     opacity: 0;
   }
 }
+
+.start-flow .start-map-section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #dc2626;
+}
+
+.start-flow .start-map-select {
+  border-radius: 3px;
+}
+
+.start-flow .start-map-marker {
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.start-flow .start-map-marker-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.start-flow .start-map-marker-avatar {
+  position: relative;
+  z-index: 1;
+  line-height: 0;
+}
+
+.start-flow .start-map-marker-online {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 2px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid #d4d4d4;
+  background: rgba(255, 255, 255, 0.95);
+  font-size: 0.5625rem;
+  font-weight: 400;
+  line-height: 1.2;
+  color: #4b5563;
+  white-space: nowrap;
+}
+
+.start-flow .start-map-online-dot {
+  margin-left: 0;
+  height: 7px;
+  width: 7px;
+  flex-shrink: 0;
+}
+
+.start-flow .start-map-online-dot::before {
+  animation: none;
+  opacity: 0;
+}
+
+.start-flow .start-map-online-dot::after {
+  height: 7px;
+  width: 7px;
+  border-width: 1px;
+}
+
+.start-flow .start-spots-available {
+  font-size: 1rem;
+  color: #171717;
+}
+
+.start-flow .start-spots-countdown-digit-wrap {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.start-flow .start-spots-countdown-window {
+  display: inline-block;
+  overflow: hidden;
+  height: 2.75rem;
+  vertical-align: bottom;
+  border-bottom: 3px solid #dc2626;
+  padding: 0 0.15rem;
+  background: #fff5f5;
+}
+
+.start-flow .start-spots-countdown-strip {
+  display: block;
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateY(0);
+}
+
+.start-flow .start-spots-countdown-strip--at-six {
+  transform: translateY(-2.75rem);
+}
+
+.start-flow .start-spots-countdown-num {
+  display: flex;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  font-family: Impact, 'Arial Black', Arial, sans-serif !important;
+  font-size: 2.25rem;
+  font-weight: 400;
+  line-height: 1;
+  color: #dc2626;
+  text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 5px;
+}
+
+.start-flow .start-spots-countdown-label {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #171717;
+}
+
+.start-flow .start-signup-popup {
+  margin-top: 1.75rem;
+}

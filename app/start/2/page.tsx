@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import OntmoetjongensBrand from '@/components/OntmoetjongensBrand';
 import { CircularLoader } from '@/components/CircularLoader';
 import { Clock } from 'lucide-react';
@@ -236,16 +235,10 @@ export default function Start2Page() {
 
           {step === 'paid' && (
             <div className="space-y-5 text-center">
-              <p className="text-xl font-bold text-gray-900">Account voltooid</p>
+              <p className="text-xl font-bold text-gray-900">Betaling ontvangen</p>
               <p className="text-gray-800">
-                Bedankt! U heeft nu toegang tot Ontmoetjongens. Log in om verder te gaan.
+                Bedankt! Je ontvangt binnen 1 week een e-mail met de toegang.
               </p>
-              <Link
-                href="/inloggen"
-                className="start-btn start-btn-primary inline-block w-full py-4 px-6 text-center no-underline"
-              >
-                Naar inloggen
-              </Link>
             </div>
           )}
         </div>

@@ -6,15 +6,18 @@ import { CircularLoader } from '@/components/CircularLoader';
 import { Clock } from 'lucide-react';
 import ClickFlareCapture from '@/components/ClickFlareCapture';
 import StartProfileSlideshow from '@/components/StartProfileSlideshow';
-
+import StartProvinceMeetingMap from '@/components/StartProvinceMeetingMap';
+import { Start5RollingSpots, Start5SignupPopup } from '@/components/Start5PaymentSpots';
 import { startProfileSlides } from '@/lib/start-profile-slides';
 
-const PROFILE_SLIDES = startProfileSlides('/start/3');
+const PROFILE_SLIDES = startProfileSlides('/start/5');
 
-type Step = 'q1' | 'q2' | 'loading' | 'congrats' | 'discretion' | 'payment' | 'paid';
+type Step = 'q1' | 'q2' | 'province' | 'loading' | 'spots' | 'discretion' | 'payment' | 'paid';
 
 const PAYMENT_TIMER_SECONDS = 60;
 const LOADING_MS = 4000;
+const SIGNUP_POPUP_DELAY_MS = 3000;
+const SIGNUP_POPUP_VISIBLE_MS = 3000;
 
 function formatCountdown(totalSeconds: number): string {
   const s = Math.max(0, totalSeconds);
@@ -44,12 +47,14 @@ function JaNeeButtons({ onAnswer }: { onAnswer: (ja: boolean) => void }) {
   );
 }
 
-export default function Start3Page() {
+export default function Start5Page() {
   const [step, setStep] = useState<Step>('q1');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(PAYMENT_TIMER_SECONDS);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signupPopupVisible, setSignupPopupVisible] = useState(false);
+  const [spotsLeft, setSpotsLeft] = useState(7);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -72,7 +77,7 @@ export default function Start3Page() {
       const p = Math.min(100, Math.round((elapsed / LOADING_MS) * 100));
       setLoadingProgress(p);
       if (elapsed < LOADING_MS) requestAnimationFrame(tick);
-      else setStep('congrats');
+      else setStep('spots');
     };
     requestAnimationFrame(tick);
   }, [step]);
@@ -80,20 +85,37 @@ export default function Start3Page() {
   useEffect(() => {
     if (step !== 'payment') return;
     setSecondsLeft(PAYMENT_TIMER_SECONDS);
+    setSignupPopupVisible(false);
+    setSpotsLeft(7);
     const deadline = Date.now() + PAYMENT_TIMER_SECONDS * 1000;
     const id = window.setInterval(() => {
       const left = Math.ceil((deadline - Date.now()) / 1000);
       setSecondsLeft(Math.max(0, left));
     }, 250);
-    return () => window.clearInterval(id);
+    const popupTimer = window.setTimeout(() => {
+      setSignupPopupVisible(true);
+      setSpotsLeft(6);
+    }, SIGNUP_POPUP_DELAY_MS);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(popupTimer);
+    };
   }, [step]);
+
+  useEffect(() => {
+    if (!signupPopupVisible) return;
+    const hideTimer = window.setTimeout(() => {
+      setSignupPopupVisible(false);
+    }, SIGNUP_POPUP_VISIBLE_MS);
+    return () => window.clearTimeout(hideTimer);
+  }, [signupPopupVisible]);
 
   const startCheckout = useCallback(async () => {
     setError(null);
     setCheckoutBusy(true);
     try {
       const returnUrl =
-        typeof window !== 'undefined' ? `${window.location.origin}/start/3` : undefined;
+        typeof window !== 'undefined' ? `${window.location.origin}/start/5` : undefined;
       const res = await fetch('/api/stripe/ontmoetjongens-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -141,8 +163,15 @@ export default function Start3Page() {
               <h2 className="text-center text-xl md:text-2xl text-gray-900 px-1">
                 Deze jonge mannen willen vaak snel afspreken op een discrete plek. Ben je daar oke mee?
               </h2>
-              <JaNeeButtons onAnswer={() => setStep('loading')} />
+              <JaNeeButtons onAnswer={() => setStep('province')} />
             </div>
+          )}
+
+          {step === 'province' && (
+            <StartProvinceMeetingMap
+              profileSlides={PROFILE_SLIDES}
+              onContinue={() => setStep('loading')}
+            />
           )}
 
           {step === 'loading' && (
@@ -154,11 +183,11 @@ export default function Start3Page() {
             </div>
           )}
 
-          {step === 'congrats' && (
+          {step === 'spots' && (
             <div className="space-y-5 text-center">
               <p className="text-xl md:text-2xl font-bold text-gray-900 leading-snug">
-                Gefeliciteerd! Er is nog plek voor u om zich aan te melden en direct contact te hebben
-                met jonge mannen.
+                Gefeliciteerd! Er zijn nog 7 plekken beschikbaar voor u om zich aan te melden en direct
+                contact te hebben met jonge mannen.
               </p>
               <button
                 type="button"
@@ -229,6 +258,8 @@ export default function Start3Page() {
                 >
                   {checkoutBusy ? 'Even geduld…' : 'Voltooi account'}
                 </button>
+                <Start5RollingSpots spotsLeft={spotsLeft} />
+                <Start5SignupPopup visible={signupPopupVisible} />
               </section>
             </div>
           )}
@@ -243,7 +274,6 @@ export default function Start3Page() {
           )}
         </div>
       </div>
-
     </div>
   );
 }

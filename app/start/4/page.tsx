@@ -6,12 +6,20 @@ import { CircularLoader } from '@/components/CircularLoader';
 import { Clock } from 'lucide-react';
 import ClickFlareCapture from '@/components/ClickFlareCapture';
 import StartProfileSlideshow from '@/components/StartProfileSlideshow';
-
+import StartProvinceMeetingMap from '@/components/StartProvinceMeetingMap';
 import { startProfileSlides } from '@/lib/start-profile-slides';
 
-const PROFILE_SLIDES = startProfileSlides('/start/3');
+const PROFILE_SLIDES = startProfileSlides('/start/4');
 
-type Step = 'q1' | 'q2' | 'loading' | 'congrats' | 'discretion' | 'payment' | 'paid';
+type Step =
+  | 'q1'
+  | 'q2'
+  | 'province'
+  | 'loading'
+  | 'congrats'
+  | 'discretion'
+  | 'payment'
+  | 'paid';
 
 const PAYMENT_TIMER_SECONDS = 60;
 const LOADING_MS = 4000;
@@ -44,7 +52,7 @@ function JaNeeButtons({ onAnswer }: { onAnswer: (ja: boolean) => void }) {
   );
 }
 
-export default function Start3Page() {
+export default function Start4Page() {
   const [step, setStep] = useState<Step>('q1');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(PAYMENT_TIMER_SECONDS);
@@ -93,7 +101,7 @@ export default function Start3Page() {
     setCheckoutBusy(true);
     try {
       const returnUrl =
-        typeof window !== 'undefined' ? `${window.location.origin}/start/3` : undefined;
+        typeof window !== 'undefined' ? `${window.location.origin}/start/4` : undefined;
       const res = await fetch('/api/stripe/ontmoetjongens-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -141,8 +149,15 @@ export default function Start3Page() {
               <h2 className="text-center text-xl md:text-2xl text-gray-900 px-1">
                 Deze jonge mannen willen vaak snel afspreken op een discrete plek. Ben je daar oke mee?
               </h2>
-              <JaNeeButtons onAnswer={() => setStep('loading')} />
+              <JaNeeButtons onAnswer={() => setStep('province')} />
             </div>
+          )}
+
+          {step === 'province' && (
+            <StartProvinceMeetingMap
+              profileSlides={PROFILE_SLIDES}
+              onContinue={() => setStep('loading')}
+            />
           )}
 
           {step === 'loading' && (
