@@ -23,6 +23,7 @@ const POPUP_POSITIONS = [
 ] as const;
 
 const ROTATE_MS = 3200;
+const COUNTDOWN_START = 59;
 
 function OnlineDot() {
   return (
@@ -100,6 +101,7 @@ export default function Lander13Page() {
   const [positionIndex, setPositionIndex] = useState(0);
   const [popupVisible, setPopupVisible] = useState(false);
   const [popupDismissed, setPopupDismissed] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(COUNTDOWN_START);
 
   const selectedName = PROVINCE_PATHS.find((p) => p.id === selectedId)?.name;
   const activeProfile = PROFILES[profileIndex];
@@ -149,6 +151,16 @@ export default function Lander13Page() {
   }, []);
 
   useEffect(() => {
+    if (loading || secondsLeft <= 0) return;
+    const interval = window.setInterval(() => {
+      setSecondsLeft((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [loading, secondsLeft]);
+
+  const timerDisplay = `${Math.floor(secondsLeft / 60)}:${(secondsLeft % 60).toString().padStart(2, '0')}`;
+
+  useEffect(() => {
     if (!popupVisible || popupDismissed || loading) return;
     const interval = window.setInterval(() => {
       setProfileIndex((i) => (i + 1) % PROFILES.length);
@@ -181,18 +193,32 @@ export default function Lander13Page() {
       )}
 
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-[#1f0012] via-[#1f0012]/80 to-transparent px-4 pb-6 pt-[max(0.75rem,env(safe-area-inset-top))] text-center">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#ff5eb8]">
-          Live in Nederland
-        </p>
-        <h1 className="mt-1 text-balance text-lg font-extrabold leading-tight text-white drop-shadow-sm sm:text-xl">
+        <h1 className="text-balance text-2xl font-extrabold leading-tight text-white drop-shadow-sm sm:text-3xl">
           Selecteer waar je vrouwen wilt ontmoeten
         </h1>
-        <p className="mt-1 text-xs font-medium text-[#ffb3dc] sm:text-sm">
+        <p className="mt-2 text-base font-medium text-[#ffb3dc] sm:text-lg">
           Tik op een provincie op de kaart
         </p>
+        <div
+          className={`mt-4 inline-flex flex-col items-center rounded-2xl border-2 px-5 py-3 ${
+            secondsLeft <= 10
+              ? 'animate-pulse border-[#ff2d95] bg-[#ff2d95]/20'
+              : 'border-[#ff5eb8]/50 bg-[#ff2d95]/10'
+          }`}
+        >
+          <p className="text-sm font-semibold text-[#ffb3dc] sm:text-base">
+            Tijd om nog aan te bekijken
+          </p>
+          <p
+            className="mt-1 font-mono text-4xl font-black tabular-nums tracking-tight text-white sm:text-5xl"
+            aria-live="polite"
+          >
+            {timerDisplay}
+          </p>
+        </div>
       </div>
 
-      <div className="absolute inset-0 flex items-center justify-center px-1 pt-16 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div className="absolute inset-0 flex items-center justify-center px-1 pt-[11.5rem] pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pt-48">
         <svg
           viewBox={NL_MAP_VIEWBOX}
           className="h-full w-full max-h-full max-w-[min(100%,480px)] touch-manipulation"
