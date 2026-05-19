@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { CircularLoader } from '@/components/CircularLoader';
 import { ArrowRight, Check } from 'lucide-react';
 import ClickFlareCapture from '@/components/ClickFlareCapture';
-import ClickFlareLanderScript from '@/components/ClickFlareLanderScript';
 import './lander-3.css';
 
 const CTA_URL = 'https://911-for-me.com/cf/click';
@@ -147,7 +146,6 @@ export default function Lander3Page() {
   return (
     <div className="lander-3-theme flex flex-col">
       <ClickFlareCapture />
-      <ClickFlareLanderScript />
       <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 max-w-lg mx-auto w-full">
         {step === 'splash' && (
           <div className="text-center w-full">
