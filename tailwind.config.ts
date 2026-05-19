@@ -10,13 +10,13 @@ const config: Config = {
     extend: {
       colors: {
         primary: {
-          DEFAULT: "#f97316",
+          DEFAULT: "#dc2626",
           foreground: "#ffffff",
-          hover: "#ea580c",
-          deep: "#c2410c",
+          hover: "#b91c1c",
+          deep: "#991b1b",
         },
         accent: {
-          DEFAULT: "#fb923c",
+          DEFAULT: "#ef4444",
         },
         /** Lander varianten (bijv. /lander/2) — bordeaux / roze */
         lander: {

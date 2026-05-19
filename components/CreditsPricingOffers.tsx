@@ -138,7 +138,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
             key={pkg.id}
             className={`relative rounded-2xl p-5 shadow-sm ${
               pkg.featured
-                ? 'border-4 border-primary bg-gradient-to-br from-primary/[0.08] via-orange-50 to-white ring-4 ring-primary/40 shadow-xl shadow-primary/15 lg:scale-[1.03]'
+                ? 'border-4 border-primary bg-gradient-to-br from-primary/[0.08] via-red-50 to-white ring-4 ring-primary/40 shadow-xl shadow-primary/15 lg:scale-[1.03]'
                 : 'border border-gray-200 bg-white'
             }`}
           >

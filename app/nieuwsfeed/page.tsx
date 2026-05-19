@@ -131,7 +131,7 @@ export default function NieuwsfeedPage() {
         </div>
 
         <div className="mx-auto w-full max-w-3xl space-y-5">
-          <section className="rounded-3xl border border-orange-100 bg-white p-5 shadow-sm">
+          <section className="rounded-3xl border border-red-100 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Foto-verzoeken</h2>

@@ -262,21 +262,11 @@ export default function SwipePage() {
         <button
           type="button"
           onClick={() => router.push('/profielen')}
-          className="flex items-center gap-2 rounded-full px-3 py-1 transition hover:bg-white/5"
+          className="rounded-full px-3 py-1 transition hover:bg-white/5"
           aria-label="Naar profielen"
         >
-          <span className="relative inline-block h-9 w-9 overflow-hidden rounded-full ring-2 ring-rose-500/40 shadow-md">
-            <Image
-              src="/logo-stiekemefotos.png"
-              alt=""
-              width={36}
-              height={36}
-              className="h-full w-full object-cover"
-              priority
-            />
-          </span>
-          <span className="text-base font-bold tracking-tight">
-            stiekemefotos<span className="text-primary">.nl</span>
+          <span className="text-base font-extrabold tracking-tight text-primary">
+            Stiekemevrouwen
           </span>
         </button>
       </header>
@@ -478,7 +468,7 @@ export default function SwipePage() {
           <div className="relative z-10 w-full max-w-md rounded-t-3xl bg-white p-5 text-gray-900 shadow-2xl sm:rounded-3xl sm:p-6">
             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-gray-200 sm:hidden" />
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-primary">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-primary">
                 <Sparkles className="h-5 w-5" />
               </span>
               <div className="min-w-0">
@@ -514,7 +504,7 @@ export default function SwipePage() {
                         : curr
                     )
                   }
-                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[12px] font-medium text-gray-700 transition hover:bg-orange-50 hover:text-orange-700 disabled:opacity-50"
+                  className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[12px] font-medium text-gray-700 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
                 >
                   {s}
                 </button>
@@ -531,7 +521,7 @@ export default function SwipePage() {
               disabled={wishSheet.sending}
               placeholder="Bijv: hey schat, doe je een foto voor me met gele lingerie op bed?"
               rows={3}
-              className="mt-3 w-full resize-none rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[15px] outline-none focus:border-primary focus:ring-2 focus:ring-orange-100 disabled:opacity-60"
+              className="mt-3 w-full resize-none rounded-2xl border border-gray-200 bg-white px-3 py-2 text-[15px] outline-none focus:border-primary focus:ring-2 focus:ring-red-100 disabled:opacity-60"
             />
 
             {wishSheet.error ? (

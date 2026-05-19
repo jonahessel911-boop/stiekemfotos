@@ -5,6 +5,7 @@ import {
   CREDIT_PACKAGES,
   type CreditPackageId,
   getStripe,
+  STRIPE_PRODUCT_ONTMOETJONGENS,
   STRIPE_WEBHOOK_SECRET,
 } from "@/lib/server/stripe";
 import {
@@ -114,18 +115,42 @@ export async function POST(req: Request) {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.payment_status === "paid") {
+        const productType = String(session.metadata?.productType ?? "");
         const userId = String(session.metadata?.userId ?? "");
         const stripeAmountCents =
           typeof session.amount_total === "number" && Number.isFinite(session.amount_total)
             ? session.amount_total
             : 0;
-        await handlePaidStripeCreditsOrder({
-          sessionId: session.id,
-          userId,
-          amountCents: stripeAmountCents,
-          currency: (session.currency || "eur").toLowerCase(),
-          creditsHint: session.metadata?.credits ?? null,
-        });
+
+        if (productType === STRIPE_PRODUCT_ONTMOETJONGENS) {
+          await markStripeCheckoutPaid(session.id);
+          const clickId = String(session.metadata?.clickId ?? "").trim();
+          if (clickId) {
+            let revenueCents = stripeAmountCents;
+            if (userId) {
+              try {
+                revenueCents = await getUserTotalPaidCents(userId);
+              } catch {
+                /* best effort */
+              }
+            }
+            await sendSvlPostback({
+              clickId,
+              payout: formatPayoutFromCents(revenueCents),
+              txid: userId ? buildSvlTxidForUser(userId) : `ontmoetjongens_${session.id}`,
+              ct: SVL_CONVERSION_TYPE,
+              reason: "ontmoetjongens_paid",
+            });
+          }
+        } else if (userId) {
+          await handlePaidStripeCreditsOrder({
+            sessionId: session.id,
+            userId,
+            amountCents: stripeAmountCents,
+            currency: (session.currency || "eur").toLowerCase(),
+            creditsHint: session.metadata?.credits ?? null,
+          });
+        }
       }
     }
 

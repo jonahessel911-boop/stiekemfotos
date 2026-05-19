@@ -12,7 +12,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       default: "bg-primary text-primary-foreground hover:bg-primary-hover shadow-sm",
-      accent: "bg-[#f97316] hover:bg-[#e86a10] text-white shadow-sm font-semibold",
+      accent: "bg-primary hover:bg-primary-hover text-white shadow-sm font-semibold",
       outline: "border border-gray-300 bg-white hover:bg-gray-50 text-gray-700",
       ghost: "hover:bg-gray-100 text-gray-600",
     }

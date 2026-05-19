@@ -109,7 +109,7 @@ export default function Navbar() {
 
   const mobileBar = (
     <div
-      className="md:hidden fixed bottom-0 left-0 right-0 z-[90] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(249,115,22,0.35)]"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-[90] border-t border-white/20 bg-primary pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_28px_rgba(220,38,38,0.35)]"
       role="navigation"
       aria-label="Hoofdmenu mobiel"
     >

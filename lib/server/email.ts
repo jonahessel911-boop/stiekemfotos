@@ -91,12 +91,9 @@ function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref
               <td style="padding:22px 24px;background:#ffffff;border-bottom:1px solid #eef0f4;">
                 <table role="presentation" cellspacing="0" cellpadding="0">
                   <tr>
-                    <td style="vertical-align:middle;">
-                      <img src="${APP_URL}/logo-stiekemefotos.png" alt="stiekemefotos" width="50" height="50" style="display:block;width:50px;height:50px;border-radius:999px;" />
-                    </td>
-                    <td style="vertical-align:middle;padding-left:12px;">
-                      <div style="font-size:30px;font-weight:800;line-height:1;color:#0f172a;">stiekemefotos.nl</div>
-                      <div style="margin-top:4px;font-size:12px;color:#6b7280;font-weight:600;">Dé site waarop vrouwen bijverdienen met stiekeme fotos</div>
+                    <td style="vertical-align:middle;" colspan="2">
+                      <div style="font-size:28px;font-weight:800;line-height:1;color:#dc2626;">Stiekemevrouwen</div>
+                      <div style="margin-top:4px;font-size:12px;color:#6b7280;font-weight:600;">Discreet contact met vrouwen bij jou in de buurt</div>
                     </td>
                   </tr>
                 </table>
@@ -106,12 +103,12 @@ function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref
               <td style="padding:24px;">
                 <div style="font-size:32px;font-weight:800;line-height:1.15;color:#0f172a;">${title}</div>
                 <div style="margin-top:10px;font-size:19px;font-weight:600;color:#374151;">${subtitle}</div>
-                <div style="margin-top:16px;height:3px;width:74px;background:#f97316;border-radius:999px;"></div>
+                <div style="margin-top:16px;height:3px;width:74px;background:#dc2626;border-radius:999px;"></div>
                 <div style="margin-top:20px;">
                 ${body}
                 </div>
                 <div style="margin-top:26px;">
-                  <a href="${safeHref}" style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:16px;">${ctaText}</a>
+                  <a href="${safeHref}" style="display:inline-block;background:#dc2626;color:#fff;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:16px;">${ctaText}</a>
                 </div>
                 <p style="margin-top:18px;font-size:12px;color:#6b7280;">
                   18+ · Privé en discreet. Als je dit niet wilt ontvangen, log in en pas je voorkeuren aan.

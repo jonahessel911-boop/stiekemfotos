@@ -25,19 +25,15 @@ export const viewport: Viewport = {
   minimumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#ffffff",
+  themeColor: "#dc2626",
 };
 
 export const metadata: Metadata = {
   title: {
-    default: "Stiekemefotos.nl",
-    template: "%s · Stiekemefotos.nl",
+    default: "Stiekemevrouwen",
+    template: "%s · Stiekemevrouwen",
   },
-  description: "Dé site waarop vrouwen bijverdienen met stiekeme fotos",
-  icons: {
-    icon: [{ url: "/logo-stiekemefotos.png", type: "image/png", sizes: "any" }],
-    apple: "/logo-stiekemefotos.png",
-  },
+  description: "Discreet contact met vrouwen bij jou in de buurt",
 };
 
 export default async function RootLayout({

@@ -32,11 +32,11 @@ label {
     --foreground: 222.2 84% 4.9%;
     --surface: #ffffff;
     --surface-card: #f8fafc;
-    --brand: #f97316;
-    /** Signup / login / wachtwoord — clean wit BestDates-stijl */
-    --onboarding-bg: #ffffff;
+    --brand: #dc2626;
+    /** Signup / login / wachtwoord */
+    --onboarding-bg: #fff5f5;
     --onboarding-card: #ffffff;
-    --onboarding-footer-bg: #f1f5f9;
+    --onboarding-footer-bg: #fee2e2;
     --auth-shell-bg: #ffffff;
   }
 
@@ -49,9 +49,8 @@ label {
   }
 }
 
-/* Legacy helper — voor oude markup; logo gebruikt nu /logo-stiekemefotos.png */
 .diamond-logo {
-  background: linear-gradient(145deg, #f97316 0%, #ea580c 55%, #c2410c 100%);
+  background: linear-gradient(145deg, #dc2626 0%, #b91c1c 55%, #991b1b 100%);
   position: relative;
   display: flex;
   align-items: center;
@@ -151,10 +150,10 @@ label {
 @keyframes gift-box-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.2);
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.2);
   }
   50% {
-    box-shadow: 0 0 0 7px rgba(249, 115, 22, 0);
+    box-shadow: 0 0 0 7px rgba(220, 38, 38, 0);
   }
 }
 
@@ -175,4 +174,48 @@ label {
 
 .gift-reveal-pop {
   animation: gift-reveal-pop 260ms ease-out;
+}
+
+.start-chat-popup {
+  animation: start-chat-popup-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.start-chat-popup-card {
+  animation: start-chat-popup-pulse 2.5s ease-in-out infinite;
+}
+
+.start-chat-popup-swap {
+  animation: start-chat-popup-swap 0.35s ease-out;
+}
+
+@keyframes start-chat-popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes start-chat-popup-swap {
+  from {
+    opacity: 0.35;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes start-chat-popup-pulse {
+  0%,
+  100% {
+    box-shadow: 0 8px 28px -4px rgba(220, 38, 38, 0.25);
+  }
+  50% {
+    box-shadow: 0 14px 36px -2px rgba(220, 38, 38, 0.45);
+  }
 }

@@ -16,6 +16,15 @@ export const CREDIT_PACKAGES: Record<
   right: { credits: 300, priceEurCents: 2999, title: "300 credits" },
 };
 
+/** /start — Ontmoetjongens platformtoegang (eenmalig). */
+export const ONTMOETJONGENS_ONBOARDING = {
+  priceEurCents: 1995,
+  title: "Ontmoetjongens — platformtoegang",
+  description: "Eenmalige registratie voor direct contact met jonge mannen",
+} as const;
+
+export const STRIPE_PRODUCT_ONTMOETJONGENS = "ontmoetjongens_onboarding";
+
 let stripeSingleton: Stripe | null = null;
 
 export function getStripe(): Stripe {

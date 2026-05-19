@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
 import ClickFlareCapture from '@/components/ClickFlareCapture';
 import {
   buildClickflareClickRedirectUrl,
@@ -16,44 +15,30 @@ function readCookie(name: string): string | null {
 }
 
 export default function Lander7Redirect() {
-  const searchParams = useSearchParams();
   const redirected = useRef(false);
 
   useEffect(() => {
     if (redirected.current) return;
+    redirected.current = true;
 
-    const run = () => {
-      if (redirected.current) return;
-      redirected.current = true;
+    const incoming = new URLSearchParams(window.location.search);
+    const lpurl = window.location.href;
 
-      const incoming = new URLSearchParams(searchParams.toString());
-      const qs = incoming.toString();
-      const lpurl = `${window.location.origin}${window.location.pathname}${qs ? `?${qs}` : ""}`;
+    const target = buildClickflareClickRedirectUrl({
+      incomingSearch: incoming,
+      lpurl,
+      referrer: document.referrer || null,
+      cpidCookie: readCookie(CF_CPID_COOKIE),
+      clickIdCookie: readCookie(SVL_CLICK_ID_COOKIE),
+    });
 
-      const target = buildClickflareClickRedirectUrl({
-        incomingSearch: incoming,
-        lpurl,
-        referrer: document.referrer || null,
-        cpidCookie: readCookie(CF_CPID_COOKIE),
-        clickIdCookie: readCookie(SVL_CLICK_ID_COOKIE),
-      });
-
-      window.location.replace(target);
-    };
-
-    // ClickFlareCapture zet cookies in dezelfde tick; korte delay zodat query→cookie kan landen
-    const t = window.setTimeout(run, 80);
-    return () => window.clearTimeout(t);
-  }, [searchParams]);
+    window.location.replace(target);
+  }, []);
 
   return (
     <>
       <ClickFlareCapture />
-      <div
-        className="min-h-screen bg-[#f5f0ff]"
-        aria-live="polite"
-        aria-busy="true"
-      />
+      <div className="min-h-screen bg-[#f5f0ff]" aria-busy="true" />
     </>
   );
 }

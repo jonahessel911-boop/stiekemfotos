@@ -5,8 +5,12 @@ import Link from 'next/link';
 import OntmoetjongensBrand from '@/components/OntmoetjongensBrand';
 import { CircularLoader } from '@/components/CircularLoader';
 import { Clock } from 'lucide-react';
-import Image from 'next/image';
 import ClickFlareCapture from '@/components/ClickFlareCapture';
+import StartProfileSlideshow from '@/components/StartProfileSlideshow';
+
+import { startProfileSlides } from '@/lib/start-profile-slides';
+
+const PROFILE_SLIDES = startProfileSlides('/start/2');
 
 type Step = 'q1' | 'q2' | 'loading' | 'congrats' | 'discretion' | 'payment' | 'paid';
 
@@ -41,7 +45,7 @@ function JaNeeButtons({ onAnswer }: { onAnswer: (ja: boolean) => void }) {
   );
 }
 
-export default function StartPage() {
+export default function Start2Page() {
   const [step, setStep] = useState<Step>('q1');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(PAYMENT_TIMER_SECONDS);
@@ -90,7 +94,7 @@ export default function StartPage() {
     setCheckoutBusy(true);
     try {
       const returnUrl =
-        typeof window !== 'undefined' ? `${window.location.origin}/start` : undefined;
+        typeof window !== 'undefined' ? `${window.location.origin}/start/2` : undefined;
       const res = await fetch('/api/stripe/ontmoetjongens-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,16 +197,7 @@ export default function StartPage() {
                   <span className="start-online-dot" aria-hidden />
                   Nu online
                 </p>
-                <div className="start-blurred-grid overflow-hidden border-2 border-[#dc2626]">
-                  <Image
-                    src="/start/blurred-profiles.png"
-                    alt=""
-                    width={800}
-                    height={1200}
-                    className="start-blurred-img h-auto w-full"
-                    priority
-                  />
-                </div>
+                <StartProfileSlideshow slides={PROFILE_SLIDES} />
               </section>
 
               <section className="start-payment-block start-payment-value">

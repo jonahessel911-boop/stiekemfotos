@@ -1,7 +1,3 @@
-import {
-  SVL_CLICK_ID_QUERY_KEYS,
-} from "@/lib/clickflare-postback";
-
 export const CLICKFLARE_CLICK_URL = "https://911-for-me.com/cf/click";
 
 /** ClickFlare campaign id cookie (lander tag). */
@@ -17,11 +13,35 @@ const RESERVED_KEYS = new Set([
   "clickid",
 ]);
 
-/** Sub-ids en UTM mogen mee; ClickFlare-placeholders niet. */
+const PLACEHOLDER = /^\{[^}]+\}$/;
+const UUID_KEY =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Alleen voor /lander/7 redirect — ClickFlare `?{cf_click_id}` wordt `?<uuid>` (id als query-key). */
+function extractClickIdForLander7(params: URLSearchParams): string | null {
+  const standard = ["click_id", "clickid", "cid"];
+  for (const key of standard) {
+    const v = params.get(key)?.trim();
+    if (v && !PLACEHOLDER.test(v)) return v;
+  }
+
+  const macroVal = params.get("{cf_click_id}")?.trim() || params.get("cf_click_id")?.trim();
+  if (macroVal && !PLACEHOLDER.test(macroVal)) return macroVal;
+
+  for (const [key, value] of params.entries()) {
+    const k = key.trim();
+    const v = value.trim();
+    if (!v && UUID_KEY.test(k)) return k;
+  }
+
+  return null;
+}
+
 function isPassthroughParamKey(key: string): boolean {
   const k = key.trim();
   if (!k || RESERVED_KEYS.has(k)) return false;
   if (k.includes("{") || k.includes("}")) return false;
+  if (UUID_KEY.test(k)) return false;
   const lower = k.toLowerCase();
   if (lower === "cf_click_id" || lower === "{cf_click_id}") return false;
   if (lower.startsWith("utm_")) return true;
@@ -30,26 +50,14 @@ function isPassthroughParamKey(key: string): boolean {
   return false;
 }
 
-function readFirstParam(params: URLSearchParams, keys: ReadonlyArray<string>): string | null {
-  for (const key of keys) {
-    const raw = params.get(key);
-    if (raw?.trim() && !raw.includes("{")) return raw.trim();
-  }
-  return null;
-}
-
 export type BuildClickflareClickRedirectOpts = {
   incomingSearch: URLSearchParams;
-  /** Volledige URL van deze lander (incl. query), voor lpurl. */
   lpurl: string;
   referrer?: string | null;
   cpidCookie?: string | null;
   clickIdCookie?: string | null;
 };
 
-/**
- * Bouwt een schone 911 /cf/click URL (geen {cf_click_id}-placeholders of dubbele params).
- */
 export function buildClickflareClickRedirectUrl(opts: BuildClickflareClickRedirectOpts): string {
   const url = new URL(CLICKFLARE_CLICK_URL);
   const incoming = opts.incomingSearch;
@@ -60,7 +68,7 @@ export function buildClickflareClickRedirectUrl(opts: BuildClickflareClickRedire
   }
 
   const clickId =
-    readFirstParam(incoming, SVL_CLICK_ID_QUERY_KEYS) || opts.clickIdCookie?.trim() || "";
+    extractClickIdForLander7(incoming) || opts.clickIdCookie?.trim() || "";
   if (clickId) {
     url.searchParams.set("click_id", clickId);
   }
