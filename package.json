@@ -9,7 +9,8 @@
     "lint": "next lint",
     "seed:supabase-profiles": "node scripts/seed-supabase-profiles.mjs",
     "vercel:push-env": "node scripts/push-env-to-vercel.mjs",
-    "profiles:migrate-legacy-media": "node scripts/migrate-legacy-profile-media-urls.mjs"
+    "profiles:migrate-legacy-media": "node scripts/migrate-legacy-profile-media-urls.mjs",
+    "profiles:transfer": "node scripts/transfer-profiles-to-supabase.mjs"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",

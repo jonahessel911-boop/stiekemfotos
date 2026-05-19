@@ -1,0 +1,52 @@
+/* Editorial advertorial — override app Poppins inside lander 10 */
+.lander-10 {
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  color: #1a1a1a;
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lander-10 .sans {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+.lander-10 article p {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  margin-bottom: 1.25rem;
+  color: #222;
+}
+
+.lander-10 article h2 {
+  font-family: Georgia, 'Times New Roman', Times, serif;
+  font-size: 1.375rem;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 2rem 0 1rem;
+  color: #111;
+}
+
+.lander-10 article blockquote {
+  border-left: 3px solid #ccc;
+  margin: 1.5rem 0;
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  font-style: italic;
+  color: #333;
+}
+
+.lander-10 .cta-btn {
+  display: inline-block;
+  background: #6b4c9a;
+  color: #fff !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  text-decoration: none !important;
+  border: none;
+  cursor: pointer;
+}
+
+.lander-10 .cta-btn:hover {
+  background: #5a3f85;
+}
