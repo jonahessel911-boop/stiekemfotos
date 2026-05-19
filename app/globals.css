@@ -39,6 +39,14 @@ label {
     --onboarding-footer-bg: #f1f5f9;
     --auth-shell-bg: #ffffff;
   }
+
+  /** /lander/2 — bordeaux-roze signup flow */
+  .lander-2-theme {
+    --brand: #9b2242;
+    --onboarding-bg: #fff8fa;
+    --onboarding-card: #ffffff;
+    --onboarding-footer-bg: #fce8ef;
+  }
 }
 
 /* Legacy helper — voor oude markup; logo gebruikt nu /logo-stiekemefotos.png */

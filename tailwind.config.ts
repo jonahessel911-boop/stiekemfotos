@@ -18,6 +18,15 @@ const config: Config = {
         accent: {
           DEFAULT: "#fb923c",
         },
+        /** Lander varianten (bijv. /lander/2) — bordeaux / roze */
+        lander: {
+          DEFAULT: "#9B2242",
+          foreground: "#ffffff",
+          hover: "#7D1A35",
+          deep: "#5C1228",
+          light: "#FCE8EF",
+          muted: "#F5D0DC",
+        },
       },
       fontFamily: {
         sans: ["var(--font-poppins)", "system-ui", "sans-serif"],

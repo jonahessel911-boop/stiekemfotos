@@ -1,0 +1,99 @@
+/* /lander/2 — bordeaux / roze (niet afhankelijk van Tailwind JIT voor custom kleuren) */
+.lander-2-theme {
+  --lander-bg: #fff0f4;
+  --lander-footer: #f8d4de;
+  --lander-accent: #7b1035;
+  --lander-accent-hover: #5c0c28;
+  --lander-accent-light: #fce4ec;
+  --lander-accent-muted: #e8a4b8;
+  --brand: #7b1035;
+  --onboarding-bg: #fff0f4;
+  --onboarding-card: #ffffff;
+  --onboarding-footer-bg: #f8d4de;
+  background-color: var(--lander-bg);
+  min-height: 100vh;
+}
+
+.lander-2-theme .btn-lander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 100%;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  padding: 1.25rem 2rem;
+  border-radius: 9999px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #ffffff !important;
+  background-color: var(--lander-accent) !important;
+  box-shadow: 0 10px 25px -5px rgba(123, 16, 53, 0.35);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.lander-2-theme .btn-lander:hover {
+  background-color: var(--lander-accent-hover) !important;
+}
+
+.lander-2-theme .btn-lander:active {
+  transform: scale(0.99);
+}
+
+.lander-2-theme .btn-lander-outline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 1.25rem 2rem;
+  border-radius: 9999px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+  background-color: #ffffff;
+  border: 2px solid var(--lander-accent-muted);
+}
+
+.lander-2-theme .btn-lander-outline:hover {
+  background-color: var(--lander-accent-light);
+}
+
+.lander-2-theme .text-lander-accent {
+  color: var(--lander-accent) !important;
+}
+
+.lander-2-theme .link-lander {
+  color: var(--lander-accent);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.lander-2-theme .link-lander:hover {
+  color: var(--lander-accent-hover);
+}
+
+.lander-2-theme .option-selected {
+  border-color: var(--lander-accent) !important;
+  background-color: var(--lander-accent-light) !important;
+}
+
+.lander-2-theme .checkbox-on {
+  border-color: var(--lander-accent) !important;
+  background-color: var(--lander-accent) !important;
+  color: #ffffff;
+}
+
+.lander-2-theme .option-default {
+  border-color: var(--lander-accent-muted);
+}
+
+.lander-2-theme .option-default:hover {
+  background-color: rgba(252, 228, 236, 0.6);
+}
+
+.lander-2-theme .footer-lander {
+  border-top: 1px solid rgba(123, 16, 53, 0.2);
+  background-color: var(--lander-footer);
+}
