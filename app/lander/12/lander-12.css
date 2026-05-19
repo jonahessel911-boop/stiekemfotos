@@ -1,0 +1,14 @@
+.lander-12 .profile-sway {
+  animation: lander12-sway 4.5s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes lander12-sway {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-0.6deg) scale(1);
+  }
+  50% {
+    transform: translateY(-6px) rotate(0.6deg) scale(1.02);
+  }
+}
