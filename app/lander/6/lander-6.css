@@ -1,0 +1,104 @@
+/* /lander/6 — paars / lavendel (zelfde als lander 5) */
+.lander-6-theme {
+  --lander-bg: #f5f0ff;
+  --lander-footer: #e8ddfc;
+  --lander-accent: #6b21a8;
+  --lander-accent-hover: #581c87;
+  --lander-accent-light: #ede9fe;
+  --lander-accent-muted: #c4b5fd;
+  --brand: #6b21a8;
+  --onboarding-bg: #f5f0ff;
+  --onboarding-card: #ffffff;
+  --onboarding-footer-bg: #e8ddfc;
+  background-color: var(--lander-bg);
+  min-height: 100vh;
+}
+
+.lander-6-theme .btn-lander {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 100%;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  padding: 1.25rem 2rem;
+  border-radius: 9999px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #ffffff !important;
+  background-color: var(--lander-accent) !important;
+  box-shadow: 0 10px 25px -5px rgba(107, 33, 168, 0.35);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.lander-6-theme .btn-lander:hover {
+  background-color: var(--lander-accent-hover) !important;
+}
+
+.lander-6-theme .btn-lander:active {
+  transform: scale(0.99);
+}
+
+.lander-6-theme .btn-lander-outline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 1.25rem 2rem;
+  border-radius: 9999px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
+  background-color: #ffffff;
+  border: 2px solid var(--lander-accent-muted);
+  cursor: pointer;
+}
+
+.lander-6-theme .btn-lander-outline:hover {
+  background-color: var(--lander-accent-light);
+}
+
+.lander-6-theme .profile-cta {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  background: #ffffff;
+  border: 2px solid var(--lander-accent-muted);
+  box-shadow: 0 8px 24px -6px rgba(107, 33, 168, 0.25);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lander-6-theme .profile-cta:hover {
+  transform: scale(1.02);
+  border-color: var(--lander-accent);
+  box-shadow: 0 12px 28px -6px rgba(107, 33, 168, 0.35);
+}
+
+.lander-6-theme .profile-cta:active {
+  transform: scale(0.99);
+}
+
+.lander-6-theme .profile-cta img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+}
+
+.lander-6-theme .profile-name {
+  padding: 0.75rem 1rem 1rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--lander-accent);
+  text-align: center;
+}
+
+.lander-6-theme .footer-lander {
+  border-top: 1px solid rgba(107, 33, 168, 0.2);
+  background-color: var(--lander-footer);
+}
