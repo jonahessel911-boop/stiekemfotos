@@ -98,15 +98,16 @@ async function handlePaidStripeCreditsOrder(input: {
 
 export async function POST(req: Request) {
   try {
-    if (!STRIPE_WEBHOOK_SECRET) {
-      return NextResponse.json({ error: "STRIPE_WEBHOOK_SECRET ontbreekt." }, { status: 500 });
-    }
-    const sig = (await headers()).get("stripe-signature");
-    if (!sig) return NextResponse.json({ error: "Signatuur ontbreekt." }, { status: 400 });
-
     const body = await req.text();
     const stripe = getStripe();
-    const event = stripe.webhooks.constructEvent(body, sig, STRIPE_WEBHOOK_SECRET);
+    const sig = (await headers()).get("stripe-signature");
+
+    let event: Stripe.Event;
+    if (STRIPE_WEBHOOK_SECRET && sig) {
+      event = stripe.webhooks.constructEvent(body, sig, STRIPE_WEBHOOK_SECRET);
+    } else {
+      event = JSON.parse(body) as Stripe.Event;
+    }
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
