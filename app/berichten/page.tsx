@@ -68,7 +68,6 @@ import {
   type ProfilePendingSend,
 } from '@/lib/profile-pending-send';
 import {
-  CONVERSATION_STARTER_OPTIONS,
   DEFAULT_PHOTO_REQUEST_DRAFT,
   PROFILE_PHOTO_REQUEST_NAV_KEY,
   type ProfilePhotoRequestNavPayload,
@@ -2752,32 +2751,6 @@ function BerichtenInner() {
                   </div>
                 )}
                 <div className="mx-auto w-full max-w-3xl space-y-2">
-                  {displayMessages.length === 0 && !sendingHere && !pendingImage && (
-                    <div className="flex flex-wrap items-center gap-2 px-1 pb-1">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                        Snel starten
-                      </span>
-                      {CONVERSATION_STARTER_OPTIONS.map((opener) => (
-                        <button
-                          key={opener}
-                          type="button"
-                          onClick={() => {
-                            setInput(opener);
-                            requestAnimationFrame(() => {
-                              try {
-                                composerTextareaRef.current?.focus({ preventScroll: true });
-                              } catch {
-                                composerTextareaRef.current?.focus();
-                              }
-                            });
-                          }}
-                          className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 active:scale-[0.97]"
-                        >
-                          {opener}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                   {replyToId && (
                     <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm">
                       <div className="min-w-0">
