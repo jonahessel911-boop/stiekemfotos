@@ -4,7 +4,11 @@ import {
   sendSvlPostback,
   SVL_CONVERSION_TYPE,
 } from "@/lib/clickflare-postback";
-import { getStripe, STRIPE_PRODUCT_ONTMOETJONGENS } from "@/lib/server/stripe";
+import {
+  getStripe,
+  ONTMOETJONGENS_ONBOARDING,
+  STRIPE_PRODUCT_ONTMOETJONGENS,
+} from "@/lib/server/stripe";
 import {
   getStripeCheckoutBySessionId,
   markStripeCheckoutPaid,
@@ -66,11 +70,14 @@ export async function sendOntmoetjongensClickflareConversion(input: {
   const stripeAmountCents =
     typeof session.amount_total === "number" && Number.isFinite(session.amount_total)
       ? session.amount_total
-      : existing?.priceEurCents ?? 0;
+      : existing?.priceEurCents ?? ONTMOETJONGENS_ONBOARDING.priceEurCents;
+
+  /** Altijd €19,95 payout naar ClickFlare (Ontmoetjongens onboarding). */
+  const payout = formatPayoutFromCents(ONTMOETJONGENS_ONBOARDING.priceEurCents);
 
   const postback = await sendSvlPostback({
     clickId,
-    payout: formatPayoutFromCents(stripeAmountCents),
+    payout,
     txid: userId ? buildSvlTxidForUser(userId) : `ontmoetjongens_${sessionId}`,
     ct: SVL_CONVERSION_TYPE,
     reason: "ontmoetjongens_paid",
