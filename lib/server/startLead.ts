@@ -2,7 +2,12 @@ import { randomBytes } from "crypto";
 import { readJson, writeJson } from "@/lib/server/store";
 import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
 import { scheduleAbandonmentOfferEmail } from "@/lib/server/abandonmentOffer";
-import { createUser, findUserByEmail, type UserRecord } from "@/lib/server/users";
+import {
+  createUser,
+  findUserByEmail,
+  persistClickIdOnUser,
+  type UserRecord,
+} from "@/lib/server/users";
 
 export type OnboardingSignupRecord = {
   naam: string;
@@ -103,6 +108,9 @@ export async function registerStartLead(input: {
       ...(clickId ? { clickId } : {}),
     });
     created = true;
+  } else if (clickId) {
+    const updated = await persistClickIdOnUser(user.id, clickId);
+    if (updated) user = updated;
   }
 
   await appendOnboardingSignupIfNew({

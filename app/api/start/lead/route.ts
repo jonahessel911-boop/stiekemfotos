@@ -4,14 +4,7 @@ import { processDueAbandonmentOfferEmails } from "@/lib/server/abandonmentOffer"
 import { registerStartLead } from "@/lib/server/startLead";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
 import { toPublicUser } from "@/lib/server/users";
-import {
-  buildSvlTxidForUser,
-  sendSvlPostback,
-  SVL_CLICK_ID_COOKIE,
-  SVL_CONVERSION_TYPE,
-  SVL_PAYOUT_COOKIE,
-  SVL_TXID_COOKIE,
-} from "@/lib/clickflare-postback";
+import { SVL_CLICK_ID_COOKIE } from "@/lib/clickflare-postback";
 
 export async function POST(req: Request) {
   try {
@@ -28,8 +21,6 @@ export async function POST(req: Request) {
 
     const jar = await cookies();
     const clickIdCookie = jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim();
-    const payoutCookie = jar.get(SVL_PAYOUT_COOKIE)?.value?.trim();
-    const txidCookie = jar.get(SVL_TXID_COOKIE)?.value?.trim();
 
     const { user, created } = await registerStartLead({
       email,
@@ -38,16 +29,6 @@ export async function POST(req: Request) {
     });
 
     void processDueAbandonmentOfferEmails().catch(() => {});
-
-    if (clickIdCookie) {
-      await sendSvlPostback({
-        clickId: clickIdCookie,
-        payout: payoutCookie || "0.00",
-        txid: txidCookie || buildSvlTxidForUser(user.id),
-        ct: SVL_CONVERSION_TYPE,
-        reason: "signup",
-      });
-    }
 
     const res = NextResponse.json({
       ok: true,

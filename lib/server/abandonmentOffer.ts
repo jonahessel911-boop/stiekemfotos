@@ -47,14 +47,32 @@ export async function pickAbandonmentEmailProfile(): Promise<{ name: string; age
   return { name: p.name, age: p.age };
 }
 
-export async function sendAbandonmentOfferForUser(user: UserRecord): Promise<boolean> {
-  if (!userNeedsAbandonmentOffer(user)) return false;
-  if (user.abandonmentOfferDueAt && Date.now() < new Date(user.abandonmentOfferDueAt).getTime()) {
-    return false;
+export type SendAbandonmentOfferResult = {
+  sent: boolean;
+  reason: string;
+  to?: string;
+  subject?: string;
+};
+
+/** Verstuurt de 62%-korting-mail (abandonment). Admin mag `force` voor opnieuw versturen. */
+export async function sendAbandonmentOfferEmailToUser(input: {
+  userId: string;
+  force?: boolean;
+}): Promise<SendAbandonmentOfferResult> {
+  const userId = input.userId.trim();
+  if (!userId) return { sent: false, reason: "missing_user_id" };
+
+  const user = await findUserById(userId);
+  if (!user) return { sent: false, reason: "user_not_found" };
+  if (user.ontmoetjongensPaidAt) return { sent: false, reason: "already_paid" };
+  if (user.firstCreditPurchaseAt) return { sent: false, reason: "has_credit_purchase" };
+  if (user.abandonmentOfferEmailSentAt && !input.force) {
+    return { sent: false, reason: "already_sent" };
   }
 
   const profile = await pickAbandonmentEmailProfile();
   const checkoutLink = buildKortingCheckoutLink(user.email);
+  const subject = `${profile.name} (${profile.age}) wacht op je...`;
 
   await sendAbandonmentOfferEmail({
     to: user.email,
@@ -68,7 +86,17 @@ export async function sendAbandonmentOfferForUser(user: UserRecord): Promise<boo
   await patchUserRecord(user.id, {
     abandonmentOfferEmailSentAt: new Date().toISOString(),
   });
-  return true;
+
+  return { sent: true, reason: "ok", to: user.email, subject };
+}
+
+export async function sendAbandonmentOfferForUser(user: UserRecord): Promise<boolean> {
+  if (!userNeedsAbandonmentOffer(user)) return false;
+  if (user.abandonmentOfferDueAt && Date.now() < new Date(user.abandonmentOfferDueAt).getTime()) {
+    return false;
+  }
+  const result = await sendAbandonmentOfferEmailToUser({ userId: user.id });
+  return result.sent;
 }
 
 export async function processAbandonmentOfferForUserId(userId: string): Promise<boolean> {

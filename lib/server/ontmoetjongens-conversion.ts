@@ -12,6 +12,7 @@ import {
 } from "@/lib/server/stripe";
 import { sendOntmoetjongensAccessEmailIfNeeded } from "@/lib/server/ontmoetjongens-access-email";
 import { provisionOntmoetjongensUser } from "@/lib/server/ontmoetjongens-user";
+import { findUserById } from "@/lib/server/users";
 import {
   getStripeCheckoutBySessionId,
   markStripeCheckoutPaid,
@@ -61,21 +62,25 @@ export async function sendOntmoetjongensClickflareConversion(input: {
 
   await markStripeCheckoutPaid(sessionId);
 
-  const clickId =
-    input.clickIdHint?.trim() ||
-    String(session.metadata?.clickId ?? "").trim() ||
-    existing?.clickId?.trim() ||
-    "";
-
   const provision = await provisionOntmoetjongensUser({
     sessionId,
-    clickId,
+    clickId: input.clickIdHint?.trim(),
     session,
   });
   const userId =
     provision.userId ||
     String(session.metadata?.userId ?? "").trim() ||
     existing?.userId ||
+    "";
+
+  const storedUserClickId = userId
+    ? (await findUserById(userId))?.clickId?.trim()
+    : "";
+  const clickId =
+    input.clickIdHint?.trim() ||
+    String(session.metadata?.clickId ?? "").trim() ||
+    existing?.clickId?.trim() ||
+    storedUserClickId ||
     "";
 
   if (userId) {
@@ -128,7 +133,7 @@ export async function sendOntmoetjongensClickflareConversion(input: {
     };
   }
 
-  const payout = formatPayoutFromCents(ONTMOETJONGENS_ONBOARDING.priceEurCents);
+  const payout = formatPayoutFromCents(stripeAmountCents);
 
   const postback = await sendSvlPostback({
     clickId,

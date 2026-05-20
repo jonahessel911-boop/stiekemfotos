@@ -117,6 +117,8 @@ export default function AdminPage() {
   const [seedTestBusy, setSeedTestBusy] = useState(false);
   const [passwordEmailUserId, setPasswordEmailUserId] = useState<string | null>(null);
   const [passwordEmailNotice, setPasswordEmailNotice] = useState<string | null>(null);
+  const [kortingEmailUserId, setKortingEmailUserId] = useState<string | null>(null);
+  const [kortingEmailNotice, setKortingEmailNotice] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -149,6 +151,44 @@ export default function AdminPage() {
       setError(e instanceof Error ? e.message : 'Fout');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendKortingEmail = async (userId: string, userEmail: string, force = false) => {
+    if (
+      !window.confirm(
+        force
+          ? `Korting-e-mail opnieuw versturen naar ${userEmail}?\n\n62% korting-mail met link naar /korting.`
+          : `Korting-e-mail versturen naar ${userEmail}?\n\nZelfde mail als na 1 uur zonder aankoop (62% korting, link naar /korting).`
+      )
+    ) {
+      return;
+    }
+    setKortingEmailUserId(userId);
+    setKortingEmailNotice(null);
+    setError(null);
+    try {
+      const r = await fetch('/api/admin/send-korting-email', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, force }),
+      });
+      const d = (await r.json()) as { message?: string; error?: string; reason?: string };
+      if (!r.ok) {
+        if (r.status === 409 && d.reason === 'already_sent') {
+          if (window.confirm(`${d.error}\n\nToch opnieuw versturen?`)) {
+            await sendKortingEmail(userId, userEmail, true);
+            return;
+          }
+        }
+        throw new Error(d.error || 'Versturen mislukt');
+      }
+      setKortingEmailNotice(d.message ?? `Korting-e-mail verstuurd naar ${userEmail}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'E-mail versturen mislukt');
+    } finally {
+      setKortingEmailUserId(null);
     }
   };
 
@@ -377,10 +417,17 @@ export default function AdminPage() {
               {passwordEmailNotice}
             </p>
           ) : null}
+          {kortingEmailNotice ? (
+            <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {kortingEmailNotice}
+            </p>
+          ) : null}
           <UsersTable
             users={data?.users ?? []}
-            sendingUserId={passwordEmailUserId}
+            sendingPasswordUserId={passwordEmailUserId}
+            sendingKortingUserId={kortingEmailUserId}
             onSendPasswordEmail={sendPasswordEmail}
+            onSendKortingEmail={sendKortingEmail}
           />
         </Section>
 
@@ -726,12 +773,16 @@ function PeriodOverviewTable({
 
 function UsersTable({
   users,
-  sendingUserId,
+  sendingPasswordUserId,
+  sendingKortingUserId,
   onSendPasswordEmail,
+  onSendKortingEmail,
 }: {
   users: AdminData['users'];
-  sendingUserId: string | null;
+  sendingPasswordUserId: string | null;
+  sendingKortingUserId: string | null;
   onSendPasswordEmail: (userId: string, userEmail: string) => void;
+  onSendKortingEmail: (userId: string, userEmail: string) => void;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -776,14 +827,24 @@ function UsersTable({
                 <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.purchasesCount}</td>
                 <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.purchasedCredits}</td>
                 <td className="border-b border-gray-100 px-3 py-2 text-gray-700">
-                  <button
-                    type="button"
-                    disabled={sendingUserId === u.id}
-                    onClick={() => void onSendPasswordEmail(u.id, u.email)}
-                    className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60"
-                  >
-                    {sendingUserId === u.id ? 'Versturen…' : 'Toegangs-e-mail versturen'}
-                  </button>
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      disabled={sendingPasswordUserId === u.id || sendingKortingUserId === u.id}
+                      onClick={() => void onSendKortingEmail(u.id, u.email)}
+                      className="whitespace-nowrap rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-950 hover:bg-amber-100 disabled:opacity-60"
+                    >
+                      {sendingKortingUserId === u.id ? 'Versturen…' : 'Verstuur korting e-mail'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={sendingPasswordUserId === u.id || sendingKortingUserId === u.id}
+                      onClick={() => void onSendPasswordEmail(u.id, u.email)}
+                      className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      {sendingPasswordUserId === u.id ? 'Versturen…' : 'Toegangs-e-mail versturen'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))

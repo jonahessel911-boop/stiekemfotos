@@ -6,7 +6,7 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE,
 } from "@/lib/server/session";
-import { findUserById } from "@/lib/server/users";
+import { findUserById, persistClickIdOnUser } from "@/lib/server/users";
 import { processDueAbandonmentOfferEmails } from "@/lib/server/abandonmentOffer";
 import { registerStartLead } from "@/lib/server/startLead";
 import {
@@ -54,6 +54,7 @@ export async function POST(req: Request) {
     if (userId) {
       const user = await findUserById(userId);
       customerEmail = user?.email;
+      if (clickId) await persistClickIdOnUser(userId, clickId);
     }
 
     let setSessionUserId: string | null = null;
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
       userId = user.id;
       customerEmail = user.email;
       setSessionUserId = user.id;
+      if (clickId) await persistClickIdOnUser(userId, clickId);
     }
 
     if (!customerEmail && bodyEmail) {

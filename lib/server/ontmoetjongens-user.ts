@@ -7,6 +7,7 @@ import {
   findUserByEmail,
   findUserById,
   markOntmoetjongensPaidForUser,
+  persistClickIdOnUser,
 } from "@/lib/server/users";
 
 function randomPassword(): string {
@@ -81,10 +82,12 @@ export async function provisionOntmoetjongensUser(input: {
     input.session ??
     (await stripe.checkout.sessions.retrieve(sessionId, { expand: ["customer"] }));
 
+  const clickIdHint = input.clickId?.trim();
   const metaUserId = String(session.metadata?.userId ?? "").trim();
   if (metaUserId) {
     const existing = await findUserById(metaUserId);
     if (existing) {
+      await persistClickIdOnUser(existing.id, clickIdHint);
       await markOntmoetjongensPaidForUser(existing.id);
       await syncOntmoetjongensRevenue(session, existing.id);
       return { userId: existing.id, created: false, email: existing.email };
@@ -101,6 +104,7 @@ export async function provisionOntmoetjongensUser(input: {
 
   const existing = await findUserByEmail(email);
   if (existing) {
+    await persistClickIdOnUser(existing.id, clickIdHint);
     await markOntmoetjongensPaidForUser(existing.id);
     await syncOntmoetjongensRevenue(session, existing.id);
     console.log(`[ontmoetjongens] bestaande user gekoppeld: ${existing.id} (${email})`);

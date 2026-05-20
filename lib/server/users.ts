@@ -178,6 +178,19 @@ export function toPublicUser(u: UserRecord) {
   };
 }
 
+/** Eerste click_id bewaren (niet overschrijven) — voor ClickFlare bij latere betaling. */
+export async function persistClickIdOnUser(
+  userId: string,
+  clickId: string | undefined
+): Promise<UserRecord | null> {
+  const id = clickId?.trim();
+  if (!id) return findUserById(userId);
+  const user = await findUserById(userId);
+  if (!user) return null;
+  if (user.clickId?.trim()) return user;
+  return patchUserRecord(userId, { clickId: id });
+}
+
 export async function patchUserRecord(
   userId: string,
   patch: Partial<UserRecord>

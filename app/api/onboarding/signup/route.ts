@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { readJson, writeJson } from "@/lib/server/store";
-import { createUser } from "@/lib/server/users";
+import { createUser, findUserByEmail, persistClickIdOnUser } from "@/lib/server/users";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
-import {
-  buildSvlTxidForUser,
-  sendSvlPostback,
-  SVL_CLICK_ID_COOKIE,
-  SVL_CONVERSION_TYPE,
-  SVL_PAYOUT_COOKIE,
-  SVL_TXID_COOKIE,
-} from "@/lib/clickflare-postback";
+import { SVL_CLICK_ID_COOKIE } from "@/lib/clickflare-postback";
 
 type SignupBody = {
   naam: string;
@@ -66,8 +59,6 @@ export async function POST(req: Request) {
 
     const jar = await cookies();
     const clickIdCookie = jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim();
-    const payoutCookie = jar.get(SVL_PAYOUT_COOKIE)?.value?.trim();
-    const txidCookie = jar.get(SVL_TXID_COOKIE)?.value?.trim();
 
     let user;
     try {
@@ -86,6 +77,10 @@ export async function POST(req: Request) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Fout";
       if (msg.includes("al geregistreerd")) {
+        const existing = await findUserByEmail(email);
+        if (existing && clickIdCookie) {
+          await persistClickIdOnUser(existing.id, clickIdCookie);
+        }
         return NextResponse.json({ error: msg }, { status: 409 });
       }
       throw e;
@@ -101,24 +96,7 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
     writeJson("onboarding-signups.json", list);
-    /**
-     * ClickFlare postback bij signup — initieel met payout=0 + ct=signup +
-     * txid=user_<id>. Na een succesvolle Stripe-betaling wordt op dezelfde
-     * (click_id, txid, ct) opnieuw geschoten met de geüpdatete payout (LTV)
-     * en dedupliceert ClickFlare de conversion. Vervangt de eerdere
-     * server-side TikTok fire.
-     */
-    if (clickIdCookie) {
-      await sendSvlPostback({
-        clickId: clickIdCookie,
-        payout: payoutCookie || "0.00",
-        txid: txidCookie || buildSvlTxidForUser(user.id),
-        ct: SVL_CONVERSION_TYPE,
-        reason: "signup",
-      });
-    } else {
-      console.log("[clickflare:signup] skipped — missing click_id cookie");
-    }
+    /** click_id staat op user.clickId — ClickFlare pas na betaling (zie ontmoetjongens-conversion). */
 
     const res = NextResponse.json({
       ok: true,
