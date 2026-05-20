@@ -158,7 +158,7 @@ export default function Lander2Page() {
             </button>
             <p className="mt-8 text-sm text-gray-600">
               Al een account?{' '}
-              <Link href="/inloggen" className="link-lander">
+              <Link href="/login" className="link-lander">
                 Inloggen
               </Link>
             </p>

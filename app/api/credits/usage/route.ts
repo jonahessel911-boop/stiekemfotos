@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { listUserMessageCreditUsage } from "@/lib/server/conversations";
+import { INITIAL_FREE_CREDITS, CREDITS_PER_MESSAGE } from "@/lib/credit-packages";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
 
 export async function GET() {
@@ -10,23 +11,22 @@ export async function GET() {
     const messages = await listUserMessageCreditUsage(userId);
     const totalSpent = messages.reduce((s, m) => s + m.credits, 0);
 
-    const START_BALANCE = 200;
-    const computedBalance = START_BALANCE - totalSpent;
+    const computedBalance = INITIAL_FREE_CREDITS - totalSpent;
 
     return NextResponse.json({
       messages,
       totalSpent,
       balance: Math.max(0, computedBalance),
-      initialFree: START_BALANCE,
-      perMessage: 0,
+      initialFree: INITIAL_FREE_CREDITS,
+      perMessage: CREDITS_PER_MESSAGE,
     });
   } catch {
     return NextResponse.json({
       messages: [],
       totalSpent: 0,
-      balance: 200,
-      initialFree: 200,
-      perMessage: 0,
+      balance: INITIAL_FREE_CREDITS,
+      initialFree: INITIAL_FREE_CREDITS,
+      perMessage: CREDITS_PER_MESSAGE,
     });
   }
 }

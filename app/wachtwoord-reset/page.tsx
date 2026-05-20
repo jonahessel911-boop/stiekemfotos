@@ -60,7 +60,7 @@ export default function WachtwoordResetPage() {
           <div className="rounded-2xl border border-primary/15 bg-[var(--onboarding-card)] p-6 shadow-md shadow-primary/5 space-y-4">
             <p className="text-sm text-gray-700">Je wachtwoord is bijgewerkt. Je kunt nu inloggen.</p>
             <Link
-              href="/inloggen"
+              href="/login"
               className="block w-full text-center rounded-full bg-primary py-4 font-semibold text-white shadow-md hover:bg-primary-hover"
             >
               Naar inloggen
@@ -108,7 +108,7 @@ export default function WachtwoordResetPage() {
               {busy ? 'Bezig…' : 'Wachtwoord opslaan'}
             </button>
             <p className="text-center text-sm">
-              <Link href="/inloggen" className="text-primary font-semibold underline">
+              <Link href="/login" className="text-primary font-semibold underline">
                 Terug naar inloggen
               </Link>
             </p>

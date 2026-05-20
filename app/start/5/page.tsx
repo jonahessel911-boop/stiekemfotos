@@ -247,7 +247,8 @@ export default function Start5Page() {
             <div className="space-y-5 text-center">
               <p className="text-xl font-bold text-gray-900">Betaling ontvangen</p>
               <p className="text-gray-800">
-                Bedankt! Je ontvangt binnen 1 week een e-mail met de toegang.
+                Bedankt! Je hebt zojuist een e-mail ontvangen met toegang tot het platform.
+                Controleer ook je spamfolder als je niets ziet.
               </p>
             </div>
           )}

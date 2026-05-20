@@ -122,7 +122,7 @@ export default function CreditsPage() {
             <p className="px-4 py-16 text-center text-sm text-gray-500">
               Nog geen aankopen.
               <br />
-              Koop hieronder credits bij voor meer foto&apos;s.
+              Koop hieronder credits bij om door te chatten.
             </p>
           ) : (
             <ul className="divide-y divide-gray-100 max-h-[min(420px,50vh)] overflow-y-auto">
@@ -150,7 +150,7 @@ export default function CreditsPage() {
         <section className="rounded-2xl border border-gray-200/80 bg-[var(--surface-card)] p-5 md:p-6 shadow-sm">
           <h2 className="font-semibold text-gray-900 mb-1">Credits bijkopen</h2>
           <p className="text-sm text-gray-600 mb-6">
-            Koop credits om mee te chatten en foto&apos;s te ontvangen.
+            Koop credits om door te chatten. Elk bericht kost 10 credits.
           </p>
           <CreditsPricingOffers showIntro={false} onAfterPurchase={() => void refresh()} />
         </section>

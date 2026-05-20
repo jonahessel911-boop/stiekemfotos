@@ -9,6 +9,7 @@ import {
   ONTMOETJONGENS_ONBOARDING,
   STRIPE_PRODUCT_ONTMOETJONGENS,
 } from "@/lib/server/stripe";
+import { sendOntmoetjongensAccessEmailIfNeeded } from "@/lib/server/ontmoetjongens-access-email";
 import { provisionOntmoetjongensUser } from "@/lib/server/ontmoetjongens-user";
 import {
   getStripeCheckoutBySessionId,
@@ -71,6 +72,10 @@ export async function sendOntmoetjongensClickflareConversion(input: {
     String(session.metadata?.userId ?? "").trim() ||
     existing?.userId ||
     "";
+
+  if (userId) {
+    await sendOntmoetjongensAccessEmailIfNeeded({ sessionId, userId });
+  }
 
   const stripeAmountCents =
     typeof session.amount_total === "number" && Number.isFinite(session.amount_total)

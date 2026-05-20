@@ -1,20 +1,17 @@
 import Stripe from "stripe";
+import {
+  buildCreditPackagesRecord,
+  type CreditPackageId,
+} from "@/lib/credit-packages";
 
-export type CreditPackageId = "left" | "middle" | "right";
+export type { CreditPackageId };
 
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.stiekemefotos.nl";
 
-/** Tarief: pakketten in credits. Deal: 200 credits voor €4,99 (was €22,99 → 78% korting). */
-export const CREDIT_PACKAGES: Record<
-  CreditPackageId,
-  { credits: number; priceEurCents: number; title: string }
-> = {
-  left: { credits: 100, priceEurCents: 1000, title: "100 credits" },
-  middle: { credits: 200, priceEurCents: 499, title: "200 credits" },
-  right: { credits: 300, priceEurCents: 2999, title: "300 credits" },
-};
+/** Tarief: 100 credits = €13,95; grotere pakketten automatisch berekend. */
+export const CREDIT_PACKAGES = buildCreditPackagesRecord();
 
 /** /start — Ontmoetjongens platformtoegang (eenmalig). */
 export const ONTMOETJONGENS_ONBOARDING = {

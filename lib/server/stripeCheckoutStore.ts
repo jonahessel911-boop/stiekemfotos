@@ -15,6 +15,8 @@ type StripeCheckoutRecord = {
   clickId?: string;
   /** ClickFlare postback al verstuurd voor deze sessie. */
   clickflareSentAt?: string;
+  /** Toegangs-e-mail na Ontmoetjongens-betaling al verstuurd. */
+  accessEmailSentAt?: string;
 };
 
 export type { StripeCheckoutRecord };

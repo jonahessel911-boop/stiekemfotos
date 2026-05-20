@@ -57,7 +57,7 @@ export function DealWalletPayButton({
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ packageId: 'middle' }),
+          body: JSON.stringify({ packageId: 'left' }),
         });
         const data = (await res.json()) as {
           error?: string;

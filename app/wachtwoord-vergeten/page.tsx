@@ -48,7 +48,7 @@ export default function WachtwoordVergetenPage() {
               je spam.
             </p>
             <Link
-              href="/inloggen"
+              href="/login"
               className="block w-full text-center rounded-full bg-primary py-4 font-semibold text-white shadow-md hover:bg-primary-hover"
             >
               Terug naar inloggen
@@ -83,7 +83,7 @@ export default function WachtwoordVergetenPage() {
               {busy ? 'Bezig…' : 'Verstuur link'}
             </button>
             <p className="text-center text-sm">
-              <Link href="/inloggen" className="text-primary font-semibold underline">
+              <Link href="/login" className="text-primary font-semibold underline">
                 Terug naar inloggen
               </Link>
             </p>

@@ -2,8 +2,8 @@
 -- Wachtwoord: TestAccount10k!  (zelfde scrypt-formaat als Node: salt_hex:hash_hex, scrypt 64 bytes)
 --
 -- Let op: inloggen in de app gaat via users.json (Vercel blob), niet alleen via deze rij.
---         Voeg dezelfde id + e-mail + password_hash toe aan de blob, of gebruik dit account
---         vooral voor FK-tests / Supabase-gerelateerde flows.
+--         Klik in /admin op "Testaccount 10k" om het account in users.json te zetten,
+--         of draai POST /api/admin/seed-test-user (admin ingelogd).
 --
 -- Draai in Supabase → SQL Editor. Pas e-mail aan indien gewenst.
 

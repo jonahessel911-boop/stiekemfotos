@@ -45,6 +45,14 @@ import {
 } from '@/lib/credits-client';
 import { useCreditsPricing } from '@/components/CreditsPricingProvider';
 import {
+  CREDIT_DEAL,
+  CREDIT_PACKAGE_DEFINITIONS,
+  creditsPriceEurCents,
+  creditsWasPriceEurCents,
+  formatPriceLabelFromCents,
+  type CreditPackageId,
+} from '@/lib/credit-packages';
+import {
   MAX_OUTGOING_BATCH_SIZE,
   MAX_USER_MESSAGE_CHARS,
 } from '@/lib/chat-send-limits';
@@ -228,11 +236,14 @@ type LiveNotification = {
   text: string;
 };
 
-const CHAT_GIFT_OPTIONS = [
-  { id: 'mini', credits: 75, priceLabel: '€5,99', featured: false },
-  { id: 'starter', credits: 125, priceLabel: '€9,99', featured: false },
-  { id: 'best', credits: 250, priceLabel: '€13,99', featured: true },
-] as const;
+const CHAT_GIFT_OPTIONS = (Object.entries(CREDIT_PACKAGE_DEFINITIONS) as Array<
+  [CreditPackageId, (typeof CREDIT_PACKAGE_DEFINITIONS)[CreditPackageId]]
+>).map(([id, def]) => ({
+  id,
+  credits: def.credits,
+  priceLabel: formatPriceLabelFromCents(creditsPriceEurCents(def.credits)),
+  featured: def.featured,
+}));
 
 function BerichtenInner() {
   const router = useRouter();
@@ -791,7 +802,7 @@ function BerichtenInner() {
         if (!createRes.ok) {
           setLoadingList(false);
           if (createRes.status === 401) {
-            window.location.assign(`/inloggen?next=${encodeURIComponent(`/profielen/${pid}`)}`);
+            window.location.assign(`/login?next=${encodeURIComponent(`/profielen/${pid}`)}`);
             return;
           }
           setError(createData.error ?? 'Chat openen mislukt');
@@ -1430,15 +1441,11 @@ function BerichtenInner() {
       const convForCost =
         conversationCacheRef.current[sid] ??
         (conversationForUi?.id === sid ? conversationForUi : null);
-      const userMsgCountBefore =
-        convForCost?.messages.filter((m) => m.role === 'user').length ?? 0;
       const cost = noCredits
         ? 0
         : CREDITS_PER_MESSAGE <= 0
           ? 0
-          : userMsgCountBefore === 0
-            ? 0
-            : creditsCostForBatchSize(batch.length);
+          : creditsCostForBatchSize(batch.length);
       const balance = getCreditsBalance();
       if (!noCredits && CREDITS_PER_MESSAGE > 0 && balance < cost) {
         void fetch(`/api/conversations/${sid}/credit-runout`, {
@@ -1775,14 +1782,7 @@ function BerichtenInner() {
       );
       return;
     }
-    const priorUserMsgCount =
-      activeConversation?.messages.filter((m) => m.role === 'user').length ?? 0;
-    const sendCost =
-      CREDITS_PER_MESSAGE <= 0
-        ? 0
-        : priorUserMsgCount === 0
-          ? 0
-          : creditsCostForBatchSize(1);
+    const sendCost = CREDITS_PER_MESSAGE <= 0 ? 0 : creditsCostForBatchSize(1);
     if (CREDITS_PER_MESSAGE > 0 && getCreditsBalance() < sendCost) {
       triggerNoCreditsFlow(selectedId);
       return;
@@ -3125,44 +3125,57 @@ function CreditsSidebar({
   balance: number;
   onBuyCredits: () => void;
 }) {
+  const basePrice = formatPriceLabelFromCents(CREDIT_DEAL.basePriceEurCents);
+  const wasPrice = formatPriceLabelFromCents(
+    creditsWasPriceEurCents(CREDIT_DEAL.baseCredits)
+  );
+  const messagesLeft = Math.floor(balance / CREDITS_PER_MESSAGE);
+
   return (
     <div className="hidden lg:flex lg:min-h-0 lg:max-h-full lg:w-full lg:max-w-[360px] lg:flex-shrink-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:border-gray-200/80 lg:bg-[var(--surface-card)] lg:p-6">
       <div className="bg-gradient-to-br from-primary to-primary-deep text-white rounded-3xl p-6 shadow-xl">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <div className="uppercase tracking-wider text-[10px] opacity-80">FOTO PASS</div>
+            <div className="uppercase tracking-wider text-[10px] opacity-80">CHAT PASS</div>
             <div className="text-2xl font-bold mt-1 leading-tight">
-              Foto’s ontgrendelen
+              Blijf chatten
             </div>
             <p className="text-xs opacity-85 mt-2 leading-snug">
-              1 foto = {CREDITS_PER_PHOTO_UNLOCK} credits (€10) · actie 3 foto&apos;s €19,99 i.p.v. €29,99
+              10 credits per bericht · start met {INITIAL_FREE_CREDITS} gratis credits ({INITIAL_FREE_CREDITS / CREDITS_PER_MESSAGE} berichten)
             </p>
           </div>
           <CreditCard className="w-8 h-8 opacity-80" />
         </div>
         <ul className="space-y-3 text-sm border-t border-white/20 pt-4">
-          <li className="flex justify-between gap-2 font-semibold">
-            <span>1 foto (100 credits)</span>
-            <span>€10,00</span>
-          </li>
-          <li className="flex justify-between gap-2 text-sm opacity-95">
-            <span>2 foto&apos;s (200 credits)</span>
-            <span>€20,00</span>
-          </li>
-          <li className="flex justify-between gap-2 text-sm opacity-90">
-            <span>3 foto&apos;s (300 credits)</span>
-            <span>
-              <span className="mr-1.5 line-through opacity-75">€29,99</span>
-              €19,99 actie
-            </span>
-          </li>
+          {(Object.entries(CREDIT_PACKAGE_DEFINITIONS) as Array<
+            [CreditPackageId, (typeof CREDIT_PACKAGE_DEFINITIONS)[CreditPackageId]]
+          >).map(([id, def]) => (
+            <li
+              key={id}
+              className={`flex justify-between gap-2 ${def.featured ? 'font-semibold' : 'opacity-95'}`}
+            >
+              <span>
+                {def.credits} credits ({Math.floor(def.credits / CREDITS_PER_MESSAGE)} berichten)
+              </span>
+              <span>
+                {def.featured ? (
+                  <>
+                    <span className="mr-1.5 line-through opacity-75">
+                      {formatPriceLabelFromCents(creditsWasPriceEurCents(def.credits))}
+                    </span>
+                  </>
+                ) : null}
+                {formatPriceLabelFromCents(creditsPriceEurCents(def.credits))}
+              </span>
+            </li>
+          ))}
         </ul>
         <ul className="space-y-4 text-sm mt-4">
           <li className="flex gap-3">
-            <span className="text-lg">📸</span> Custom foto’s op aanvraag
+            <span className="text-lg">💬</span> Leuke gesprekken met mannen
           </li>
           <li className="flex gap-3">
-            <span className="text-lg">⚡️</span> Direct te ontgrendelen
+            <span className="text-lg">⚡️</span> Direct verder chatten
           </li>
           <li className="flex gap-3">
             <span className="text-lg">🔒</span> Discreet & persoonlijk
@@ -3177,12 +3190,12 @@ function CreditsSidebar({
           Koop Credits <ArrowRight className="inline ml-1 w-4 h-4" />
         </Button>
         <p className="text-center text-xs mt-4 opacity-70">
-          {balance < CREDITS_PER_PHOTO_UNLOCK ? (
+          {balance < CREDITS_PER_MESSAGE ? (
             <span className="font-semibold">
-              Te weinig credits voor een foto — open prijzen om bij te kopen.
+              Te weinig credits — koop {basePrice} voor {CREDIT_DEAL.baseCredits} credits ({CREDIT_DEAL.discountPercent}% korting, was {wasPrice}).
             </span>
           ) : (
-            <>Je hebt nog {balance} credits</>
+            <>Je hebt nog {balance} credits (~{messagesLeft} berichten)</>
           )}
         </p>
       </div>

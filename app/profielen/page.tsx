@@ -86,7 +86,7 @@ export default function ProfielenPage() {
     };
   }, []);
   const redirectToLogin = () => {
-    window.location.assign('/inloggen?next=%2Fprofielen');
+    window.location.assign('/login?next=%2Fprofielen');
   };
 
   const filteredProfiles = profiles.filter((profile) => {

@@ -1,5 +1,18 @@
 /** Client-side credits (demo; geen echte betaling). */
 
+import {
+  CREDITS_PER_MESSAGE,
+  CREDITS_PER_PHOTO_UNLOCK,
+  INITIAL_FREE_CREDITS,
+} from "@/lib/credit-packages";
+import { TEST_USER_10K_ID, TEST_USER_10K_CREDITS } from "@/lib/test-user-10k";
+
+export {
+  CREDITS_PER_MESSAGE,
+  CREDITS_PER_PHOTO_UNLOCK,
+  INITIAL_FREE_CREDITS,
+} from "@/lib/credit-packages";
+
 const KEY_V2 = "dm_credits_balance_v2";
 const KEY_V1 = "dm_credits_balance_v1";
 const PURCHASES_KEY = "dm_credits_purchases_v1";
@@ -11,13 +24,6 @@ export type CreditPurchaseRecord = {
   credits: number;
   priceLabel: string;
 };
-
-/** Elke verstuurde chat-message kost 10 credits; een foto ontgrendelen kost 100 credits. */
-export const CREDITS_PER_MESSAGE = 10;
-export const CREDITS_PER_PHOTO_UNLOCK = 100;
-
-/** Startbalans voor elk nieuw account. */
-export const INITIAL_FREE_CREDITS = 200;
 
 export function notifyCreditsUpdated() {
   if (typeof window !== "undefined") {
@@ -83,8 +89,9 @@ export function getCreditsBalance(): number {
         return migrated;
       }
     }
-    localStorage.setItem(key, String(INITIAL_FREE_CREDITS));
-    return INITIAL_FREE_CREDITS;
+    const initial = scope === TEST_USER_10K_ID ? TEST_USER_10K_CREDITS : INITIAL_FREE_CREDITS;
+    localStorage.setItem(key, String(initial));
+    return initial;
   } catch {
     return INITIAL_FREE_CREDITS;
   }

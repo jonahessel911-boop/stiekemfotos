@@ -9,11 +9,11 @@ import {
 } from "@/lib/server/stripe";
 import { upsertStripeCheckoutRecord } from "@/lib/server/stripeCheckoutStore";
 
-const WALLET_DEAL_PACKAGE: CreditPackageId = "middle";
+const WALLET_DEAL_PACKAGE: CreditPackageId = "left";
 
 /**
  * Maakt een PaymentIntent voor Apple Pay / Google Pay (Payment Request Button)
- * op de deal-pagina. Alleen het `middle`-pakket (200 credits / €4,99).
+ * op de deal-pagina. Alleen het `left`-pakket (100 credits / €13,95).
  */
 export async function POST(req: Request) {
   try {

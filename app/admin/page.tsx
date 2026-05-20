@@ -114,6 +114,9 @@ export default function AdminPage() {
   const [overview, setOverview] = useState<PeriodOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
+  const [seedTestBusy, setSeedTestBusy] = useState(false);
+  const [passwordEmailUserId, setPasswordEmailUserId] = useState<string | null>(null);
+  const [passwordEmailNotice, setPasswordEmailNotice] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -146,6 +149,34 @@ export default function AdminPage() {
       setError(e instanceof Error ? e.message : 'Fout');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const sendPasswordEmail = async (userId: string, userEmail: string) => {
+    if (
+      !window.confirm(
+        `Wachtwoord-reset e-mail versturen naar ${userEmail}?\n\nDe ontvanger krijgt een link om een nieuw wachtwoord in te stellen.`
+      )
+    ) {
+      return;
+    }
+    setPasswordEmailUserId(userId);
+    setPasswordEmailNotice(null);
+    setError(null);
+    try {
+      const r = await fetch('/api/admin/send-password-email', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const d = (await r.json()) as { message?: string; error?: string };
+      if (!r.ok) throw new Error(d.error || 'Versturen mislukt');
+      setPasswordEmailNotice(d.message ?? `E-mail verstuurd naar ${userEmail}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'E-mail versturen mislukt');
+    } finally {
+      setPasswordEmailUserId(null);
     }
   };
 
@@ -255,6 +286,31 @@ export default function AdminPage() {
               {loading ? 'Laden…' : 'Vernieuwen'}
             </button>
             <button
+              onClick={() => {
+                setSeedTestBusy(true);
+                setError(null);
+                void (async () => {
+                  try {
+                    const r = await fetch('/api/admin/seed-test-user', {
+                      method: 'POST',
+                      credentials: 'include',
+                    });
+                    const d = (await r.json()) as { message?: string; error?: string };
+                    if (!r.ok) throw new Error(d.error || 'Seed mislukt');
+                    setPasswordEmailNotice(d.message ?? 'Testaccount aangemaakt.');
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : 'Seed mislukt');
+                  } finally {
+                    setSeedTestBusy(false);
+                  }
+                })();
+              }}
+              disabled={seedTestBusy || loading || resetBusy}
+              className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            >
+              {seedTestBusy ? 'Bezig…' : 'Testaccount 10k'}
+            </button>
+            <button
               onClick={() => void resetAnalytics()}
               disabled={resetBusy || loading}
               className="rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-60"
@@ -316,27 +372,15 @@ export default function AdminPage() {
         </Section>
 
         <Section title="Users">
-          <SimpleTable
-            headers={[
-              'Naam',
-              'E-mail',
-              'Leeftijd',
-              'E-mail geverifieerd',
-              'Conversations',
-              'User berichten',
-              'Aankopen',
-              'Credits gekocht',
-            ]}
-            rows={(data?.users ?? []).map((u) => [
-              u.naam,
-              u.email,
-              String(u.leeftijd),
-              u.emailVerified ? 'ja' : 'nee',
-              String(u.conversations),
-              String(u.userMessages),
-              String(u.purchasesCount),
-              String(u.purchasedCredits),
-            ])}
+          {passwordEmailNotice ? (
+            <p className="mb-3 rounded-xl border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {passwordEmailNotice}
+            </p>
+          ) : null}
+          <UsersTable
+            users={data?.users ?? []}
+            sendingUserId={passwordEmailUserId}
+            onSendPasswordEmail={sendPasswordEmail}
           />
         </Section>
 
@@ -677,6 +721,76 @@ function PeriodOverviewTable({
         </table>
       </div>
     </section>
+  );
+}
+
+function UsersTable({
+  users,
+  sendingUserId,
+  onSendPasswordEmail,
+}: {
+  users: AdminData['users'];
+  sendingUserId: string | null;
+  onSendPasswordEmail: (userId: string, userEmail: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-collapse text-sm">
+        <thead>
+          <tr className="bg-gray-50 text-left">
+            {[
+              'Naam',
+              'E-mail',
+              'Leeftijd',
+              'E-mail geverifieerd',
+              'Conversations',
+              'User berichten',
+              'Aankopen',
+              'Credits gekocht',
+              'Actie',
+            ].map((h) => (
+              <th key={h} className="border-b border-gray-200 px-3 py-2 font-semibold text-gray-700">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {users.length === 0 ? (
+            <tr>
+              <td colSpan={9} className="px-3 py-4 text-center text-gray-500">
+                Geen data
+              </td>
+            </tr>
+          ) : (
+            users.map((u) => (
+              <tr key={u.id} className="odd:bg-white even:bg-gray-50/40">
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.naam}</td>
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.email}</td>
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.leeftijd}</td>
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">
+                  {u.emailVerified ? 'ja' : 'nee'}
+                </td>
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.conversations}</td>
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.userMessages}</td>
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.purchasesCount}</td>
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">{u.purchasedCredits}</td>
+                <td className="border-b border-gray-100 px-3 py-2 text-gray-700">
+                  <button
+                    type="button"
+                    disabled={sendingUserId === u.id}
+                    onClick={() => void onSendPasswordEmail(u.id, u.email)}
+                    className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    {sendingUserId === u.id ? 'Versturen…' : 'Wachtwoord e-mail versturen'}
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

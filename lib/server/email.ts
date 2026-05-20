@@ -184,6 +184,126 @@ export async function sendAccountVerificationEmail(input: {
   });
 }
 
+export async function sendOntmoetjongensAccessEmail(input: {
+  to: string;
+  naam: string;
+  loginLink: string;
+}): Promise<void> {
+  const nm = escapeHtml(input.naam || "daar");
+  const loginHref = input.loginLink.startsWith("http") ? input.loginLink : `${APP_URL}${input.loginLink}`;
+  const loginAnchor = `<a href="${escapeHtml(loginHref)}" style="color:#111111;font-weight:700;">${escapeHtml(loginHref)}</a>`;
+  const html = `<!DOCTYPE html>
+<html>
+  <body style="margin:0; padding:0; background:#ffffff; font-family:Arial, sans-serif; color:#111111;">
+    <div style="max-width:620px; margin:0 auto; padding:44px 24px; font-size:18px; line-height:1.65;">
+
+      <p>Hoi ${nm},</p>
+
+      <p>Gefeliciteerd.</p>
+
+      <p>Je bent toegelaten.</p>
+
+      <p>Je toegang tot het platform staat vanaf nu klaar...</p>
+
+      <br>
+
+      <p>Niet iedereen komt hier zomaar binnen.</p>
+
+      <p>We laten bewust maar een kleine groep mensen toe.</p>
+
+      <p>Zodat de gesprekken persoonlijk blijven.</p>
+
+      <p>Spannend blijven.</p>
+
+      <p>En vooral echt blijven...</p>
+
+      <br>
+
+      <p>Vanaf nu kun je contact maken met jongere mannen die zin hebben in een leuk gesprek.</p>
+
+      <p>Mannen die nieuwsgierig zijn.</p>
+
+      <p>Die openstaan voor contact.</p>
+
+      <p>En die willen ontdekken wie jij bent...</p>
+
+      <br>
+
+      <p>Je hoeft geen perfect eerste bericht te sturen.</p>
+
+      <p>Je hoeft niet lang na te denken.</p>
+
+      <p>Je hoeft alleen maar iemand te kiezen die je aanspreekt.</p>
+
+      <p>En iets simpels te sturen...</p>
+
+      <br>
+
+      <p>Een hoi.</p>
+
+      <p>Een vraag.</p>
+
+      <p>Een opmerking.</p>
+
+      <p>Dat is vaak genoeg om iets leuks te starten...</p>
+
+      <br>
+
+      <p>De meeste mensen kijken alleen rond.</p>
+
+      <p>Ze wachten.</p>
+
+      <p>Ze twijfelen.</p>
+
+      <p>Ze stellen het uit.</p>
+
+      <p>Maar daardoor gebeurt er niets...</p>
+
+      <br>
+
+      <p>Jij hebt nu toegang.</p>
+
+      <p>Dus gebruik hem.</p>
+
+      <p>Log in.</p>
+
+      <p>Kijk wie er online is.</p>
+
+      <p>En start je eerste gesprek...</p>
+
+      <br>
+
+      <p>${loginAnchor}</p>
+
+      <br>
+
+      <p>Veel plezier,</p>
+
+      <p>Het team</p>
+
+    </div>
+  </body>
+</html>`;
+  const text = `Hoi ${input.naam || "daar"},
+
+Gefeliciteerd. Je bent toegelaten.
+
+Je toegang tot het platform staat vanaf nu klaar.
+
+Log in en start je eerste gesprek:
+${loginHref}
+
+Veel plezier,
+Het team`;
+
+  await sendMail({
+    to: input.to,
+    subject: "Je bent toegelaten — stiekemefotos.nl",
+    html,
+    text,
+  });
+}
+
 export async function sendPasswordResetEmail(input: {
   to: string;
   naam: string;

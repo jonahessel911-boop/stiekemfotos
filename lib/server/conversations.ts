@@ -17,7 +17,11 @@ import {
   MAX_OUTGOING_BATCH_SIZE,
   MAX_USER_MESSAGE_CHARS,
 } from "@/lib/chat-send-limits";
-import { CREDITS_PER_MESSAGE, CREDITS_PER_PHOTO_UNLOCK } from "@/lib/credits-client";
+import {
+  CREDITS_PER_MESSAGE,
+  CREDITS_PER_PHOTO_UNLOCK,
+  INITIAL_FREE_CREDITS,
+} from "@/lib/credit-packages";
 import type { UserMessageCreditLine } from "@/lib/types/credit-usage";
 import { readAiSettings } from "@/lib/server/aiSettings";
 import { randomTypingDelayMs, replyTypingDelayMsForConversation, sleep } from "@/lib/chat-typing-delay";
@@ -278,7 +282,9 @@ async function getInboxProfileIdsForPlatform(): Promise<string[]> {
   }
   return [];
 }
-const FREE_START_CREDITS = 200;
+const FREE_START_CREDITS = INITIAL_FREE_CREDITS;
+/** Foto's in chat voorlopig uit — focus op gesprekken. */
+const CHAT_PHOTOS_ENABLED = false;
 
 /** Max. trede 3 = vierde herinnering (~3 dagen); daarna geen verdere auto-nudges. */
 const NO_REPLY_REMINDER_LAST_STAGE = 3;
@@ -440,7 +446,7 @@ const GIFT_THANKS_LINES = [
 ] as const;
 const TRUST_DOUBT_PLAYFUL_LINES = [
   "haha nep? wat bedoel je precies schat 😘",
-  "ohh dus ik ben nep? daarom zit ik hier foto's te maken waar jij om vraagt 😂",
+  "ohh dus ik ben nep? daarom zit ik hier lekker met je te chatten 😂",
   "hahaha nep nog wel, je maakt me aan het lachen 😏",
   "fake? jij bent streng hoor haha, wat wil je dat ik doe dan? 😉",
 ] as const;
@@ -3139,6 +3145,7 @@ export async function appendUserMessagesAndReply(
 
   // Vage fotovraag => eerst doorvragen naar voorkeur, nog geen foto sturen.
   if (
+    CHAT_PHOTOS_ENABLED &&
     (asksForPhotoButVague || askedForPreferenceEarlier) &&
     !hasConcreteVisualPreferenceNow &&
     !forceCreativePhotoNow &&
@@ -3351,30 +3358,26 @@ export async function appendUserMessagesAndReply(
 
     const userLatest = (joinedUserText || lastUserTextLower || "").trim();
 
-    const negotiationLine = negotiationPhase
-      ? `⚠️ ONDERHANDEL-FASE ACTIEF: dit is pas zijn ${userMessageCount}e user-bericht. JE STUURT NU GEEN FOTO. image_prompt MOET null zijn. Kies per beurt een ANDERE tactiek (varieer!): (A) diep doorvragen op zijn wens en de fantasie opbouwen in tekst, (B) speels weigeren/uitstellen ("nee doe ik nu niet schat", "doe ik straks"), of (C) het script omdraaien ("stuur jij eerst maar wat", "spreek eerst iets in", "vertel eerst je stoutste fantasie"). Doel: hem geëngageerd houden, hem laten investeren — niet leveren.`
-      : `Onderhandel-fase voorbij (${userMessageCount} user-berichten ≥ ${negotiationThreshold}). Je mag een foto sturen wanneer de spanning klopt en hij erom vraagt of jij hem hebt opgegeild en hij ja zegt. Ook hier blijf je variëren met tactieken A/B/C — niet elke vraag direct belonen, anders verdwijnt de spanning.`;
+    const negotiationLine = CHAT_PHOTOS_ENABLED
+      ? negotiationPhase
+        ? `⚠️ ONDERHANDEL-FASE ACTIEF: dit is pas zijn ${userMessageCount}e user-bericht. JE STUURT NU GEEN FOTO. image_prompt MOET null zijn.`
+        : `Onderhandel-fase voorbij (${userMessageCount} user-berichten ≥ ${negotiationThreshold}). Je mag een foto sturen wanneer de spanning klopt.`
+      : "⚠️ FOTO'S ZIJN VOORLOPIG UITGESCHAKELD. image_prompt MOET altijd null zijn. Focus op warm, persoonlijk chatten. Als de user om foto's vraagt: vriendelijk uitstellen ('laten we eerst lekker praten'). Geen afspraken of ontmoetingen plannen.";
 
     const latestInput = [
-      "=== HUIDIGE CHAT CYCLUS (sinds laatste foto) ===",
+      "=== HUIDIGE CHAT CYCLUS ===",
       recentHistory || "(begin van gesprek)",
       "",
-      "=== ALLERLAATSTE USER BERICHT (DIT IS DE WENS DIE JE MOET UITVOEREN) ===",
+      "=== ALLERLAATSTE USER BERICHT ===",
       userLatest || "(geen bericht)",
       "",
-      `=== USER_MESSAGE_COUNT = ${userMessageCount} (drempel: ${negotiationThreshold}) ===`,
+      `=== USER_MESSAGE_COUNT = ${userMessageCount} ===`,
       negotiationLine,
       "",
       "=== INSTRUCTIES ===",
-      "1. Geef een normale chat 'response' (1-4 zinnen, Nederlands, vrouwelijk, in karakter).",
-      "2. Foto-regels:",
-      negotiationPhase
-        ? "   - image_prompt = null (we zitten in onderhandel-fase, NOOIT een foto deze beurt)."
-        : "   - Als de user om een foto vraagt OF jij hem in een vorige beurt opgegeild hebt en hij zegt ja: maak image_prompt die LETTERLIJK een SELFIE beschrijft van wat de user vraagt. Anders: image_prompt = null.",
-      "   - Image_prompt MOET, indien niet null, altijd beschrijven als zelfgemaakte selfie (vrouw houdt zelf de telefoon vast, arm in beeld of mirror selfie). NOOIT 3rd-party fotograaf of professionele setup.",
-      "   - Niet meer focussen op vorige foto-wensen, alleen op de huidige wens.",
-      "   - Voorbeelden: 'naakt voor spiegel' → 'fully naked self-mirror selfie holding phone', 'roze string' → 'wearing only pink thong, selfie, arm extended into frame', 'billen' → 'back view of bare buttocks, mirror selfie with phone visible'.",
-      "3. Anders: image_prompt = null.",
+      "1. Geef een normale chat 'response' (1-4 zinnen, Nederlands, mannelijk profiel, in karakter).",
+      "2. image_prompt = null (altijd — geen foto's in deze fase).",
+      "3. Bouw contact op: leuk, simpel, persoonlijk. Geen afspraken of ontmoetingen.",
     ].join("\n").slice(0, 2000);
 
     const personaInstructions = buildProfileInstructions({
@@ -3416,7 +3419,12 @@ export async function appendUserMessagesAndReply(
   // De Luna prompt beslist zelf wanneer ze een foto wil sturen en levert de volledige prompt.
   // Als image_prompt null is → nooit een foto genereren in deze turn.
   // Alleen foto als de Responses API (Luna) expliciet een image_prompt teruggeeft
-  let shouldSendPhotoNow = Boolean(imagePromptFromModel && imagePromptFromModel.trim().length > 20);
+  let shouldSendPhotoNow =
+    CHAT_PHOTOS_ENABLED &&
+    Boolean(imagePromptFromModel && imagePromptFromModel.trim().length > 20);
+  if (!CHAT_PHOTOS_ENABLED) {
+    imagePromptFromModel = null;
+  }
   if (activePhotoPipeline) {
     shouldSendPhotoNow = false;
   }

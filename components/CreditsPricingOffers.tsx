@@ -3,21 +3,31 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flame, Sparkles } from 'lucide-react';
 import { addCredits } from '@/lib/credits-client';
+import {
+  CREDIT_DEAL,
+  CREDIT_PACKAGE_DEFINITIONS,
+  creditsPriceEurCents,
+  creditsWasPriceEurCents,
+  formatPriceLabelFromCents,
+  type CreditPackageId,
+} from '@/lib/credit-packages';
 import { DealWalletPayButton } from '@/components/DealWalletPayButton';
 
-const PACKAGES = [
-  { id: 'left', credits: 100, priceLabel: '€10,00', featured: false as const },
-  {
-    id: 'middle',
-    credits: 200,
-    priceLabel: '€4,99',
-    wasPriceLabel: '€22,99',
-    discountPercent: 78,
-    featured: true as const,
-    priceEurCents: 499,
-  },
-  { id: 'right', credits: 300, priceLabel: '€29,99', featured: false as const },
-] as const;
+const PACKAGES = (Object.entries(CREDIT_PACKAGE_DEFINITIONS) as Array<
+  [CreditPackageId, (typeof CREDIT_PACKAGE_DEFINITIONS)[CreditPackageId]]
+>).map(([id, def]) => {
+  const priceEurCents = creditsPriceEurCents(def.credits);
+  const wasPriceEurCents = creditsWasPriceEurCents(def.credits);
+  return {
+    id,
+    credits: def.credits,
+    priceLabel: formatPriceLabelFromCents(priceEurCents),
+    wasPriceLabel: formatPriceLabelFromCents(wasPriceEurCents),
+    discountPercent: CREDIT_DEAL.discountPercent,
+    featured: def.featured,
+    priceEurCents,
+  };
+});
 
 type Props = {
   showIntro?: boolean;
@@ -111,14 +121,20 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
     }
   };
 
+  const featured = PACKAGES.find((p) => p.featured);
+
   return (
     <div className="space-y-5">
       {showIntro ? (
         <p className="text-sm text-gray-600 leading-relaxed">
-          Koop credits om mee te chatten en foto&apos;s te ontvangen.{' '}
-          <span className="font-semibold text-primary">
-            Speciale aanbieding: 200 credits voor €4,99 — 78% korting (was €22,99).
-          </span>
+          Koop credits om door te chatten. Elk bericht kost 10 credits. Je start met 100 gratis credits
+          (10 berichten).{' '}
+          {featured ? (
+            <span className="font-semibold text-primary">
+              Speciale aanbieding: {featured.credits} credits voor {featured.priceLabel} —{' '}
+              {featured.discountPercent}% korting (was {featured.wasPriceLabel}).
+            </span>
+          ) : null}
         </p>
       ) : null}
       {purchaseError ? (
@@ -144,7 +160,6 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
           >
             {pkg.featured ? (
               <>
-                {/* Hoekige "78% KORTING" sticker rechtsboven */}
                 <span
                   aria-hidden
                   className="pointer-events-none absolute -right-3 -top-3 z-10 flex h-16 w-16 rotate-12 items-center justify-center rounded-full bg-primary text-center text-[11px] font-extrabold uppercase leading-tight tracking-tight text-white shadow-lg shadow-primary/40 ring-2 ring-white"
@@ -154,7 +169,6 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
                     <span className="text-[9px] leading-tight">korting</span>
                   </span>
                 </span>
-                {/* "Speciale aanbieding" badge bovenaan */}
                 <span className="absolute -top-3 left-4 inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-md shadow-primary/30">
                   <Flame className="h-3.5 w-3.5" />
                   Speciale aanbieding
@@ -169,11 +183,9 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
               >
                 {pkg.priceLabel}
               </span>
-              {'wasPriceLabel' in pkg ? (
-                <span className="text-lg font-semibold text-gray-400 line-through">
-                  {pkg.wasPriceLabel}
-                </span>
-              ) : null}
+              <span className="text-lg font-semibold text-gray-400 line-through">
+                {pkg.wasPriceLabel}
+              </span>
             </div>
             <div
               className={`mt-1 text-sm font-semibold ${pkg.featured ? 'text-primary-deep' : 'text-primary'}`}
@@ -181,7 +193,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
               {pkg.credits.toLocaleString('nl-NL')} credits
             </div>
             <p className={`mt-1 text-xs ${pkg.featured ? 'text-gray-700' : 'text-gray-500'}`}>
-              Voor chatten en foto&apos;s ontvangen.
+              {Math.floor(pkg.credits / 10)} berichten chatten.
               {pkg.featured ? (
                 <>
                   {' '}
@@ -205,7 +217,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
             >
               {busyId === pkg.id ? 'Even geduld…' : pkg.featured ? 'Pak deze deal' : 'Koop nu'}
             </button>
-            {pkg.featured && 'priceEurCents' in pkg ? (
+            {pkg.featured ? (
               <DealWalletPayButton
                 publishableKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''}
                 amountCents={pkg.priceEurCents}

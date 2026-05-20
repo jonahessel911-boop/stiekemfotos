@@ -11,6 +11,7 @@ type MeResponse = {
 
 function shouldSkipPath(pathname: string): boolean {
   return (
+    pathname.startsWith("/login") ||
     pathname.startsWith("/inloggen") ||
     pathname.startsWith("/wachtwoord-vergeten") ||
     pathname.startsWith("/wachtwoord-reset") ||
