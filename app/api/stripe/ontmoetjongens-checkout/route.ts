@@ -48,6 +48,7 @@ export async function POST(req: Request) {
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      billing_address_collection: "auto",
       ...(customerEmail ? { customer_email: customerEmail } : {}),
       metadata: {
         productType: STRIPE_PRODUCT_ONTMOETJONGENS,

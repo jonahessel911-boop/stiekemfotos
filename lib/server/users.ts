@@ -57,6 +57,8 @@ export type UserRecord = {
   platformOnboardingCompletedAt?: string | null;
   /** Swift Visit Log / affiliate click_id uit landing URL (?click_id=...). */
   clickId?: string;
+  /** Ontmoetjongens /start-betaling (€19,95) voltooid. */
+  ontmoetjongensPaidAt?: string;
 };
 
 export type ReactionNudge = {
@@ -170,6 +172,18 @@ export function toPublicUser(u: UserRecord) {
     /** Onboarding-overlay is verwijderd; flag blijft hier puur voor backwards compat. */
     needsPlatformOnboarding: false,
   };
+}
+
+export async function markOntmoetjongensPaidForUser(userId: string): Promise<UserRecord | null> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return null;
+  if (list[i]!.ontmoetjongensPaidAt) return list[i]!;
+  const next = { ...list[i]!, ontmoetjongensPaidAt: new Date().toISOString() };
+  list[i] = next;
+  await save(list);
+  await upsertAppUserToSupabaseUsers(next);
+  return next;
 }
 
 export async function completePlatformOnboarding(userId: string): Promise<UserRecord | null> {

@@ -9,6 +9,7 @@ import {
   ONTMOETJONGENS_ONBOARDING,
   STRIPE_PRODUCT_ONTMOETJONGENS,
 } from "@/lib/server/stripe";
+import { provisionOntmoetjongensUser } from "@/lib/server/ontmoetjongens-user";
 import {
   getStripeCheckoutBySessionId,
   markStripeCheckoutPaid,
@@ -20,11 +21,12 @@ export type OntmoetjongensConversionResult = {
   skipped?: boolean;
   reason: string;
   clickId?: string;
+  userId?: string | null;
+  userCreated?: boolean;
 };
 
 /**
- * ClickFlare postback na Ontmoetjongens-betaling. Idempotent per Stripe session.
- * clickIdHint: cookie/body bij return van Stripe (fallback als metadata leeg was).
+ * Na Ontmoetjongens-betaling: user aanmaken/koppelen + ClickFlare postback (idempotent).
  */
 export async function sendOntmoetjongensClickflareConversion(input: {
   sessionId: string;
@@ -36,12 +38,12 @@ export async function sendOntmoetjongensClickflareConversion(input: {
   }
 
   const existing = await getStripeCheckoutBySessionId(sessionId);
-  if (existing?.clickflareSentAt) {
-    return { sent: false, skipped: true, reason: "already_sent", clickId: existing.clickId };
-  }
+  const clickflareAlreadySent = Boolean(existing?.clickflareSentAt);
 
   const stripe = getStripe();
-  const session = await stripe.checkout.sessions.retrieve(sessionId);
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["customer"],
+  });
 
   if (String(session.metadata?.productType ?? "") !== STRIPE_PRODUCT_ONTMOETJONGENS) {
     return { sent: false, reason: "not_ontmoetjongens" };
@@ -59,20 +61,58 @@ export async function sendOntmoetjongensClickflareConversion(input: {
     existing?.clickId?.trim() ||
     "";
 
-  if (!clickId) {
-    console.warn(
-      `[clickflare:ontmoetjongens_paid] session=${sessionId} — geen click_id (metadata/cookie/leeg bij checkout)`
-    );
-    return { sent: false, reason: "no_click_id" };
-  }
+  const provision = await provisionOntmoetjongensUser({
+    sessionId,
+    clickId,
+    session,
+  });
+  const userId =
+    provision.userId ||
+    String(session.metadata?.userId ?? "").trim() ||
+    existing?.userId ||
+    "";
 
-  const userId = String(session.metadata?.userId ?? "").trim();
   const stripeAmountCents =
     typeof session.amount_total === "number" && Number.isFinite(session.amount_total)
       ? session.amount_total
       : existing?.priceEurCents ?? ONTMOETJONGENS_ONBOARDING.priceEurCents;
 
-  /** Altijd €19,95 payout naar ClickFlare (Ontmoetjongens onboarding). */
+  const baseCheckout = {
+    sessionId,
+    userId,
+    credits: existing?.credits ?? 0,
+    priceEurCents: existing?.priceEurCents ?? stripeAmountCents,
+    priceLabel: existing?.priceLabel ?? "€19,95 · Ontmoetjongens",
+    clickId: clickId || existing?.clickId,
+    paidAt: existing?.paidAt ?? new Date().toISOString(),
+  };
+
+  if (!clickId) {
+    await upsertStripeCheckoutRecord(baseCheckout);
+    console.warn(
+      `[clickflare:ontmoetjongens_paid] session=${sessionId} — geen click_id; user=${userId || "geen"}`
+    );
+    return {
+      sent: false,
+      reason: "no_click_id",
+      clickId: undefined,
+      userId: userId || null,
+      userCreated: provision.created,
+    };
+  }
+
+  if (clickflareAlreadySent) {
+    await upsertStripeCheckoutRecord(baseCheckout);
+    return {
+      sent: false,
+      skipped: true,
+      reason: "already_sent",
+      clickId,
+      userId: userId || null,
+      userCreated: provision.created,
+    };
+  }
+
   const payout = formatPayoutFromCents(ONTMOETJONGENS_ONBOARDING.priceEurCents);
 
   const postback = await sendSvlPostback({
@@ -84,22 +124,29 @@ export async function sendOntmoetjongensClickflareConversion(input: {
   });
 
   if (!postback.fired || !postback.ok) {
+    await upsertStripeCheckoutRecord(baseCheckout);
     console.warn(
       `[clickflare:ontmoetjongens_paid] postback mislukt session=${sessionId} status=${postback.status ?? "?"} err=${postback.error ?? ""}`
     );
-    return { sent: false, reason: "postback_failed", clickId };
+    return {
+      sent: false,
+      reason: "postback_failed",
+      clickId,
+      userId: userId || null,
+      userCreated: provision.created,
+    };
   }
 
   await upsertStripeCheckoutRecord({
-    sessionId,
-    userId: userId || existing?.userId || "",
-    credits: existing?.credits ?? 0,
-    priceEurCents: existing?.priceEurCents ?? stripeAmountCents,
-    priceLabel: existing?.priceLabel ?? "Ontmoetjongens",
-    clickId,
+    ...baseCheckout,
     clickflareSentAt: new Date().toISOString(),
-    paidAt: existing?.paidAt ?? new Date().toISOString(),
   });
 
-  return { sent: true, reason: "ok", clickId };
+  return {
+    sent: true,
+    reason: "ok",
+    clickId,
+    userId: userId || null,
+    userCreated: provision.created,
+  };
 }
