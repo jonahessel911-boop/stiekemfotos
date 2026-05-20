@@ -2,7 +2,9 @@ const POSTMARK_URL = "https://api.postmarkapp.com/email";
 
 const POSTMARK_SERVER_TOKEN =
   process.env.POSTMARK_SERVER_TOKEN ?? process.env.POSTMARK_API_TOKEN ?? "";
-const POSTMARK_FROM_EMAIL = process.env.POSTMARK_FROM_EMAIL ?? "info@stiekemefotos.nl";
+/** Vast afzenderadres voor alle Postmark-transactional mail. */
+export const POSTMARK_FROM_EMAIL = "info@stiekemefotos.nl";
+const POSTMARK_FROM_HEADER = `Stiekemefotos <${POSTMARK_FROM_EMAIL}>`;
 const APP_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.stiekemefotos.nl";
 
 type MailPayload = {
@@ -143,7 +145,8 @@ async function sendMail(payload: MailPayload): Promise<void> {
       "X-Postmark-Server-Token": POSTMARK_SERVER_TOKEN,
     },
     body: JSON.stringify({
-      From: POSTMARK_FROM_EMAIL,
+      From: POSTMARK_FROM_HEADER,
+      ReplyTo: POSTMARK_FROM_EMAIL,
       To: payload.to,
       Subject: payload.subject,
       HtmlBody: payload.html,
