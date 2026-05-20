@@ -13,7 +13,7 @@ function randomPassword(): string {
   return randomBytes(24).toString("base64url");
 }
 
-function emailFromStripeSession(session: Stripe.Checkout.Session): string {
+export function emailFromStripeSession(session: Stripe.Checkout.Session): string {
   const direct =
     session.customer_details?.email?.trim() ||
     session.customer_email?.trim() ||

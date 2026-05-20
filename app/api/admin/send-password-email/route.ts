@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { parseAdminCookieValue, ADMIN_SESSION_COOKIE_NAME } from "@/lib/server/adminAuth";
-import { sendPasswordResetEmail } from "@/lib/server/email";
-import { createPasswordResetRequest, findUserById } from "@/lib/server/users";
+import { sendPlatformAccessEmailToUser } from "@/lib/server/ontmoetjongens-access-email";
 
+/** Admin: zelfde toegangs-e-mail als na Stripe-betaling (voor testen). */
 export async function POST(req: Request) {
   const jar = await cookies();
   const ok = parseAdminCookieValue(jar.get(ADMIN_SESSION_COOKIE_NAME)?.value);
@@ -16,26 +16,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "userId ontbreekt." }, { status: 400 });
     }
 
-    const user = await findUserById(userId);
-    if (!user) {
-      return NextResponse.json({ error: "User niet gevonden." }, { status: 404 });
+    const result = await sendPlatformAccessEmailToUser({ userId });
+    if (!result.sent) {
+      return NextResponse.json(
+        { error: result.reason === "user_not_found" ? "User niet gevonden." : "E-mail versturen mislukt." },
+        { status: result.reason === "user_not_found" ? 404 : 500 }
+      );
     }
 
-    const reset = await createPasswordResetRequest(user.email);
-    if (!reset) {
-      return NextResponse.json({ error: "Reset-token kon niet worden aangemaakt." }, { status: 500 });
-    }
-
-    await sendPasswordResetEmail({
-      to: reset.email,
-      naam: reset.naam,
-      resetToken: reset.token,
-    });
-
-    console.info(`[admin send-password-email] verstuurd naar ${reset.email} (user=${userId})`);
     return NextResponse.json({
       ok: true,
-      message: `Wachtwoord-reset e-mail verstuurd naar ${reset.email}.`,
+      message: `Toegangs-e-mail verstuurd naar ${result.to ?? "ontvanger"}.`,
     });
   } catch (e) {
     return NextResponse.json(

@@ -155,7 +155,7 @@ export default function AdminPage() {
   const sendPasswordEmail = async (userId: string, userEmail: string) => {
     if (
       !window.confirm(
-        `Wachtwoord-reset e-mail versturen naar ${userEmail}?\n\nDe ontvanger krijgt een link om een nieuw wachtwoord in te stellen.`
+        `Toegangs-e-mail versturen naar ${userEmail}?\n\nZelfde mail als na Stripe-betaling (lange welkomsttekst + link om wachtwoord in te stellen).`
       )
     ) {
       return;
@@ -782,7 +782,7 @@ function UsersTable({
                     onClick={() => void onSendPasswordEmail(u.id, u.email)}
                     className="whitespace-nowrap rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60"
                   >
-                    {sendingUserId === u.id ? 'Versturen…' : 'Wachtwoord e-mail versturen'}
+                    {sendingUserId === u.id ? 'Versturen…' : 'Toegangs-e-mail versturen'}
                   </button>
                 </td>
               </tr>

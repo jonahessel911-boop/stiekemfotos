@@ -74,7 +74,12 @@ export async function sendOntmoetjongensClickflareConversion(input: {
     "";
 
   if (userId) {
-    await sendOntmoetjongensAccessEmailIfNeeded({ sessionId, userId });
+    await sendOntmoetjongensAccessEmailIfNeeded({
+      sessionId,
+      userId,
+      session,
+      stripeEmail: provision.email,
+    });
   }
 
   const stripeAmountCents =
