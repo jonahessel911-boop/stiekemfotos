@@ -1,3 +1,5 @@
+import { getSiteUrl } from "@/lib/site-url";
+
 const POSTMARK_URL = "https://api.postmarkapp.com/email";
 
 const POSTMARK_SERVER_TOKEN =
@@ -5,7 +7,6 @@ const POSTMARK_SERVER_TOKEN =
 /** Vast afzenderadres voor alle Postmark-transactional mail. */
 export const POSTMARK_FROM_EMAIL = "info@stiekemefotos.nl";
 const POSTMARK_FROM_HEADER = `Stiekemefotos <${POSTMARK_FROM_EMAIL}>`;
-const APP_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.stiekemefotos.nl";
 
 type MailPayload = {
   to: string;
@@ -34,7 +35,7 @@ export async function sendDailyChatPromptEmail(input: {
   /** Optioneel: 1-4 profiel-previews om in de mail te tonen. */
   newProfiles?: Array<{ name: string; avatarUrl?: string | null }>;
 }): Promise<void> {
-  const ctaUrl = `${APP_URL}/profielen?utm_source=email&utm_medium=daily&utm_campaign=new-women`;
+  const ctaUrl = `${getSiteUrl()}/profielen?utm_source=email&utm_medium=daily&utm_campaign=new-women`;
   const nm = escapeHtml(input.naam || "schat");
   const previews = (input.newProfiles ?? []).slice(0, 4);
   const previewHtml = previews.length
@@ -80,7 +81,9 @@ export async function sendDailyChatPromptEmail(input: {
 }
 
 function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref: string, body: string) {
-  const safeHref = ctaHref.startsWith("http") ? ctaHref : APP_URL;
+  const safeHref = ctaHref.startsWith("http")
+    ? ctaHref
+    : `${getSiteUrl()}${ctaHref.startsWith("/") ? ctaHref : `/${ctaHref}`}`;
   return {
     html: `<!doctype html>
 <html lang="nl">
@@ -166,7 +169,7 @@ export async function sendAccountVerificationEmail(input: {
   naam: string;
   verifyToken: string;
 }): Promise<void> {
-  const verifyUrl = `${APP_URL}/api/auth/verify-email?token=${encodeURIComponent(input.verifyToken)}`;
+  const verifyUrl = `${getSiteUrl()}/api/auth/verify-email?token=${encodeURIComponent(input.verifyToken)}`;
   const t = shellTemplate(
     `Bijna klaar ${input.naam} 💌`,
     "Bevestig eerst je e-mailadres om stiekemefotos te openen.",
@@ -193,7 +196,7 @@ export async function sendOntmoetjongensAccessEmail(input: {
   loginLink: string;
 }): Promise<void> {
   const nm = escapeHtml(input.naam || "daar");
-  const loginHref = input.loginLink.startsWith("http") ? input.loginLink : `${APP_URL}${input.loginLink}`;
+  const loginHref = input.loginLink.startsWith("http") ? input.loginLink : `${getSiteUrl()}${input.loginLink}`;
   const loginAnchor = `<a href="${escapeHtml(loginHref)}" style="color:#111111;font-weight:700;">${escapeHtml(loginHref)}</a>`;
   const html = `<!DOCTYPE html>
 <html>
@@ -312,7 +315,7 @@ export async function sendPasswordResetEmail(input: {
   naam: string;
   resetToken: string;
 }): Promise<void> {
-  const resetUrl = `${APP_URL}/wachtwoord-reset?token=${encodeURIComponent(input.resetToken)}`;
+  const resetUrl = `${getSiteUrl()}/wachtwoord-reset?token=${encodeURIComponent(input.resetToken)}`;
   const t = shellTemplate(
     `Nieuw wachtwoord instellen 🔐`,
     `Hey ${input.naam}, je hebt een nieuw wachtwoord aangevraagd.`,
@@ -344,7 +347,7 @@ export async function sendOfflineNewMessageEmail(input: {
     `${input.profileName} stuurde je iets spannends 💬`,
     "Je was net offline. Er wacht een nieuw bericht op je.",
     "Lees bericht",
-    `${APP_URL}/berichten?chat=${encodeURIComponent(input.conversationId)}`,
+    `${getSiteUrl()}/berichten?chat=${encodeURIComponent(input.conversationId)}`,
     `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
       Hey ${input.naam}, <b>${input.profileName}</b> heeft je een bericht gestuurd.
     </p>
@@ -371,7 +374,7 @@ export async function sendGiftReceivedEmail(input: {
     `Cadeautje ontvangen van ${input.profileName} 🎁`,
     "Je hebt credits cadeau gekregen in een chat.",
     "Ga naar het gesprek",
-    `${APP_URL}/berichten?chat=${encodeURIComponent(input.conversationId)}`,
+    `${getSiteUrl()}/berichten?chat=${encodeURIComponent(input.conversationId)}`,
     `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
       ${input.naam}, lekker bezig — <b>${input.profileName}</b> heeft je <b>${input.credits} credits</b> gestuurd.
     </p>

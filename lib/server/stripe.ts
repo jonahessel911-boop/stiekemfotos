@@ -8,7 +8,9 @@ export type { CreditPackageId };
 
 export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.stiekemefotos.nl";
+import { getSiteUrl } from "@/lib/site-url";
+
+export const SITE_URL = getSiteUrl();
 
 /** Tarief: 100 credits = €13,95; grotere pakketten automatisch berekend. */
 export const CREDIT_PACKAGES = buildCreditPackagesRecord();
