@@ -16,6 +16,7 @@ function shouldSkipPath(pathname: string): boolean {
     pathname.startsWith("/wachtwoord-vergeten") ||
     pathname.startsWith("/wachtwoord-reset") ||
     pathname.startsWith("/start") ||
+    pathname.startsWith("/korting") ||
     pathname.startsWith("/lander") ||
     pathname.startsWith("/voorwaarden") ||
     pathname.startsWith("/admin")

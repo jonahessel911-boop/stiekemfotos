@@ -59,6 +59,10 @@ export type UserRecord = {
   clickId?: string;
   /** Ontmoetjongens /start-betaling (€19,95) voltooid. */
   ontmoetjongensPaidAt?: string;
+  /** Wanneer abandonment-korting-mail verstuurd mag worden (1 uur na start-lead). */
+  abandonmentOfferDueAt?: string;
+  /** Abandonment-mail met 62% korting verstuurd. */
+  abandonmentOfferEmailSentAt?: string;
 };
 
 export type ReactionNudge = {
@@ -172,6 +176,20 @@ export function toPublicUser(u: UserRecord) {
     /** Onboarding-overlay is verwijderd; flag blijft hier puur voor backwards compat. */
     needsPlatformOnboarding: false,
   };
+}
+
+export async function patchUserRecord(
+  userId: string,
+  patch: Partial<UserRecord>
+): Promise<UserRecord | null> {
+  const list = await load();
+  const i = list.findIndex((u) => u.id === userId);
+  if (i === -1) return null;
+  const next = { ...list[i]!, ...patch };
+  list[i] = next;
+  await save(list);
+  await upsertAppUserToSupabaseUsers(next);
+  return next;
 }
 
 export async function markOntmoetjongensPaidForUser(userId: string): Promise<UserRecord | null> {

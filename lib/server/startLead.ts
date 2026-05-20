@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { readJson, writeJson } from "@/lib/server/store";
 import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
+import { scheduleAbandonmentOfferEmail } from "@/lib/server/abandonmentOffer";
 import { createUser, findUserByEmail, type UserRecord } from "@/lib/server/users";
 
 export type OnboardingSignupRecord = {
@@ -112,6 +113,10 @@ export async function registerStartLead(input: {
     voorwaardenAkkoord: true,
     source,
   });
+
+  if (!user.ontmoetjongensPaidAt) {
+    await scheduleAbandonmentOfferEmail(user.id);
+  }
 
   return { user, created };
 }

@@ -14,8 +14,14 @@ import {
   ONTMOETJONGENS_ONBOARDING,
   resolveReturnUrl,
   STRIPE_PRODUCT_ONTMOETJONGENS,
-  SITE_URL,
+  STRIPE_PRODUCT_ONTMOETJONGENS_KORTING,
 } from "@/lib/server/stripe";
+import {
+  KORTING_DISCOUNT_PERCENT,
+  KORTING_PRICE_EUR_CENTS,
+  KORTING_REFERENCE_LABEL,
+  KORTING_PRICE_LABEL,
+} from "@/lib/korting-offer";
 import { upsertStripeCheckoutRecord } from "@/lib/server/stripeCheckoutStore";
 import { SVL_CLICK_ID_COOKIE } from "@/lib/clickflare-postback";
 
@@ -36,7 +42,6 @@ export async function POST(req: Request) {
       returnUrl?: string;
       clickId?: string;
       email?: string;
-      startPath?: string;
     };
     const jar = await cookies();
     let userId = parseSessionValue(jar.get(SESSION_COOKIE_NAME)?.value);
@@ -56,7 +61,7 @@ export async function POST(req: Request) {
     if (!userId && bodyEmail) {
       const { user } = await registerStartLead({
         email: bodyEmail,
-        startPath: typeof body.startPath === "string" ? body.startPath.trim() : undefined,
+        startPath: "/korting",
         clickId,
       });
       userId = user.id;
@@ -64,7 +69,11 @@ export async function POST(req: Request) {
       setSessionUserId = user.id;
     }
 
-    const baseReturn = resolveReturnUrl(body.returnUrl ?? `${SITE_URL}/start`);
+    if (!customerEmail && bodyEmail) {
+      customerEmail = bodyEmail.toLowerCase();
+    }
+
+    const baseReturn = resolveReturnUrl(body.returnUrl ?? undefined);
     const successUrl = appendStripeSessionPlaceholder(
       withQuery(baseReturn, { ontmoetjongens_paid: "1" })
     );
@@ -78,13 +87,14 @@ export async function POST(req: Request) {
       billing_address_collection: "auto",
       ...(customerEmail ? { customer_email: customerEmail } : {}),
       metadata: {
-        productType: STRIPE_PRODUCT_ONTMOETJONGENS,
+        productType: STRIPE_PRODUCT_ONTMOETJONGENS_KORTING,
         userId: userId ?? "",
         clickId,
+        discountPercent: String(KORTING_DISCOUNT_PERCENT),
       },
       payment_intent_data: {
         metadata: {
-          productType: STRIPE_PRODUCT_ONTMOETJONGENS,
+          productType: STRIPE_PRODUCT_ONTMOETJONGENS_KORTING,
           userId: userId ?? "",
           clickId,
         },
@@ -95,10 +105,10 @@ export async function POST(req: Request) {
           price_data: {
             currency: "eur",
             product_data: {
-              name: ONTMOETJONGENS_ONBOARDING.title,
-              description: ONTMOETJONGENS_ONBOARDING.description,
+              name: `${ONTMOETJONGENS_ONBOARDING.title} (${KORTING_DISCOUNT_PERCENT}% korting)`,
+              description: `Platformtoegang — was ${KORTING_REFERENCE_LABEL}, nu ${KORTING_PRICE_LABEL}`,
             },
-            unit_amount: ONTMOETJONGENS_ONBOARDING.priceEurCents,
+            unit_amount: KORTING_PRICE_EUR_CENTS,
           },
         },
       ],
@@ -110,20 +120,10 @@ export async function POST(req: Request) {
       sessionId: session.id,
       userId: userId ?? "",
       credits: 0,
-      priceEurCents: ONTMOETJONGENS_ONBOARDING.priceEurCents,
-      priceLabel: `€${(ONTMOETJONGENS_ONBOARDING.priceEurCents / 100).toFixed(2).replace(".", ",")} · Ontmoetjongens`,
+      priceEurCents: KORTING_PRICE_EUR_CENTS,
+      priceLabel: `${KORTING_PRICE_LABEL} (${KORTING_DISCOUNT_PERCENT}% korting)`,
       clickId: clickId || undefined,
     });
-
-    if (!clickId) {
-      console.warn(
-        `[ontmoetjongens-checkout] Stripe session ${session.id} zonder click_id — ClickFlare postback wordt overgeslagen na betaling`
-      );
-    } else {
-      console.log(
-        `[ontmoetjongens-checkout] session ${session.id} click_id=${clickId.slice(0, 8)}…`
-      );
-    }
 
     const res = NextResponse.json({ url: session.url, sessionId: session.id });
     if (setSessionUserId) {

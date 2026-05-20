@@ -6,6 +6,7 @@ import {
   type CreditPackageId,
   getStripe,
   STRIPE_PRODUCT_ONTMOETJONGENS,
+  STRIPE_PRODUCT_ONTMOETJONGENS_KORTING,
   STRIPE_WEBHOOK_SECRET,
 } from "@/lib/server/stripe";
 import {
@@ -119,7 +120,10 @@ export async function POST(req: Request) {
             ? session.amount_total
             : 0;
 
-        if (productType === STRIPE_PRODUCT_ONTMOETJONGENS) {
+        if (
+          productType === STRIPE_PRODUCT_ONTMOETJONGENS ||
+          productType === STRIPE_PRODUCT_ONTMOETJONGENS_KORTING
+        ) {
           await sendOntmoetjongensClickflareConversion({
             sessionId: session.id,
             clickIdHint: String(session.metadata?.clickId ?? "").trim(),

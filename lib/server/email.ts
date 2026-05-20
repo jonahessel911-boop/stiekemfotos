@@ -363,6 +363,123 @@ export async function sendOfflineNewMessageEmail(input: {
   });
 }
 
+export async function sendAbandonmentOfferEmail(input: {
+  to: string;
+  naam: string;
+  checkoutLink: string;
+  subjectProfileName: string;
+  subjectProfileAge: number;
+  discountPercent: number;
+}): Promise<void> {
+  const nm = escapeHtml(input.naam || "daar");
+  const checkoutHref = escapeHtml(input.checkoutLink);
+  const subject = `${input.subjectProfileName} (${input.subjectProfileAge}) wacht op je...`;
+
+  const html = `<!DOCTYPE html>
+<html>
+  <body style="margin:0; padding:0; background:#ffffff; font-family:Arial, sans-serif; color:#111111;">
+    <div style="max-width:620px; margin:0 auto; padding:44px 24px; font-size:18px; line-height:1.65;">
+
+      <p>Hoi ${nm},</p>
+
+      <p>Je was er bijna.</p>
+
+      <p>Je had je e-mailadres al ingevuld.</p>
+
+      <p>Maar je hebt je toegang nog niet afgerond...</p>
+
+      <br>
+
+      <p>Dat snappen we.</p>
+
+      <p>Het kan spannend zijn om contact te leggen.</p>
+
+      <p>Zeker als je niet precies weet wat je moet sturen.</p>
+
+      <p>Of wie er aan de andere kant op je wacht...</p>
+
+      <br>
+
+      <p>Maar op dit moment zijn er een paar mannen die bij jouw profiel passen.</p>
+
+      <p><strong>Lucas, 18</strong> wacht op je.</p>
+
+      <p><strong>Daan, 18</strong> is online.</p>
+
+      <p><strong>Mats, 20</strong> staat open voor een leuk gesprek.</p>
+
+      <br>
+
+      <p>Je hoeft geen perfecte openingszin te hebben.</p>
+
+      <p>Een simpele hoi is vaak al genoeg.</p>
+
+      <p>Een vraag.</p>
+
+      <p>Een compliment.</p>
+
+      <p>Of gewoon iets luchtigs...</p>
+
+      <br>
+
+      <p>Omdat je nog niet bent ingestapt, willen we je tijdelijk helpen.</p>
+
+      <p>Alleen de komende <strong>24 uur</strong> krijg je <strong>${input.discountPercent}% korting</strong>.</p>
+
+      <p>Zodat je alsnog rustig kunt ontdekken wie er op je wacht.</p>
+
+      <br>
+
+      <p>Ter vergelijking:</p>
+
+      <p>Deze toegang kost je nu ongeveer hetzelfde als <strong>3 kopjes koffie</strong> bij een lokaal restaurant.</p>
+
+      <p>Maar het kan wel het begin zijn van een spannend nieuw contact.</p>
+
+      <br>
+
+      <p>Wacht niet te lang.</p>
+
+      <p>Je aanbieding blijft maar tijdelijk beschikbaar.</p>
+
+      <p>En daarna verdwijnt deze korting automatisch.</p>
+
+      <br>
+
+      <p>
+        <a href="${checkoutHref}" style="display:inline-block; background:#111827; color:#ffffff; text-decoration:none; padding:16px 24px; border-radius:4px; font-weight:bold;">
+          Bekijk jouw aanbieding
+        </a>
+      </p>
+
+      <br>
+
+      <p>Veel plezier,</p>
+
+      <p>Het team</p>
+
+    </div>
+  </body>
+</html>`;
+
+  const text = `Hoi ${input.naam || "daar"},
+
+Je was er bijna en hebt je toegang nog niet afgerond.
+Alleen de komende 24 uur: ${input.discountPercent}% korting.
+
+Bekijk jouw aanbieding: ${input.checkoutLink}
+
+Veel plezier,
+Het team`;
+
+  await sendMail({
+    to: input.to,
+    subject,
+    html,
+    text,
+  });
+}
+
 export async function sendGiftReceivedEmail(input: {
   to: string;
   naam: string;

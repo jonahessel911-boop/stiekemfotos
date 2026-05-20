@@ -8,6 +8,7 @@ import {
   getStripe,
   ONTMOETJONGENS_ONBOARDING,
   STRIPE_PRODUCT_ONTMOETJONGENS,
+  STRIPE_PRODUCT_ONTMOETJONGENS_KORTING,
 } from "@/lib/server/stripe";
 import { sendOntmoetjongensAccessEmailIfNeeded } from "@/lib/server/ontmoetjongens-access-email";
 import { provisionOntmoetjongensUser } from "@/lib/server/ontmoetjongens-user";
@@ -46,7 +47,11 @@ export async function sendOntmoetjongensClickflareConversion(input: {
     expand: ["customer"],
   });
 
-  if (String(session.metadata?.productType ?? "") !== STRIPE_PRODUCT_ONTMOETJONGENS) {
+  const productType = String(session.metadata?.productType ?? "");
+  if (
+    productType !== STRIPE_PRODUCT_ONTMOETJONGENS &&
+    productType !== STRIPE_PRODUCT_ONTMOETJONGENS_KORTING
+  ) {
     return { sent: false, reason: "not_ontmoetjongens" };
   }
 

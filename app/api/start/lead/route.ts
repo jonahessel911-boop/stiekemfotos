@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { processDueAbandonmentOfferEmails } from "@/lib/server/abandonmentOffer";
 import { registerStartLead } from "@/lib/server/startLead";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
 import { toPublicUser } from "@/lib/server/users";
@@ -35,6 +36,8 @@ export async function POST(req: Request) {
       startPath,
       clickId: clickId || clickIdCookie,
     });
+
+    void processDueAbandonmentOfferEmails().catch(() => {});
 
     if (clickIdCookie) {
       await sendSvlPostback({

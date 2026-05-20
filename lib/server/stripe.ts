@@ -23,6 +23,8 @@ export const ONTMOETJONGENS_ONBOARDING = {
 } as const;
 
 export const STRIPE_PRODUCT_ONTMOETJONGENS = "ontmoetjongens_onboarding";
+/** 62% korting via /korting (zelfde toegang, lagere prijs). */
+export const STRIPE_PRODUCT_ONTMOETJONGENS_KORTING = "ontmoetjongens_korting62";
 
 let stripeSingleton: Stripe | null = null;
 

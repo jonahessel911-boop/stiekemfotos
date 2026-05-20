@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureUserInboxForOwner, listSummaries } from "@/lib/server/conversations";
+import { processDueAbandonmentOfferEmails } from "@/lib/server/abandonmentOffer";
 import { maybeSendEngagementNudges } from "@/lib/server/engagementNudges";
 import { listUsers } from "@/lib/server/users";
 
@@ -29,5 +30,6 @@ export async function GET(req: Request) {
       // best effort per user
     }
   }
-  return NextResponse.json({ ok: true, processed });
+  const abandonment = await processDueAbandonmentOfferEmails();
+  return NextResponse.json({ ok: true, processed, abandonment });
 }
