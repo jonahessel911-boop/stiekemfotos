@@ -7,6 +7,7 @@ import {
   findUserById,
   listUsers,
   patchUserRecord,
+  resolveAppUserById,
   type UserRecord,
 } from "@/lib/server/users";
 
@@ -58,19 +59,28 @@ export type SendAbandonmentOfferResult = {
 export async function sendAbandonmentOfferEmailToUser(input: {
   userId: string;
   force?: boolean;
+  /** Admin: user uit Supabase, geen blokkade op credit-aankoop. */
+  admin?: boolean;
 }): Promise<SendAbandonmentOfferResult> {
   const userId = input.userId.trim();
   if (!userId) return { sent: false, reason: "missing_user_id" };
 
-  const user = await findUserById(userId);
+  const user = await resolveAppUserById(userId);
   if (!user) return { sent: false, reason: "user_not_found" };
   if (user.ontmoetjongensPaidAt) return { sent: false, reason: "already_paid" };
-  if (user.firstCreditPurchaseAt) return { sent: false, reason: "has_credit_purchase" };
+  if (!input.admin && user.firstCreditPurchaseAt) {
+    return { sent: false, reason: "has_credit_purchase" };
+  }
   if (user.abandonmentOfferEmailSentAt && !input.force) {
     return { sent: false, reason: "already_sent" };
   }
 
-  const profile = await pickAbandonmentEmailProfile();
+  let profile: { name: string; age: number };
+  try {
+    profile = await pickAbandonmentEmailProfile();
+  } catch {
+    profile = { name: "Lucas", age: 18 };
+  }
   const checkoutLink = buildKortingCheckoutLink(user.email);
   const subject = `${profile.name} (${profile.age}) wacht op je...`;
 

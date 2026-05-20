@@ -4,6 +4,7 @@ import {
   resolveEngagementSlotsForNewUser,
   type EngagementSlot,
 } from "@/lib/server/engagementSlots";
+import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { upsertAppUserToSupabaseUsers } from "@/lib/server/supabaseUserSync";
 import { mergePersonalFacts, type UserPersonalFacts } from "@/lib/user-personal-facts";
 
@@ -115,6 +116,83 @@ export async function findUserById(id: string): Promise<UserRecord | null> {
   return list.find((u) => u.id === id) ?? null;
 }
 
+type SupabaseUsersRow = {
+  id: string;
+  email: string;
+  naam: string;
+  leeftijd: number;
+  password_hash: string;
+  discreet_akkoord: boolean;
+  voorwaarden_akkoord: boolean;
+  email_verify_token?: string | null;
+  email_verified_at?: string | null;
+  first_credit_purchase_at?: string | null;
+  created_at?: string;
+  click_id?: string | null;
+};
+
+function userRecordFromSupabaseRow(row: SupabaseUsersRow): UserRecord {
+  return {
+    id: row.id,
+    email: row.email.trim().toLowerCase(),
+    naam: row.naam,
+    leeftijd: row.leeftijd,
+    passwordHash: row.password_hash,
+    discreetAkkoord: Boolean(row.discreet_akkoord),
+    voorwaardenAkkoord: Boolean(row.voorwaarden_akkoord),
+    createdAt: row.created_at ?? new Date().toISOString(),
+    ...(row.email_verify_token ? { emailVerifyToken: row.email_verify_token } : {}),
+    ...(row.email_verified_at ? { emailVerifiedAt: row.email_verified_at } : {}),
+    ...(row.first_credit_purchase_at
+      ? { firstCreditPurchaseAt: row.first_credit_purchase_at }
+      : {}),
+    ...(row.click_id ? { clickId: row.click_id } : {}),
+  };
+}
+
+const SUPABASE_USER_SELECT =
+  "id,email,naam,leeftijd,password_hash,discreet_akkoord,voorwaarden_akkoord,email_verify_token,email_verified_at,first_credit_purchase_at,created_at,click_id";
+
+/** Blob eerst (volledige velden); anders public.users in Supabase (admin-lijst). */
+export async function loadUserFromSupabaseById(id: string): Promise<UserRecord | null> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("users")
+    .select(SUPABASE_USER_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return userRecordFromSupabaseRow(data as SupabaseUsersRow);
+}
+
+export async function loadUserFromSupabaseByEmail(email: string): Promise<UserRecord | null> {
+  const clean = email.trim().toLowerCase();
+  if (!clean) return null;
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("users")
+    .select(SUPABASE_USER_SELECT)
+    .eq("email", clean)
+    .maybeSingle();
+  if (error || !data) return null;
+  return userRecordFromSupabaseRow(data as SupabaseUsersRow);
+}
+
+/** Voor e-mail/API: blob heeft voorrang (o.a. ontmoetjongensPaidAt, abandonment). */
+export async function resolveAppUserById(userId: string): Promise<UserRecord | null> {
+  const fromBlob = await findUserById(userId);
+  if (fromBlob) return fromBlob;
+  return loadUserFromSupabaseById(userId);
+}
+
+export async function resolveAppUserByEmail(email: string): Promise<UserRecord | null> {
+  const fromBlob = await findUserByEmail(email);
+  if (fromBlob) return fromBlob;
+  return loadUserFromSupabaseByEmail(email);
+}
+
 export type CreateUserInput = {
   email: string;
   naam: string;
@@ -196,8 +274,16 @@ export async function patchUserRecord(
   patch: Partial<UserRecord>
 ): Promise<UserRecord | null> {
   const list = await load();
-  const i = list.findIndex((u) => u.id === userId);
-  if (i === -1) return null;
+  let i = list.findIndex((u) => u.id === userId);
+  if (i === -1) {
+    const resolved = await loadUserFromSupabaseById(userId);
+    if (!resolved) return null;
+    const next = { ...resolved, ...patch };
+    list.push(next);
+    await save(list);
+    await upsertAppUserToSupabaseUsers(next);
+    return next;
+  }
   const next = { ...list[i]!, ...patch };
   list[i] = next;
   await save(list);

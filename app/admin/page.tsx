@@ -172,7 +172,7 @@ export default function AdminPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, force }),
+        body: JSON.stringify({ userId, email: userEmail, force }),
       });
       const d = (await r.json()) as { message?: string; error?: string; reason?: string };
       if (!r.ok) {
