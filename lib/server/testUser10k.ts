@@ -4,13 +4,11 @@ import { readJsonBlob, writeJsonBlob } from "@/lib/server/blobJson";
 import {
   TEST_USER_10K_EMAIL,
   TEST_USER_10K_ID,
+  TEST_USER_10K_LEGACY_EMAIL,
+  TEST_USER_10K_PASSWORD_HASH,
 } from "@/lib/test-user-10k";
 
 const USERS_FILE = "users.json";
-
-/** Zelfde hash als supabase/seed-test-user-10k-credits.sql */
-const PASSWORD_HASH =
-  "0123456789abcdef0123456789abcdef:70856528405e6123e1231d8d77ca64538692cebf74dab5ac24fdd814a7875193f41d66e07db59d5e4489bdc0d428de41b967fbf8b0235e074b9e9f73692cbc36";
 
 async function loadUsers(): Promise<UserRecord[]> {
   return readJsonBlob<UserRecord[]>(USERS_FILE, []);
@@ -27,16 +25,20 @@ async function saveUsers(list: UserRecord[]): Promise<void> {
 export async function upsertTestUser10kCredits(): Promise<UserRecord> {
   const list = await loadUsers();
   const now = new Date().toISOString();
+  const legacyEmail = TEST_USER_10K_LEGACY_EMAIL.toLowerCase();
   const i = list.findIndex(
-    (u) => u.id === TEST_USER_10K_ID || u.email.toLowerCase() === TEST_USER_10K_EMAIL
+    (u) =>
+      u.id === TEST_USER_10K_ID ||
+      u.email.toLowerCase() === TEST_USER_10K_EMAIL ||
+      u.email.toLowerCase() === legacyEmail
   );
 
   const next: UserRecord = {
     id: TEST_USER_10K_ID,
     email: TEST_USER_10K_EMAIL,
-    naam: "Test 10k credits",
+    naam: "Jona test",
     leeftijd: 30,
-    passwordHash: PASSWORD_HASH,
+    passwordHash: TEST_USER_10K_PASSWORD_HASH,
     discreetAkkoord: true,
     voorwaardenAkkoord: true,
     createdAt: i === -1 ? now : list[i]!.createdAt,
