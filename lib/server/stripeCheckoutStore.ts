@@ -11,6 +11,10 @@ type StripeCheckoutRecord = {
   priceEurCents?: number;
   paidAt?: string;
   fulfilledAt?: string;
+  /** ClickFlare click_id bij checkout (fallback als Stripe metadata leeg is). */
+  clickId?: string;
+  /** ClickFlare postback al verstuurd voor deze sessie. */
+  clickflareSentAt?: string;
 };
 
 export type { StripeCheckoutRecord };

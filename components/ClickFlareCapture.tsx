@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { extractClickIdFromSearchParams } from "@/lib/clickflare-click-id";
+import { persistClientClickId } from "@/lib/clickflare-client";
 import {
   SVL_CLICK_ID_COOKIE,
-  SVL_CLICK_ID_QUERY_KEYS,
   SVL_COOKIE_MAX_AGE_SECONDS,
   SVL_PAYOUT_COOKIE,
   SVL_PAYOUT_QUERY_KEYS,
@@ -36,10 +37,13 @@ export default function ClickFlareCapture(): null {
     if (typeof window === "undefined") return;
     try {
       const params = new URLSearchParams(window.location.search);
-      const clickId = readFirstParam(params, SVL_CLICK_ID_QUERY_KEYS);
+      const clickId = extractClickIdFromSearchParams(params);
       const payout = readFirstParam(params, SVL_PAYOUT_QUERY_KEYS);
       const txid = readFirstParam(params, SVL_TXID_QUERY_KEYS);
-      if (clickId) setCookie(SVL_CLICK_ID_COOKIE, clickId);
+      if (clickId) {
+        setCookie(SVL_CLICK_ID_COOKIE, clickId);
+        persistClientClickId(clickId);
+      }
       if (payout) setCookie(SVL_PAYOUT_COOKIE, payout);
       if (txid) setCookie(SVL_TXID_COOKIE, txid);
     } catch {

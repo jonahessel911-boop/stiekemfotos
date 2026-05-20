@@ -5,9 +5,11 @@ import OntmoetjongensBrand from '@/components/OntmoetjongensBrand';
 import { CircularLoader } from '@/components/CircularLoader';
 import { Clock } from 'lucide-react';
 import ClickFlareCapture from '@/components/ClickFlareCapture';
+import OntmoetjongensPaidReturn from '@/components/OntmoetjongensPaidReturn';
 import StartProfileSlideshow from '@/components/StartProfileSlideshow';
 
 import { startProfileSlides } from '@/lib/start-profile-slides';
+import { startOntmoetjongensCheckout } from '@/lib/start-ontmoetjongens-checkout';
 
 const PROFILE_SLIDES = startProfileSlides('/start/3');
 
@@ -52,18 +54,6 @@ export default function Start3Page() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('ontmoetjongens_paid') === '1') {
-      setStep('paid');
-      const u = new URL(window.location.href);
-      u.searchParams.delete('ontmoetjongens_paid');
-      u.searchParams.delete('session_id');
-      window.history.replaceState({}, '', u.pathname + (u.search || ''));
-    }
-  }, []);
-
-  useEffect(() => {
     if (step !== 'loading') return;
     setLoadingProgress(0);
     const start = Date.now();
@@ -92,19 +82,7 @@ export default function Start3Page() {
     setError(null);
     setCheckoutBusy(true);
     try {
-      const returnUrl =
-        typeof window !== 'undefined' ? `${window.location.origin}/start/3` : undefined;
-      const res = await fetch('/api/stripe/ontmoetjongens-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ returnUrl }),
-      });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || 'Account voltooien mislukt');
-      }
-      window.location.assign(data.url);
+      await startOntmoetjongensCheckout('/start/3');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Account voltooien mislukt');
       setCheckoutBusy(false);
@@ -114,6 +92,7 @@ export default function Start3Page() {
   return (
     <div className="min-h-screen bg-[var(--onboarding-bg)] flex flex-col">
       <ClickFlareCapture />
+      <OntmoetjongensPaidReturn onPaid={() => setStep('paid')} />
       <div
         className={`flex-1 flex flex-col items-center px-4 max-w-lg mx-auto w-full ${
           step === 'payment' ? 'justify-start py-4' : 'justify-center py-8'

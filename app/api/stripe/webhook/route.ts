@@ -16,12 +16,8 @@ import {
 import { findUserById, markCreditPurchase } from "@/lib/server/users";
 import { appendPurchaseThanksMessage } from "@/lib/server/conversations";
 import { syncStripePaymentAndRecomputeRevenue } from "@/lib/server/stripeRevenueSupabase";
-import {
-  buildSvlTxidForUser,
-  formatPayoutFromCents,
-  sendSvlPostback,
-  SVL_CONVERSION_TYPE,
-} from "@/lib/clickflare-postback";
+import { buildSvlTxidForUser, formatPayoutFromCents, sendSvlPostback, SVL_CONVERSION_TYPE } from "@/lib/clickflare-postback";
+import { sendOntmoetjongensClickflareConversion } from "@/lib/server/ontmoetjongens-conversion";
 
 /**
  * Na een succesvolle betaling (Checkout of PaymentIntent): blob `paidAt`,
@@ -123,25 +119,10 @@ export async function POST(req: Request) {
             : 0;
 
         if (productType === STRIPE_PRODUCT_ONTMOETJONGENS) {
-          await markStripeCheckoutPaid(session.id);
-          const clickId = String(session.metadata?.clickId ?? "").trim();
-          if (clickId) {
-            let revenueCents = stripeAmountCents;
-            if (userId) {
-              try {
-                revenueCents = await getUserTotalPaidCents(userId);
-              } catch {
-                /* best effort */
-              }
-            }
-            await sendSvlPostback({
-              clickId,
-              payout: formatPayoutFromCents(revenueCents),
-              txid: userId ? buildSvlTxidForUser(userId) : `ontmoetjongens_${session.id}`,
-              ct: SVL_CONVERSION_TYPE,
-              reason: "ontmoetjongens_paid",
-            });
-          }
+          await sendOntmoetjongensClickflareConversion({
+            sessionId: session.id,
+            clickIdHint: String(session.metadata?.clickId ?? "").trim(),
+          });
         } else if (userId) {
           await handlePaidStripeCreditsOrder({
             sessionId: session.id,

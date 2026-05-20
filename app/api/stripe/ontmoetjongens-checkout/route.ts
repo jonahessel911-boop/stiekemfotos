@@ -25,10 +25,13 @@ function appendStripeSessionPlaceholder(urlStr: string): string {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { returnUrl?: string };
+    const body = (await req.json()) as { returnUrl?: string; clickId?: string };
     const jar = await cookies();
     const userId = parseSessionValue(jar.get(SESSION_COOKIE_NAME)?.value);
-    const clickId = jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim() ?? "";
+    const clickId =
+      (typeof body.clickId === "string" ? body.clickId.trim() : "") ||
+      jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim() ||
+      "";
 
     let customerEmail: string | undefined;
     if (userId) {
@@ -50,6 +53,13 @@ export async function POST(req: Request) {
         productType: STRIPE_PRODUCT_ONTMOETJONGENS,
         userId: userId ?? "",
         clickId,
+      },
+      payment_intent_data: {
+        metadata: {
+          productType: STRIPE_PRODUCT_ONTMOETJONGENS,
+          userId: userId ?? "",
+          clickId,
+        },
       },
       line_items: [
         {
@@ -74,7 +84,18 @@ export async function POST(req: Request) {
       credits: 0,
       priceEurCents: ONTMOETJONGENS_ONBOARDING.priceEurCents,
       priceLabel: `€${(ONTMOETJONGENS_ONBOARDING.priceEurCents / 100).toFixed(2).replace(".", ",")} · Ontmoetjongens`,
+      clickId: clickId || undefined,
     });
+
+    if (!clickId) {
+      console.warn(
+        `[ontmoetjongens-checkout] Stripe session ${session.id} zonder click_id — ClickFlare postback wordt overgeslagen na betaling`
+      );
+    } else {
+      console.log(
+        `[ontmoetjongens-checkout] session ${session.id} click_id=${clickId.slice(0, 8)}…`
+      );
+    }
 
     return NextResponse.json({ url: session.url, sessionId: session.id });
   } catch (e) {

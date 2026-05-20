@@ -13,29 +13,10 @@ const RESERVED_KEYS = new Set([
   "clickid",
 ]);
 
-const PLACEHOLDER = /^\{[^}]+\}$/;
+import { extractClickIdFromSearchParams } from "@/lib/clickflare-click-id";
+
 const UUID_KEY =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Alleen voor /lander/7 redirect — ClickFlare `?{cf_click_id}` wordt `?<uuid>` (id als query-key). */
-function extractClickIdForLander7(params: URLSearchParams): string | null {
-  const standard = ["click_id", "clickid", "cid"];
-  for (const key of standard) {
-    const v = params.get(key)?.trim();
-    if (v && !PLACEHOLDER.test(v)) return v;
-  }
-
-  const macroVal = params.get("{cf_click_id}")?.trim() || params.get("cf_click_id")?.trim();
-  if (macroVal && !PLACEHOLDER.test(macroVal)) return macroVal;
-
-  for (const [key, value] of params.entries()) {
-    const k = key.trim();
-    const v = value.trim();
-    if (!v && UUID_KEY.test(k)) return k;
-  }
-
-  return null;
-}
 
 function isPassthroughParamKey(key: string): boolean {
   const k = key.trim();
@@ -68,7 +49,7 @@ export function buildClickflareClickRedirectUrl(opts: BuildClickflareClickRedire
   }
 
   const clickId =
-    extractClickIdForLander7(incoming) || opts.clickIdCookie?.trim() || "";
+    extractClickIdFromSearchParams(incoming) || opts.clickIdCookie?.trim() || "";
   if (clickId) {
     url.searchParams.set("click_id", clickId);
   }
