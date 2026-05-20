@@ -127,8 +127,7 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
     <div className="space-y-5">
       {showIntro ? (
         <p className="text-sm text-gray-600 leading-relaxed">
-          Koop credits om door te chatten. Elk bericht kost 10 credits. Je start met 100 gratis credits
-          (10 berichten).{' '}
+          Koop credits om door te chatten. Elk bericht kost 10 credits. Je start met 100 gratis credits.{' '}
           {featured ? (
             <span className="font-semibold text-primary">
               Speciale aanbieding: {featured.credits} credits voor {featured.priceLabel} —{' '}
@@ -192,19 +191,14 @@ export function CreditsPricingOffers({ showIntro = true, onAfterPurchase }: Prop
             >
               {pkg.credits.toLocaleString('nl-NL')} credits
             </div>
-            <p className={`mt-1 text-xs ${pkg.featured ? 'text-gray-700' : 'text-gray-500'}`}>
-              {Math.floor(pkg.credits / 10)} berichten chatten.
-              {pkg.featured ? (
-                <>
-                  {' '}
-                  <Sparkles className="-mt-0.5 ml-0.5 inline h-3 w-3 text-primary" />
-                  <span className="font-semibold text-primary-deep">
-                    {' '}
-                    Beste deal — bespaar {pkg.discountPercent}% nu.
-                  </span>
-                </>
-              ) : null}
-            </p>
+            {pkg.featured ? (
+              <p className="mt-1 text-xs text-gray-700">
+                <Sparkles className="-mt-0.5 mr-0.5 inline h-3 w-3 text-primary" />
+                <span className="font-semibold text-primary-deep">
+                  Beste deal — bespaar {pkg.discountPercent}% nu.
+                </span>
+              </p>
+            ) : null}
             <button
               type="button"
               onClick={() => void handleBuy(pkg.id)}

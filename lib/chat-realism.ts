@@ -1,3 +1,9 @@
+import {
+  filterChatLinesForAmsterdamTime,
+  getAmsterdamHour,
+  isAmsterdamEveningOrLater,
+  isAmsterdamNight,
+} from "./amsterdam-time";
 import type { ChatMessage } from "./types/chat";
 
 /** Mood states that influence reply behavior, speed and tone */
@@ -126,11 +132,9 @@ export function generateSpontaneousMessage(
   mood: ChatMood
 ): string {
   const now = new Date();
-  const hour = now.getHours(); // Note: Server should be set to Europe/Amsterdam timezone for accuracy
-
-  const isNight = hour >= 22 || hour <= 6;
+  const hour = getAmsterdamHour(now);
+  const isNight = isAmsterdamNight(now);
   const isEvening = hour >= 19 && hour < 22;
-  const isAfternoon = hour >= 14 && hour < 18;
 
   const lines: Record<ChatMood, string[]> = {
     playful: [
@@ -160,7 +164,7 @@ export function generateSpontaneousMessage(
     horny: [
       "heb je nog zin om verder te praten?",
       "ben benieuwd wat je wilt",
-      "kom je nog terug?",
+      isAmsterdamEveningOrLater(now) ? "kom je nog terug vanavond?" : "kom je nog terug?",
       "wat wil je eigenlijk?",
     ],
     tired: [
@@ -177,12 +181,7 @@ export function generateSpontaneousMessage(
     ]
   };
 
-  let pool = lines[mood] || lines.playful;
-
-  // Prevent sleep-related messages during the day
-  if (!isNight && pool.some(l => /slaap|slapen|slapend/i.test(l))) {
-    pool = pool.filter(l => !/slaap|slapen|slapend/i.test(l));
-  }
+  let pool = filterChatLinesForAmsterdamTime(lines[mood] || lines.playful, now);
 
   if (pool.length === 0) {
     pool = ["ben je daar nog?"];

@@ -2807,19 +2807,6 @@ function BerichtenInner() {
                             disabled={sendingHere}
                             className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
                             onClick={() => {
-                              setShowGiftPanel((v) => !v);
-                              setAttachMenuOpen(false);
-                            }}
-                          >
-                            <Sparkles className="h-5 w-5 shrink-0 text-primary" aria-hidden />
-                            Cadeau sturen
-                          </button>
-                          <button
-                            type="button"
-                            role="menuitem"
-                            disabled={sendingHere}
-                            className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-base font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-                            onClick={() => {
                               void toggleVoiceRecording();
                             }}
                           >
@@ -3102,8 +3089,6 @@ function CreditsSidebar({
   const wasPrice = formatPriceLabelFromCents(
     creditsWasPriceEurCents(CREDIT_DEAL.baseCredits)
   );
-  const messagesLeft = Math.floor(balance / CREDITS_PER_MESSAGE);
-
   return (
     <div className="hidden lg:flex lg:min-h-0 lg:max-h-full lg:w-full lg:max-w-[360px] lg:flex-shrink-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:border-gray-200/80 lg:bg-[var(--surface-card)] lg:p-6">
       <div className="bg-gradient-to-br from-primary to-primary-deep text-white rounded-3xl p-6 shadow-xl">
@@ -3114,7 +3099,7 @@ function CreditsSidebar({
               Blijf chatten
             </div>
             <p className="text-xs opacity-85 mt-2 leading-snug">
-              10 credits per bericht · start met {INITIAL_FREE_CREDITS} gratis credits ({INITIAL_FREE_CREDITS / CREDITS_PER_MESSAGE} berichten)
+              10 credits per bericht · start met {INITIAL_FREE_CREDITS} gratis credits
             </p>
           </div>
           <CreditCard className="w-8 h-8 opacity-80" />
@@ -3127,9 +3112,7 @@ function CreditsSidebar({
               key={id}
               className={`flex justify-between gap-2 ${def.featured ? 'font-semibold' : 'opacity-95'}`}
             >
-              <span>
-                {def.credits} credits ({Math.floor(def.credits / CREDITS_PER_MESSAGE)} berichten)
-              </span>
+              <span>{def.credits} credits</span>
               <span>
                 {def.featured ? (
                   <>
@@ -3168,7 +3151,7 @@ function CreditsSidebar({
               Te weinig credits — koop {basePrice} voor {CREDIT_DEAL.baseCredits} credits ({CREDIT_DEAL.discountPercent}% korting, was {wasPrice}).
             </span>
           ) : (
-            <>Je hebt nog {balance} credits (~{messagesLeft} berichten)</>
+            <>Je hebt nog {balance} credits</>
           )}
         </p>
       </div>

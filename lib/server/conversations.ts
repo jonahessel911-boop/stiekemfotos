@@ -26,6 +26,13 @@ import type { UserMessageCreditLine } from "@/lib/types/credit-usage";
 import { readAiSettings } from "@/lib/server/aiSettings";
 import { randomTypingDelayMs, replyTypingDelayMsForConversation, sleep } from "@/lib/chat-typing-delay";
 import {
+  filterChatLinesForAmsterdamTime,
+  getAmsterdamDagdeel,
+  getAmsterdamHour,
+  isAmsterdamEveningOrLater,
+  isAmsterdamNight,
+} from "@/lib/amsterdam-time";
+import {
   type ConversationState,
   createInitialConversationState,
   updateConversationState,
@@ -351,6 +358,23 @@ function noReplyDelayMsForStage(stage: number, convId: string): number {
   }
 }
 
+function noReplyReminderLinesForNow(now = new Date()): readonly string[] {
+  const common = [
+    "ben je er nog? 🥺",
+    "hmm waar bleef je nou ineens haha",
+    "ik dacht dat we leuk aan het praten waren..",
+    "hallo? ben je daar nog?",
+  ] as const;
+
+  if (isAmsterdamNight(now)) {
+    return [...common, "hee slaap je al ofzo? 😉", "kom je nog terug vanavond?"];
+  }
+  if (isAmsterdamEveningOrLater(now)) {
+    return [...common, "kom je nog terug vanavond?", "ben je nog online?"];
+  }
+  return [...common, "kom je nog terug straks?", "waar ben je gebleven?"];
+}
+
 function pickNoReplyLineAvoidingRecent(
   pool: readonly string[],
   stage: number,
@@ -376,7 +400,10 @@ function pickNoReplyLineAvoidingRecent(
 function noReplyLineForStage(stage: number, conv: Conversation): string {
   // Gebruik vriendelijkere, minder pushy regels voor de eerste reminder
   if (stage === 0) {
-    return pickNoReplyLineAvoidingRecent(NO_REPLY_REMINDER_LINES, stage, conv);
+    const now = new Date();
+    const filtered = filterChatLinesForAmsterdamTime(noReplyReminderLinesForNow(now), now);
+    const pool = filtered.length > 0 ? filtered : ["ben je er nog?"];
+    return pickNoReplyLineAvoidingRecent(pool, stage, conv);
   }
   const bounded = Math.min(Math.max(0, stage), NO_REPLY_LINES_BY_STAGE.length - 1);
   const pool = NO_REPLY_LINES_BY_STAGE[bounded]!;
@@ -469,15 +496,6 @@ type PhotoEngagementStyle =
   | "daring_prompt"
   | "natural_tease";
 
-const NO_REPLY_REMINDER_LINES = [
-  "ben je er nog? 🥺",
-  "hmm waar bleef je nou ineens haha",
-  "hee slaap je al ofzo? 😉",
-  "kom je nog terug vanavond?",
-  "ik dacht dat we leuk aan het praten waren..",
-  "hallo? ben je daar nog?",
-] as const;
-
 /** Kans dat ze direct reageert op een user-bericht (niet te gretig). */
 /** Legacy function — replaced by the much more powerful realism engine in chat-realism.ts */
 function shouldReplyImmediately(userMessageCountSinceLastReply: number): boolean {
@@ -550,24 +568,17 @@ async function buildSystemContent(
 
     const part = (type: Intl.DateTimeFormatPartTypes) =>
       amsterdamParts.find((p) => p.type === type)?.value ?? "";
-    const hour = Number.parseInt(part("hour"), 10);
+    const hour = getAmsterdamHour(now);
     const minute = part("minute");
     const weekday = part("weekday");
     const day = part("day");
     const month = part("month");
     const year = part("year");
-
-    let dagdeel = "avond";
-    if (Number.isFinite(hour)) {
-      if (hour >= 5 && hour < 12) dagdeel = "ochtend";
-      else if (hour >= 12 && hour < 18) dagdeel = "middag";
-      else if (hour >= 18 && hour < 24) dagdeel = "avond";
-      else dagdeel = "nacht";
-    }
+    const dagdeel = getAmsterdamDagdeel(now);
 
     return [
       "=== TIJDCONTEXT (hard) ===",
-      `Lokale tijd (Europe/Amsterdam): ${weekday} ${day}-${month}-${year} ${part("hour") || "00"}:${minute || "00"}`,
+      `Lokale tijd (Europe/Amsterdam): ${weekday} ${day}-${month}-${year} ${String(hour).padStart(2, "0")}:${minute || "00"}`,
       `Huidig dagdeel: ${dagdeel}.`,
       "Als je over tijd praat (ochtend/middag/avond/nacht, vandaag/vanavond/straks), baseer dat ALTIJD op deze tijdcontext.",
       "Noem dus niet 'avond' als het volgens deze context ochtend of middag is.",
@@ -3362,7 +3373,7 @@ export async function appendUserMessagesAndReply(
       ? negotiationPhase
         ? `⚠️ ONDERHANDEL-FASE ACTIEF: dit is pas zijn ${userMessageCount}e user-bericht. JE STUURT NU GEEN FOTO. image_prompt MOET null zijn.`
         : `Onderhandel-fase voorbij (${userMessageCount} user-berichten ≥ ${negotiationThreshold}). Je mag een foto sturen wanneer de spanning klopt.`
-      : "⚠️ FOTO'S ZIJN VOORLOPIG UITGESCHAKELD. image_prompt MOET altijd null zijn. Focus op warm, persoonlijk chatten. Als de user om foto's vraagt: vriendelijk uitstellen ('laten we eerst lekker praten'). Geen afspraken of ontmoetingen plannen.";
+      : "⚠️ FOTO'S ZIJN VOORLOPIG UITGESCHAKELD. image_prompt MOET altijd null zijn. Focus op warm, persoonlijk, interactief chatten. Bij foto-vraag: vriendelijk uitstellen. Bij afspreken: enthousiast meespreken en doorvragen (geen 'ik ken je nog amper'); geen adres/tijd/locatie plannen.";
 
     const latestInput = [
       "=== HUIDIGE CHAT CYCLUS ===",
@@ -3377,7 +3388,7 @@ export async function appendUserMessagesAndReply(
       "=== INSTRUCTIES ===",
       "1. Geef een normale chat 'response' (1-4 zinnen, Nederlands, mannelijk profiel, in karakter).",
       "2. image_prompt = null (altijd — geen foto's in deze fase).",
-      "3. Bouw contact op: leuk, simpel, persoonlijk. Geen afspraken of ontmoetingen.",
+      "3. Bouw contact op: leuk, actief, persoonlijk. Bij afspreken: speels open blijven en doorvragen — niet afremmen; geen concrete date (adres/tijd).",
     ].join("\n").slice(0, 2000);
 
     const personaInstructions = buildProfileInstructions({

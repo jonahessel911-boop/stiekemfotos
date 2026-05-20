@@ -16,13 +16,6 @@ import {
   type ProfilePhotoRequestNavPayload,
 } from '@/lib/profile-photo-request';
 
-type PortfolioItem = {
-  conversationId: string;
-  messageId: string;
-  createdAt: string;
-  imageUrl: string;
-};
-
 function CreditsCornerPill() {
   const [n, setN] = useState(() => (typeof window !== 'undefined' ? getCreditsBalance() : 0));
   useEffect(() => {
@@ -46,8 +39,6 @@ export default function ProfielDetailPage() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [liked, setLiked] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
-  const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
   React.useEffect(() => {
@@ -69,30 +60,6 @@ export default function ProfielDetailPage() {
       cancel = true;
     };
   }, [id]);
-
-  React.useEffect(() => {
-    if (!profile) return;
-    let cancel = false;
-    (async () => {
-      setPortfolioLoading(true);
-      try {
-        const res = await fetch(`/api/profiles/${profile.id}/portfolio`, { credentials: 'include' });
-        if (res.status === 401) {
-          if (!cancel) setPortfolioItems([]);
-          return;
-        }
-        const data = (await res.json()) as { items?: PortfolioItem[] };
-        if (!cancel) setPortfolioItems(Array.isArray(data.items) ? data.items : []);
-      } catch {
-        if (!cancel) setPortfolioItems([]);
-      } finally {
-        if (!cancel) setPortfolioLoading(false);
-      }
-    })();
-    return () => {
-      cancel = true;
-    };
-  }, [profile?.id]);
 
   if (profileLoading) {
     return (
@@ -266,41 +233,6 @@ export default function ProfielDetailPage() {
           </div>
         </div>
 
-        <div className="mb-2 shrink-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-conv">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-900">Portfolio</h3>
-            <span className="text-[11px] font-medium text-gray-500">Laatste 30 dagen</span>
-          </div>
-          <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {(portfolioItems.length > 0 ? portfolioItems : Array.from({ length: 6 }).map((_, i) => ({
-              conversationId: `placeholder-${i}`,
-              messageId: `placeholder-${i}`,
-              createdAt: new Date().toISOString(),
-              imageUrl: avatarUrl,
-            }))).map((item) => {
-              const imageUrl = resolveProfileImageUrl(item.imageUrl);
-              return (
-                <div
-                  key={`${item.conversationId}:${item.messageId}`}
-                  className="relative h-52 w-36 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
-                >
-                  <img
-                    src={imageUrl}
-                    alt=""
-                    className="h-full w-full object-cover blur-xl scale-110"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <div className="absolute inset-0 bg-black/25" />
-                </div>
-              );
-            })}
-          </div>
-          {portfolioLoading ? (
-            <p className="mt-2 text-[11px] text-gray-500">Portfolio laden…</p>
-          ) : null}
-        </div>
-
       </div>
 
       {/* ——— Desktop: balanced two-column layout ——— */}
@@ -371,7 +303,7 @@ export default function ProfielDetailPage() {
           </div>
         </div>
 
-        {/* Right: info + portfolio + chat (fills remaining height) */}
+        {/* Right: profielinfo */}
         <div className="flex h-full flex-col space-y-6 md:col-span-7">
           {/* Profile info card */}
           <div className="rounded-3xl border border-gray-100 bg-white p-7 shadow-sm">
@@ -421,40 +353,6 @@ export default function ProfielDetailPage() {
                 ))}
               </div>
             ) : null}
-          </div>
-
-          {/* Portfolio */}
-          <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">Portfolio</h2>
-              <span className="text-xs font-medium text-gray-500">Intieme foto’s · laatste 30 dagen</span>
-            </div>
-            <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {(portfolioItems.length > 0 ? portfolioItems : Array.from({ length: 6 }).map((_, i) => ({
-                conversationId: `placeholder-${i}`,
-                messageId: `placeholder-${i}`,
-                createdAt: new Date().toISOString(),
-                imageUrl: avatarUrl,
-              }))).map((item) => {
-                const imageUrl = resolveProfileImageUrl(item.imageUrl);
-                return (
-                  <div
-                    key={`${item.conversationId}:${item.messageId}`}
-                    className="relative h-80 w-56 shrink-0 snap-start overflow-hidden rounded-2xl border border-gray-200 bg-gray-100"
-                  >
-                    <img
-                      src={imageUrl}
-                      alt=""
-                      className="h-full w-full object-cover blur-xl scale-110"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <div className="absolute inset-0 bg-black/25" />
-                  </div>
-                );
-              })}
-            </div>
-            {portfolioLoading ? <p className="mt-2 text-xs text-gray-500">Portfolio laden…</p> : null}
           </div>
 
         </div>
