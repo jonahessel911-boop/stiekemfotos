@@ -265,9 +265,7 @@ export default function SwipePage() {
           className="rounded-full px-3 py-1 transition hover:bg-white/5"
           aria-label="Naar profielen"
         >
-          <span className="text-base font-extrabold tracking-tight text-primary">
-            Stiekemevrouwen
-          </span>
+          <span className="platform-brand text-base md:text-lg">Ontmoetjongens</span>
         </button>
       </header>
 

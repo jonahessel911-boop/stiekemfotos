@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Poppins } from "next/font/google";
 import { Suspense } from "react";
 import { headers } from "next/headers";
 import { CreditsPricingProvider } from "@/components/CreditsPricingProvider";
@@ -10,13 +9,7 @@ import { detectLocaleFromAcceptLanguage } from "@/lib/i18n";
 import { nl } from "@/lib/messages/nl";
 import { en } from "@/lib/messages/en";
 import "./globals.css";
-
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-poppins",
-  display: "swap",
-});
+import "./platform-theme.css";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -30,10 +23,10 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "Stiekemevrouwen",
-    template: "%s · Stiekemevrouwen",
+    default: "Ontmoetjongens",
+    template: "%s · Ontmoetjongens",
   },
-  description: "Discreet contact met vrouwen bij jou in de buurt",
+  description: "Ontmoet jongere mannen — discreet en persoonlijk",
 };
 
 export default async function RootLayout({
@@ -46,7 +39,7 @@ export default async function RootLayout({
   const messages = locale === "en" ? en : nl;
 
   return (
-    <html lang={locale} className={poppins.variable}>
+    <html lang={locale}>
       <head>
         {/* Preconnect naar Supabase Storage zodat de eerste image-request geen DNS+TLS hick-up heeft. */}
         <link
@@ -57,9 +50,7 @@ export default async function RootLayout({
         <link rel="dns-prefetch" href="https://vdytntxetjpokjwafrfd.supabase.co" />
         {/* Voorkomt zoomen op iOS bij inputs (font-size>=16 helpt extra; viewport meta dekt de rest). */}
       </head>
-      <body
-        className={`${poppins.className} font-sans antialiased text-gray-900 bg-[var(--surface)] min-h-screen`}
-      >
+      <body className="platform-app min-h-screen bg-[var(--surface)] text-[#262626] antialiased">
         <Suspense fallback={null}>
           <TikTokPixel />
         </Suspense>

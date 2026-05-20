@@ -253,7 +253,7 @@ async function listDbProfilesFromSupabase(limit: number): Promise<Profile[]> {
 const listDbProfiles100Cached = unstable_cache(
   async () => listDbProfilesFromSupabase(100),
   ["supabase-profiles-active-100", "v2-profile-media"],
-  { revalidate: 45 }
+  { revalidate: 45, tags: ["v2-profile-media"] }
 );
 
 export async function listDbProfiles(limit = 100): Promise<Profile[]> {

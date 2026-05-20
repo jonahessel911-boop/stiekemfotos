@@ -187,45 +187,77 @@ export function buildVisualIdentityLockString(
   name: string,
   age: number,
   heritageLabel: string,
-  phenotype: PhenotypeKey
+  phenotype: PhenotypeKey,
+  gender: "male" | "female" = "female"
 ): string {
   const t = PHENOTYPE_TRAITS[phenotype];
   const hairColor = hashPick(identitySeed, "hc", t.hairColors);
-  const hairStyle = hashPick(identitySeed, "hs", [
-    "long loose waves",
-    "long straight with soft ends",
-    "mid-length layered cut",
-    "short pixie cut",
-    "shoulder-length natural curls",
-    "long box braids",
-    "sleek low ponytail",
-    "messy bun with face-framing strands",
-    "very long straight middle part",
-    "chin-length bob",
-    "afro texture natural volume",
-    "waist-length braided crown",
-  ]);
+  const hairStyle = hashPick(
+    identitySeed,
+    "hs",
+    gender === "male"
+      ? [
+          "short faded sides",
+          "messy medium length",
+          "buzz cut",
+          "curly short on top",
+          "straight fringe grown out",
+          "crew cut",
+          "wavy short back and sides",
+        ]
+      : [
+          "long loose waves",
+          "long straight with soft ends",
+          "mid-length layered cut",
+          "short pixie cut",
+          "shoulder-length natural curls",
+          "long box braids",
+          "sleek low ponytail",
+          "messy bun with face-framing strands",
+          "very long straight middle part",
+          "chin-length bob",
+          "afro texture natural volume",
+          "waist-length braided crown",
+        ]
+  );
   const skin = hashPick(identitySeed, "sk", t.skins);
   const eyes = hashPick(identitySeed, "ey", t.eyes);
-  const build = hashPick(identitySeed, "bd", [
-    "slim hourglass",
-    "slender athletic",
-    "petite slim",
-    "soft curvy",
-    "tall broad-shouldered lean",
-    "compact muscular legs",
-  ]);
+  const build = hashPick(
+    identitySeed,
+    "bd",
+    gender === "male"
+      ? [
+          "slim athletic shoulders",
+          "average lean build",
+          "broad-shouldered average",
+          "soft dad-bod midsection",
+          "tall slim frame",
+          "stocky compact build",
+        ]
+      : [
+          "slim hourglass",
+          "slender athletic",
+          "petite slim",
+          "soft curvy",
+          "tall broad-shouldered lean",
+          "compact muscular legs",
+        ]
+  );
   const phone = hashPick(identitySeed, "ph", [
     "black smartphone square camera bump in mirror",
     "dark phone case in reflection",
   ]);
-  const jewelry = hashPick(identitySeed, "jw", [
-    "tiny silver studs",
-    "small gold hoops",
-    "thin gold chain",
-  ]);
+  const jewelry = hashPick(
+    identitySeed,
+    "jw",
+    gender === "male"
+      ? ["simple wristwatch", "thin silver chain", "no visible jewelry", "dark bracelet"]
+      : ["tiny silver studs", "small gold hoops", "thin gold chain"]
+  );
 
-  return `One woman ${name} ${age}, heritage ${heritageLabel} (${t.faceHint}): ${hairColor} ${hairStyle} hair, ${skin}, ${eyes}, ${build}, ${jewelry}, ${phone} — same person as her profile avatar photo, identical facial structure and body proportions; one candid uncropped snapshot filling the frame edge to edge`;
+  const subject = gender === "male" ? "man" : "woman";
+  const pronoun = gender === "male" ? "his" : "her";
+  return `One ${subject} ${name} ${age}, heritage ${heritageLabel} (${t.faceHint}): ${hairColor} ${hairStyle} hair, ${skin}, ${eyes}, ${build}, ${jewelry}, ${phone} — same person as ${pronoun} profile avatar photo, identical facial structure and body proportions; one candid uncropped snapshot filling the frame edge to edge`;
 }
 
 /**

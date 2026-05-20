@@ -29,7 +29,21 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["var(--font-poppins)", "system-ui", "sans-serif"],
+        sans: [
+          "Tahoma",
+          "Verdana",
+          "MS Sans Serif",
+          "Geneva",
+          "Arial",
+          "sans-serif",
+        ],
+        brand: [
+          "Impact",
+          "Arial Black",
+          "Arial Narrow",
+          "Arial",
+          "sans-serif",
+        ],
       },
     },
   },

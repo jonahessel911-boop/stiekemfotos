@@ -20,8 +20,16 @@ export const ZMODEL_PROMPT_MAX_CHARS = 1000;
  * Natuurlijke zinnen (geen ALL CAPS slogan) — die woorden werden op verificatiebriefjes geschilderd.
  * Geen woorden grid/raster (prikkelen het model).
  */
-const ZMODEL_SINGLE_FRAME_PREFIX =
-  "Photorealistic amateur self-taken smartphone photo. One single rectangular photo, exactly one woman one face one body in the entire image. She took this herself — could be an arm-extended selfie, a phone-propped self-timer shot, a lying-down phone-above shot, a quick mirror selfie, or a candid moment captured by the woman herself. The photo type varies per shot. Candid imperfect framing, real iPhone snap. ";
+const ZMODEL_SINGLE_FRAME_PREFIX_FEMALE =
+  "Photorealistic amateur self-taken smartphone photo. One single rectangular photo, exactly one adult woman one face one body in the entire image. She took this herself — arm-extended selfie, phone-propped self-timer, mirror selfie, or candid snap. Candid imperfect framing, real iPhone snap. ";
+
+const ZMODEL_SINGLE_FRAME_PREFIX_MALE =
+  "Photorealistic amateur self-taken smartphone photo. One single rectangular photo, exactly one adult man one masculine male body in the entire image. He took this himself — arm-extended selfie, phone-propped self-timer, mirror selfie, or candid snap. Adult male only, masculine face and build, flat chest, no breasts, no woman, no female person. Candid imperfect framing, real iPhone snap. ";
+
+const ZMODEL_SINGLE_FRAME_PREFIX_MALE_NO_FACE =
+  "Photorealistic amateur smartphone photo. One single rectangular photo of one adult man only — face not visible or cropped out of frame. Male torso, arms, hands, legs, or back only; masculine body, flat chest, no breasts, no woman, no female. He took this himself. Candid imperfect framing, real iPhone snap. ";
+
+export type ZModelSubjectGender = "male" | "female";
 
 export type GenerationStatus = "success" | "nsfw_blocked" | "failed";
 
@@ -32,7 +40,23 @@ export type GenerateImageOptions = {
   steps?: number;
   seed?: number;
   randomSeed?: boolean;
+  /** ZModel API prefix — default female (legacy chat profielen). */
+  subjectGender?: ZModelSubjectGender;
+  /** Torso/hands/legs shot zonder gezicht in beeld. */
+  hideFace?: boolean;
 };
+
+export type FinalizeZModelPromptOpts = {
+  subjectGender?: ZModelSubjectGender;
+  hideFace?: boolean;
+};
+
+function zmodelSingleFramePrefix(opts?: FinalizeZModelPromptOpts): string {
+  if (opts?.subjectGender === "male") {
+    return opts.hideFace ? ZMODEL_SINGLE_FRAME_PREFIX_MALE_NO_FACE : ZMODEL_SINGLE_FRAME_PREFIX_MALE;
+  }
+  return ZMODEL_SINGLE_FRAME_PREFIX_FEMALE;
+}
 
 export type GenerateImageDetailedResult = {
   status: GenerationStatus;
@@ -112,8 +136,8 @@ function gcd(a: number, b: number): number {
 }
 
 /** Max lengte van user prompt vóór server-side prefix (ZModel max 1000). */
-export function zModelMaxUserPromptBodyChars(): number {
-  return ZMODEL_PROMPT_MAX_CHARS - ZMODEL_SINGLE_FRAME_PREFIX.length;
+export function zModelMaxUserPromptBodyChars(opts?: FinalizeZModelPromptOpts): number {
+  return ZMODEL_PROMPT_MAX_CHARS - zmodelSingleFramePrefix(opts).length;
 }
 
 /**
@@ -229,9 +253,12 @@ export function sanitizeIdentityForZImagePrompt(identity: string): string {
   );
 }
 
-export function finalizePromptForZModel(userPrompt: string): string {
+export function finalizePromptForZModel(
+  userPrompt: string,
+  opts?: FinalizeZModelPromptOpts
+): string {
   const body = userPrompt.replace(/\s+/g, " ").trim();
-  const prefix = ZMODEL_SINGLE_FRAME_PREFIX;
+  const prefix = zmodelSingleFramePrefix(opts);
   const maxBody = ZMODEL_PROMPT_MAX_CHARS - prefix.length;
   if (maxBody < 64) {
     return prefix.slice(0, ZMODEL_PROMPT_MAX_CHARS).trim();
@@ -278,7 +305,10 @@ async function tryGenerateWithZModel(
         Authorization: `Bearer ${ZMODEL_API_KEY}`,
       },
       body: JSON.stringify({
-        prompt: finalizePromptForZModel(options.prompt),
+        prompt: finalizePromptForZModel(options.prompt, {
+          subjectGender: options.subjectGender,
+          hideFace: options.hideFace,
+        }),
         aspect_ratio: aspectRatio,
       }),
     });
@@ -437,7 +467,12 @@ export async function generateRealisticImageDetailed(
     /** Read-only fs (Vercel) — Supabase upload is leidend, lokale write is best-effort. */
   });
   const promptHash = createHash("sha256")
-    .update(finalizePromptForZModel(prompt))
+    .update(
+      finalizePromptForZModel(prompt, {
+        subjectGender: options.subjectGender,
+        hideFace: options.hideFace,
+      })
+    )
     .digest("hex")
     .slice(0, 12);
   const startedAt = Date.now();

@@ -1,0 +1,101 @@
+/* Platform — zelfde typografie en kleuren als /start (Ontmoetjongens) */
+.platform-app {
+  --surface: #fff0f0;
+  --surface-card: #ffffff;
+  --onboarding-bg: #fff0f0;
+  --onboarding-card: #ffffff;
+  --onboarding-footer-bg: #fecaca;
+  --brand: #dc2626;
+
+  font-family: Tahoma, Verdana, "MS Sans Serif", Geneva, Arial, sans-serif !important;
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: optimizeSpeed;
+  letter-spacing: 0.01em;
+  background-color: var(--surface);
+  color: #262626;
+}
+
+.platform-app *:not(svg):not(path):not(circle):not(line):not(polyline):not(rect) {
+  font-family: inherit !important;
+}
+
+.platform-app h1,
+.platform-app h2,
+.platform-app h3,
+.platform-app .platform-brand,
+.platform-app .platform-heading {
+  font-family: Impact, "Arial Black", "Arial Narrow", Arial, sans-serif !important;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+}
+
+.platform-app .platform-brand {
+  color: #dc2626;
+  text-transform: uppercase;
+}
+
+.platform-app .platform-heading {
+  color: #dc2626;
+  text-transform: uppercase;
+}
+
+/* Start-achtige knoppen (optioneel via class) */
+.platform-app .platform-btn {
+  border-radius: 3px;
+  box-shadow: none;
+  font-weight: 700;
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.platform-app .platform-btn-primary {
+  background: #dc2626;
+  border: 2px solid #7f1d1d;
+  color: #fff;
+}
+
+.platform-app .platform-btn-primary:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.platform-app .platform-btn-secondary {
+  background: #f5f5f5;
+  border: 2px solid #737373;
+  color: #262626;
+}
+
+.platform-app .platform-btn-secondary:hover {
+  background: #e5e5e5;
+}
+
+/* Chat & cards: minder “app-bubbel”, meer /start */
+.platform-app .rounded-2xl,
+.platform-app .rounded-xl {
+  border-radius: 4px;
+}
+
+.platform-app .rounded-full {
+  border-radius: 9999px;
+}
+
+.platform-app .bg-primary.rounded-2xl,
+.platform-app .bg-primary.rounded-br-sm,
+.platform-app .rounded-br-sm.bg-primary {
+  border: 2px solid #7f1d1d;
+}
+
+.platform-app .border-gray-200\/60.rounded-2xl,
+.platform-app .border-gray-200\/70 {
+  border-color: #d4d4d4;
+}
+
+.platform-app input,
+.platform-app textarea {
+  border-radius: 4px;
+}
+
+.platform-app ::selection {
+  background: #fecaca;
+  color: #7f1d1d;
+}

@@ -381,7 +381,7 @@ export default function ProfielDetailPage() {
                   <Sparkles className="h-5 w-5" />
                 </span>
                 <div>
-                  <h1 className="flex items-center gap-2 text-3xl font-bold text-gray-900">
+                  <h1 className="platform-heading flex items-center gap-2 text-3xl normal-case text-gray-900">
                     {profile.name}, {profile.age}
                     {showOnlineUi ? (
                       <span className="online-dot-pulse ml-1 inline-block h-3 w-3 rounded-full bg-emerald-500" />

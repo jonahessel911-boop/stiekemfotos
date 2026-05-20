@@ -92,8 +92,8 @@ function shellTemplate(title: string, subtitle: string, ctaText: string, ctaHref
                 <table role="presentation" cellspacing="0" cellpadding="0">
                   <tr>
                     <td style="vertical-align:middle;" colspan="2">
-                      <div style="font-size:28px;font-weight:800;line-height:1;color:#dc2626;">Stiekemevrouwen</div>
-                      <div style="margin-top:4px;font-size:12px;color:#6b7280;font-weight:600;">Discreet contact met vrouwen bij jou in de buurt</div>
+                      <div style="font-size:28px;font-weight:400;font-family:Impact,'Arial Black',Arial,sans-serif;letter-spacing:0.03em;line-height:1;color:#dc2626;text-transform:uppercase;">Ontmoetjongens</div>
+                      <div style="margin-top:4px;font-size:12px;color:#6b7280;font-weight:600;">Discreet en persoonlijk contact</div>
                     </td>
                   </tr>
                 </table>

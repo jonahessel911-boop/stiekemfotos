@@ -118,7 +118,7 @@ export default function ProfielenPage() {
         {/* Header with Tabs - exact BestDates style */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">Profielen</h1>
+            <h1 className="platform-heading text-2xl sm:text-3xl">Profielen</h1>
             <p className="text-sm text-gray-500 mt-0.5">Ontdek nieuwe connecties</p>
           </div>
           

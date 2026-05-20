@@ -1962,7 +1962,7 @@ function BerichtenInner() {
         <div className="mx-auto flex min-h-0 w-full max-w-screen-xl flex-1 flex-col overflow-hidden px-2 sm:px-4 lg:flex-row lg:items-stretch lg:px-6">
         {/* Inbox list - fully responsive, full height on mobile */}
         <div
-          className={`flex w-full flex-shrink-0 flex-col border-b border-gray-200/80 bg-[var(--surface-card)] lg:min-h-0 lg:max-h-none lg:basis-[32%] lg:max-w-sm lg:border-b-0 lg:border-r lg:overflow-hidden ${
+          className={`flex w-full flex-shrink-0 flex-col border-b border-[#fecaca] bg-[var(--surface-card)] lg:min-h-0 lg:max-h-none lg:basis-[32%] lg:max-w-sm lg:border-b-0 lg:border-r lg:border-r-[#fecaca] lg:overflow-hidden ${
             selectedId || openingProfileDeepLink
               ? 'hidden lg:flex'
               : 'flex flex-1 min-h-0 lg:flex-none lg:h-auto'
@@ -1970,7 +1970,7 @@ function BerichtenInner() {
         >
           <div className="p-4 md:p-6 border-b border-gray-100">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-2xl text-gray-900">Berichten</h2>
+              <h2 className="platform-heading text-2xl">Berichten</h2>
               <div className="flex items-center gap-2">
                 <div className="bg-primary text-white text-xs font-semibold px-2.5 py-1 rounded-full min-w-[28px] text-center">
                   {list.length > 0 ? totalUnread || list.length : totalUnread}
@@ -2072,7 +2072,7 @@ function BerichtenInner() {
                 </div>
               )}
 
-              <div className="flex shrink-0 items-center gap-3 border-b border-gray-200/70 bg-[var(--surface-card)] px-4 py-3">
+              <div className="flex shrink-0 items-center gap-3 border-b-2 border-[#fecaca] bg-[var(--surface-card)] px-4 py-3">
                 <button
                   type="button"
                   onClick={backToList}
@@ -2097,7 +2097,7 @@ function BerichtenInner() {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h2 className="truncate font-bold text-[20px] leading-tight text-gray-900">
+                    <h2 className="platform-heading truncate text-[20px] leading-tight normal-case text-gray-900">
                       {activeConversation.profileName}
                     </h2>
                     <p className="mt-0.5 truncate text-[14px] text-gray-500">
@@ -2676,7 +2676,7 @@ function BerichtenInner() {
                 </div>
               </div>
 
-              <div className="shrink-0 border-t border-gray-200/70 bg-[var(--surface-card)] p-3 md:p-4">
+              <div className="shrink-0 border-t-2 border-[#fecaca] bg-[var(--surface-card)] p-3 md:p-4">
                 <input
                   ref={imageInputRef}
                   type="file"

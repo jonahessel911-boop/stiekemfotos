@@ -96,26 +96,17 @@ async function persistConversationImageAsPublicUrl(
   );
 }
 
-/** Fallback-pool als Grok faalt of een verboden naam teruggeeft. */
+/** Fallback-pool als Grok faalt of een verboden naam teruggeeft (mannen). */
 const RAW_FIRST_NAMES = [
-  "Lotte", "Sanne", "Noa", "Mila", "Romy", "Iris", "Nina", "Zoey", "Yara", "Lina", "Vera", "Tess",
-  "Emma", "Sophie", "Julia", "Fleur", "Eva", "Lisa", "Anna", "Bo", "Liv", "Kim", "Demi", "Marie",
-  "Julie", "Sofie", "Roos", "Saar", "Evi", "Floor", "Nienke", "Britt", "Fenna", "Merel", "Jasmijn",
-  "Anouk", "Celine", "Esmee", "Manon", "Eline", "Tessa", "Danique", "Fayah", "Quincy", "Selena",
-  "Wies", "Puck", "Marit", "Nikkie", "Odette", "Philou", "Renske", "Sterre", "Trijntje", "Uma",
-  "Vieve", "Wilma", "Xenia", "Ilse", "Jette", "Kyara", "Lieke", "Maaike", "Nicky", "Olivia",
-  "Petra", "Quinn", "Rosalie", "Susanne", "Thea", "Una", "Violet", "Zara",
-  "Oksana", "Kasia", "Magdalena", "Zuzanna", "Milena", "Radka", "Alina", "Iveta", "Lenka", "Nadia",
-  "Elin", "Freya", "Ingrid", "Saga", "Linnea", "Astrid", "Elsa", "Malin",
-  "Giulia", "Chiara", "Martina", "Valentina", "Paola", "Silvia", "Renata", "Flavia",
-  "Mei", "Yuki", "Lin", "Hana", "Siti", "Indah", "Dewi", "Rani", "Soraya",
-  "Elif", "Zeynep", "Selin", "Dilara", "Burcu", "Merve", "Ilayda", "Aylin", "Esra", "Gizem",
-  "Emine", "Havin", "Leyla", "Defne", "Ceren", "Asya", "Melis", "Damla", "Ebru", "Sumeyra",
-  "Rania", "Yasmina", "Salma", "Malak", "Nour", "Rasha", "Hanan", "Amal", "Dua", "Yara",
-  "Amara", "Chioma", "Eshe", "Ifeoma", "Zola", "Adwoa", "Makeda", "Zuri",
-  "Camila", "Lucia", "Valeria", "Isabella", "Daniela", "Rocio", "Sofia", "Beatriz",
-  "Shanti", "Candice", "Roxanne", "Melissa", "Monica", "Janine", "Sherida", "Ashanti",
-  "Karlijn", "Mirthe", "Femke", "Sanne", "Annebel", "Christel", "Desiree", "Ellen",
+  "Daan", "Lucas", "Sem", "Milan", "Levi", "Finn", "Noah", "Lars", "Tim", "Tom", "Max", "Sam",
+  "Jesse", "Ruben", "Thijs", "Bram", "Stijn", "Jordy", "Kevin", "Mike", "Rick", "Nick", "Bas",
+  "Mark", "Paul", "Peter", "Jan", "Martijn", "Dennis", "Roy", "Patrick", "Sander", "Robin",
+  "Koen", "Niels", "Wesley", "Glenn", "Dylan", "Jayden", "Tygo", "Gijs", "Floris", "Hidde",
+  "Mats", "Cas", "Boaz", "Teun", "Olivier", "Victor", "Alex", "Chris", "David", "Daniel",
+  "Adam", "Kamil", "Piotr", "Jakub", "Mateusz", "Tomasz", "Ivan", "Dmitri", "Andrei", "Viktor",
+  "Marco", "Luca", "Matteo", "Diego", "Carlos", "Hugo", "Pablo", "Rafael", "Antonio",
+  "Yusuf", "Emre", "Can", "Burak", "Mehmet", "Ali", "Omar", "Karim", "Rayan", "Samir",
+  "Jamal", "Kwame", "Kofi", "Malik", "Tariq", "Nabil", "Hassan", "Ibrahim",
 ];
 
 function uniqCapitalizedFirstNames(names: string[]): string[] {
@@ -137,7 +128,7 @@ const EXPANDED_FIRST_NAMES = uniqCapitalizedFirstNames(RAW_FIRST_NAMES);
 
 function pickRandomFirstName(): string {
   const pool = EXPANDED_FIRST_NAMES;
-  if (pool.length === 0) return "Lotte";
+  if (pool.length === 0) return "Daan";
   return pool[randomInt(0, pool.length)]!;
 }
 
@@ -194,7 +185,7 @@ const GROK_NAME_REJECT_KEYS = new Set(
 /** Elke call andere “hoek” zodat het model niet in dezelfde naam-groef blijft. */
 const NAME_STYLE_HINTS = [
   "Zeldzamer Nederlands/Vlaams voornaam; niet top-10 populariteit.",
-  "Pools of Oost-Europees vrouwennaam, gangbaar onder NL-migranten.",
+  "Pools of Oost-Europees mannennaam, gangbaar onder NL-migranten.",
   "Scandinavische voornaam (kort tot middel lang).",
   "Italiaans of Spaans klinkend; nog steeds geloofwaardig op een NL-profiel.",
   "Turks/Alevitisch areaal maar kies een MINDER voor de hand liggende naam dan media-defaults.",
@@ -208,7 +199,7 @@ const NAME_STYLE_HINTS = [
   "Latijns-Amerikaanse voornaam (Brasil/Mexico-stijl) kort.",
   "Oost-Aziatische voornaam in Latijnse spelling.",
   "Zuid-Aziatische voornaam in westers schrift.",
-  "Unisex-leaning vrouwennaam; kies zeldzamer exemplaar.",
+  "Korte mannennaam; kies zeldzamer exemplaar.",
   "Historische Nederlandse voornaam die zelden meer gebruikt wordt.",
   "Twee lettergrepen, zachte klanken, niet in je standaard top-lijst.",
 ];
@@ -246,7 +237,7 @@ async function generateAiFirstName(opts?: { europeanHeavy?: boolean }): Promise<
   const uniqueness = `${randomUUID()}:${Date.now()}:${randomInt(0, 2_000_000_000)}`;
   const hintPool = opts?.europeanHeavy ? NAME_STYLE_HINTS_EU : NAME_STYLE_HINTS;
   const europeanExtra = opts?.europeanHeavy
-    ? " Prefer a given name typical among Northern, Western, or Eastern European women living in the Netherlands — not Arabic, Turkish, South Asian, or East Asian default names."
+    ? " Prefer a given name typical among Northern, Western, or Eastern European men living in the Netherlands — not Arabic, Turkish, South Asian, or East Asian default names."
     : "";
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -257,10 +248,10 @@ async function generateAiFirstName(opts?: { europeanHeavy?: boolean }): Promise<
           {
             role: "system",
             content: [
-              "You output exactly ONE fictional woman's first name for an adult profile on a Dutch website.",
+              "You output exactly ONE fictional man's first name for an adult profile on a Dutch website.",
               "Single token only: letters A–Z plus accented Latin (é, ï, …). No surname, no punctuation, no explanation, no quotes.",
               "Length 2–15 characters. Invent variety — do NOT lazily reuse the same few multicultural cliché names across requests.",
-              "If you almost picked a very common 'AI default' Arabic/Turkish female name, deliberately choose a different rarer valid name instead.",
+              "If you almost picked a very common 'AI default' name, deliberately choose a different rarer valid Dutch/European male name instead.",
               europeanExtra,
             ]
               .filter(Boolean)
@@ -405,10 +396,12 @@ function appearanceConstraintForPhenotype(phenotype: PhenotypeKey): string {
 }
 
 const INTEREST_SETS: string[][] = [
-  ["mirror selfies", "late night chats", "lingerie", "teasing"],
-  ["night vibes", "bedroom selfies", "makeup", "flirty chats"],
-  ["gym", "mirror pics", "lingerie", "voice notes"],
-  ["fashion", "bedroom selfies", "teasing", "private content"],
+  ["voetbal", "gaming", "fitness", "late night chats"],
+  ["gym", "mirror selfies", "muziek", "flirten"],
+  ["festivals", "uitgaan", "snapchat", "sport"],
+  ["koken", "series", "wandelen", "discreet chatten"],
+  ["skaten", "sneakers", "tattoos", "privé gesprekken"],
+  ["hardlopen", "bier", "weekend weg", "nieuwe mensen"],
 ];
 
 const FAVORITE_FOODS = [
@@ -422,35 +415,90 @@ const FAVORITE_FOODS = [
   "burgers",
 ];
 
-/** Alledaagse kleding — geen uniform/kostuum (te vaak 'politie' in beeld). Per foto: `pick(CASUAL_OUTFITS)`. */
-const CASUAL_OUTFITS = [
-  "wearing a short black dress",
-  "wearing an oversized sweater with bare legs",
-  "wearing a white linen shirt slightly open",
-  "wearing a sporty crop top and denim shorts",
-  "wearing lace lingerie set",
-  "wearing high-waisted jeans and a fitted ribbed top",
-  "wearing a satin slip dress",
-  "wearing gym leggings and a fitted tank top",
-  "wearing a cozy hoodie and bike shorts",
-  "wearing a floral wrap dress",
-  "wearing a denim jacket over a simple tee",
-  "wearing a knit midi skirt and fitted top",
-  "wearing a strapless top and loose linen trousers",
-  "wearing a cropped cardigan and high-rise jeans",
-  "wearing a simple black bodysuit",
-  "wearing a summer sundress",
-  "wearing an off-shoulder knit top",
-  "wearing silk pajama shorts and camisole",
-  "wearing a tracksuit jacket half-zipped",
-  "wearing a leather-look mini skirt and thin knit",
-  "wearing a sheer long-sleeve over a bralette",
-  "wearing biker shorts and an oversized band tee",
-  "wearing a cowl-neck sweater dress",
-  "wearing a plaid shirt tied at waist over shorts",
-  "wearing a soft turtleneck and fitted pants",
-  "wearing a beach sarong as skirt with bikini top",
-];
+/** Outfit per foto — echt random, veel types jonge mannen. */
+function pickMaleOutfitRandom(): string {
+  const category = pickWeighted([
+    { weight: 14, value: "hoodie_hood" as const },
+    { weight: 10, value: "hoodie_down" as const },
+    { weight: 12, value: "street" as const },
+    { weight: 8, value: "gym" as const },
+    { weight: 10, value: "home" as const },
+    { weight: 6, value: "smart" as const },
+    { weight: 8, value: "outdoor" as const },
+    { weight: 8, value: "skater" as const },
+    { weight: 6, value: "work" as const },
+    { weight: 8, value: "summer" as const },
+    { weight: 10, value: "night" as const },
+    { weight: 10, value: "oversized" as const },
+  ]);
+  const pools: Record<string, string[]> = {
+    hoodie_hood: [
+      "wearing a black hoodie with hood up over head, face partly in shadow",
+      "wearing grey oversized hoodie hood up, only lower face visible",
+      "wearing navy zip hoodie hood up, casual indoor",
+      "wearing dark green hoodie capuchon on, slouching on couch",
+      "wearing worn black hoodie hood up, mirror selfie at home",
+    ],
+    hoodie_down: [
+      "wearing a black hoodie hood down and joggers",
+      "wearing a cozy grey hoodie and sweatpants",
+      "wearing an oversized band hoodie and shorts",
+    ],
+    street: [
+      "wearing slim jeans and a fitted tee",
+      "wearing an oversized band tee and shorts",
+      "wearing a denim jacket over a simple tee",
+      "wearing a leather jacket and dark jeans",
+      "wearing a flannel shirt open over a tee",
+    ],
+    gym: [
+      "wearing gym shorts and a muscle tee",
+      "wearing a fitted tank top and gym shorts",
+      "wearing a zip-up track jacket and joggers",
+      "wearing a tracksuit jacket half-zipped",
+    ],
+    home: [
+      "wearing a plain grey t-shirt and jeans",
+      "wearing pajama pants and no shirt",
+      "wearing sweatpants only shirtless",
+      "wearing a soft turtleneck and fitted pants",
+    ],
+    smart: [
+      "wearing chinos and a polo shirt",
+      "wearing a white linen shirt unbuttoned at collar",
+      "wearing a satin shirt half open",
+      "wearing loose linen trousers and a tee",
+    ],
+    outdoor: [
+      "wearing a puffer jacket and jeans outdoors",
+      "wearing a rain jacket hood down, urban background",
+      "wearing swim trunks only at beach",
+    ],
+    skater: [
+      "wearing baggy jeans and a graphic tee",
+      "wearing cargo pants and a beanie",
+      "wearing cap backwards and a hoodie hood down",
+    ],
+    work: [
+      "wearing a simple black t-shirt and chinos",
+      "wearing a plaid shirt and chino shorts",
+    ],
+    summer: [
+      "wearing shorts and a loose tank top",
+      "wearing linen shirt sleeves rolled up",
+    ],
+    night: [
+      "wearing a black tee and joggers dim lamp light",
+      "wearing hoodie hood up in dim bedroom light",
+    ],
+    oversized: [
+      "wearing oversized grey hoodie and baggy sweatpants",
+      "wearing XXXL band tee hanging loose over belly",
+      "wearing loose basketball shorts and tank, relaxed fit",
+    ],
+  };
+  return pick(pools[category] ?? pools.street);
+}
 
 /** Per foto andere plek in huis; `nl` voor beschrijvingen. */
 const INTERIOR_ROOM_TYPES: { en: string; nl: string }[] = [
@@ -468,7 +516,7 @@ const INTERIOR_ROOM_TYPES: { en: string; nl: string }[] = [
   { en: "swimming pool edge, sun loungers, blue tiles in background", nl: "zwembad" },
   { en: "small balcony on a city apartment, plants and railing, urban rooftops behind", nl: "balkon" },
   { en: "city park grass with trees in background, sunny afternoon", nl: "park" },
-  { en: "sauna wooden interior, warm dim light, towel wrapped around her", nl: "sauna" },
+  { en: "sauna wooden interior, warm dim light, towel around waist", nl: "sauna" },
   { en: "hotel room with bed and curtains, hotel-style lamps", nl: "hotelkamer" },
   { en: "car driver seat, seatbelt visible, dashboard behind", nl: "auto" },
   { en: "small home gym corner, yoga mat, dumbbells on the floor", nl: "thuisgym" },
@@ -500,15 +548,39 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
-function pickRoomType(identitySeed: string, photoIndex: number): { en: string; nl: string } {
-  return hashPick(identitySeed, `room-${photoIndex}`, INTERIOR_ROOM_TYPES);
+function pickWeighted<T>(items: Array<{ weight: number; value: T }>): T {
+  const total = items.reduce((s, x) => s + x.weight, 0);
+  let r = Math.random() * total;
+  for (const item of items) {
+    r -= item.weight;
+    if (r <= 0) return item.value;
+  }
+  return items[items.length - 1]!.value;
 }
 
-function buildInteriorSceneEnglish(identitySeed: string, photoIndex: number): string {
-  const { en: roomEn } = pickRoomType(identitySeed, photoIndex);
-  const light = hashPick(identitySeed, `lux-${photoIndex}`, INTERIOR_LIGHTING);
-  const tidy = hashPick(identitySeed, "house-tidy", HOUSE_TIDINESS);
+/** Willekeurige kamer per foto (niet altijd dezelfde hash-volgorde). */
+function pickRoomTypeRandom(): { en: string; nl: string } {
+  return pick(INTERIOR_ROOM_TYPES);
+}
+
+function buildInteriorSceneEnglishRandom(): string {
+  const { en: roomEn } = pickRoomTypeRandom();
+  const light = pick(INTERIOR_LIGHTING);
+  const tidy = pick(HOUSE_TIDINESS);
   return `${roomEn}, lighting: ${light}, this home overall: ${tidy}`;
+}
+
+/** Lichaamsbouw per profiel — ook voller/chubby, niet alleen slank. */
+function pickMaleBodyBuild(): string {
+  return pickWeighted([
+    { weight: 8, value: "70kg lean tall frame, narrow shoulders, flat chest" },
+    { weight: 10, value: "74kg slim average, light stubble" },
+    { weight: 14, value: "78kg regular build, slight belly, average shoulders" },
+    { weight: 16, value: "82kg dad bod, soft belly, broad shoulders, thicker waist" },
+    { weight: 18, value: "88kg chubby man, full cheeks, soft chest, thick arms, belly visible" },
+    { weight: 17, value: "92kg heavier, belly roll, wide torso, thick neck, stocky legs" },
+    { weight: 17, value: "96kg plus-size male, double chin ok, wide hips, soft midsection, thick thighs" },
+  ]);
 }
 
 function normalizeSupabaseUrl(raw: string | undefined): string {
@@ -576,18 +648,18 @@ async function generateAiDistinctAppearance(input: {
 }): Promise<string | null> {
   const pt = PHENOTYPE_TRAITS[input.phenotype];
   const diversityLine = EU_PHENOTYPE_KEYS.has(input.phenotype)
-    ? "DIVERSITY within European/Nordic types: vary fair-to-light skin undertones, blonde through dark brown hair, bone structure, eye shape — still clearly distinct women; do NOT broaden toward medium-brown skin or non-European default facial templates."
+    ? "DIVERSITY within European/Nordic types: vary fair-to-light skin undertones, blonde through dark brown hair, bone structure, eye shape — still clearly distinct young men; do NOT broaden toward medium-brown skin or non-European default facial templates."
     : "CRITICAL DIVERSITY: each answer must describe a VISUALLY DIFFERENT person from typical defaults — vary melanin level, hair texture (straight, wavy, coily, braided, short pixie, etc.), hair color (platinum blonde through jet black), facial bone structure hints, brow thickness, nose/lips shape hints.";
   const extraConstraint = appearanceConstraintForPhenotype(input.phenotype);
   const everydayConstraint = input.everydayLook
     ? [
-        "DAY-TO-DAY ORDINARY DUTCH WOMAN — describe in POSITIVE day-to-day language. Image models ignore negations like 'not pretty' — instead say what she IS.",
-        "She is the woman you sit next to on the bus, see at the AH or Jumbo checkout, at the daycare picking up kids, behind the call-center desk, or working at the drogist. Working-class late-twenties vibe, ordinary income, ordinary apartment.",
-        "FACE descriptors (use these affirmatively): round soft face shape, full soft cheeks, ordinary forgettable features, small or wide-set eyes, average or slightly large round nose, thin to average lips, bare skin with the texture of a real working woman, slight oily forehead, a couple of visible pimples or post-acne marks on chin or cheek, light bags under the eyes, blotchy slightly uneven tone, neutral relaxed everyday expression, no salon makeup.",
-        "HAIR descriptors (use these affirmatively): two-day-old wash, slightly oily roots, tied in a quick low ponytail OR hanging flat past the shoulders OR a homecut blunt fringe, mousy dirty-blonde OR medium brown OR dull dark — household-mirror look, not salon.",
-        "BODY descriptors (use these affirmatively, lean naar dikker): the soft natural shape of a Dutch woman who eats normal and skips the gym — soft belly, full hips, soft thighs, soft upper arms, full natural chest, full round face. Body type 70–85 kilo, BMI in the higher-normal to slightly overweight range. Comfortable inexpensive clothing (sweater, oversized t-shirt and jeans, Action/H&M sale rack).",
-        "SETTING & POSE descriptors: candid raw smartphone selfie in her own apartment, household clutter visible, tired-after-work moment, casual.",
-        "Stay respectful and adult — describe her positively as 'an average everyday working-class Dutch woman', not as 'unattractive'. Avoid descriptors like beautiful / stunning / pretty / model / sharp jawline / plump lips — they pull the image toward catalogue look.",
+        "DAY-TO-DAY ORDINARY YOUNG DUTCH MAN — describe in POSITIVE day-to-day language. Image models ignore negations like 'not pretty' — instead say what he IS.",
+        "He is the guy you see at the gym locker room, on the bike to college, at the supermarket self-checkout, or gaming at home. Working-class early-twenties vibe, ordinary income, ordinary apartment.",
+        "FACE descriptors (use these affirmatively): average young male face, light stubble or short beard shadow, ordinary jaw, straight or slightly wide nose, average lips, real skin texture with slight oily forehead, a couple of pimples on chin or cheek, light bags under eyes, neutral relaxed expression, no salon grooming.",
+        "HAIR descriptors (use these affirmatively): short faded sides OR messy medium length OR grown-out buzz cut, dirty-blonde OR brown OR dark — household mirror look, not barber fresh.",
+        "BODY descriptors (use these affirmatively): slim to average young male build — lean arms, flat chest, soft belly ok, average shoulders. Comfortable inexpensive clothing (hoodie, tee, joggers, jeans).",
+        "SETTING & POSE descriptors: candid raw smartphone selfie in his own apartment, household clutter visible, casual after-work or weekend moment.",
+        "Stay respectful and adult — describe him positively as 'an average everyday young Dutch man', not as 'unattractive'. Avoid descriptors like beautiful / stunning / model / influencer — they pull the image toward catalogue look.",
       ].join(" ")
     : "";
 
@@ -597,7 +669,7 @@ async function generateAiDistinctAppearance(input: {
         {
           role: "system",
           content: [
-            "You describe ONE fictional adult woman's appearance for realistic amateur smartphone photos.",
+            "You describe ONE fictional adult man's appearance for realistic amateur smartphone photos.",
             "Output English ONLY: one compact sentence or comma-separated traits (max 55 words). No name, no markdown, no quotes.",
             diversityLine,
             everydayConstraint,
@@ -612,7 +684,7 @@ async function generateAiDistinctAppearance(input: {
         {
           role: "user",
           content: [
-            `She lives in ${input.city}, ${input.country} (multicultural society — appearance must match the anchors below, not a generic clone).`,
+            `He lives in ${input.city}, ${input.country} (multicultural society — appearance must match the anchors below, not a generic clone).`,
             `Age ${input.age} — do not print the age number in the description.`,
             `Required hair anchor (integrate naturally): ${input.anchors.hair}`,
             `Required skin anchor (integrate naturally): ${input.anchors.skin}`,
@@ -622,7 +694,7 @@ async function generateAiDistinctAppearance(input: {
             ...(extraConstraint ? [extraConstraint] : []),
             ...(input.everydayLook
               ? [
-                  "Tone: distinctly below-average plain ordinary woman; visible everyday imperfections required (skin texture, asymmetry, body softness, plain hair); explicitly NOT attractive, NOT model, NOT pretty.",
+                  "Tone: distinctly below-average plain ordinary young man; body can be slim, average, dad-bod, chubby or heavier; visible everyday imperfections required; explicitly NOT attractive, NOT model, NOT influencer.",
                 ]
               : []),
             "Reply with ONLY the appearance description.",
@@ -649,6 +721,146 @@ async function generateAiDistinctAppearance(input: {
 }
 
 /** Veel verschillende poses — deterministisch per profiel+slot zodat batches gevarieerd zijn i.p.v. alleen spiegel. */
+const MALE_SUBJECT_LOCK =
+  "ADULT MALE MAN ONLY, masculine young man, flat chest, no breasts, no woman, no female. ";
+
+type ProfileShotKind = "face" | "no_face" | "partial_face";
+
+const PROFILE_SHOT_KINDS: ProfileShotKind[] = [
+  "face",
+  "face",
+  "no_face",
+  "partial_face",
+  "no_face",
+  "partial_face",
+  "face",
+  "no_face",
+];
+
+function pickProfileShotKindRandom(): ProfileShotKind {
+  return pick(PROFILE_SHOT_KINDS);
+}
+
+/** Eén willekeurige pose/stijl per foto — geen vaste selfie-template. */
+function pickRandomMalePhotoDirective(
+  shotKind: ProfileShotKind,
+  outfit: string,
+  opts: { everydayLook: boolean; forceClothed: boolean }
+): string {
+  if (shotKind === "no_face") {
+    return pick([
+      `phone from chin down only, male belly and chest in ${outfit}, face cropped out, chubby ok`,
+      `torso only in ${outfit}, head above frame, hairy arm holding phone`,
+      `POV thighs in joggers phone on knee, masculine legs, face not visible`,
+      `male back in ${outfit} walking away from mirror, no face`,
+      `hands and forearms on counter in ${outfit}, phone screen glow, face off-screen`,
+      `shirtless stomach and chest from collarbone down, phone low angle`,
+      `feet and lower legs in sneakers, phone on floor pointing up`,
+    ]);
+  }
+  if (shotKind === "partial_face") {
+    return pick([
+      `side profile jaw and stubble in ${outfit}, half face in shadow`,
+      `three-quarter turn in ${outfit}, one eye visible, rest hidden`,
+      `phone at chest in ${outfit}, face partly blocked by device`,
+      `over-shoulder glance in ${outfit}, ear and cheek only`,
+      `low angle in ${outfit}, forehead and nose partial, hoodie shadow`,
+    ]);
+  }
+
+  const preferClothed = opts.forceClothed || !opts.everydayLook || Math.random() < 0.8;
+  if (!preferClothed) {
+    return pick([
+      "shirtless lying on bed phone above chest relaxed",
+      "shirtless kitchen counter lean arm extended",
+      "shirtless timer photo stepped back full body",
+      "shirtless shower steam wet skin phone at chest",
+      "shirtless sofa edge dim lamp side light",
+    ]);
+  }
+
+  return pick([
+    `timer photo from across messy room, full body in ${outfit}, awkward natural stance`,
+    `lying sideways on couch in ${outfit}, phone at arm length, ceiling visible`,
+    `car driver seat selfie in ${outfit}, seatbelt and dashboard in frame`,
+    `gym locker bench in ${outfit}, post-workout tired, fluorescent light`,
+    `park path outdoor in ${outfit}, walking toward camera slight blur`,
+    `kitchen angle in ${outfit}, dishes and counter clutter background`,
+    `balcony night in ${outfit}, city lights behind, phone flash`,
+    `floor-level phone pointing up at standing man in ${outfit}, low angle`,
+    `desk chair in ${outfit}, monitor RGB glow on face`,
+    `elevator mirror quick snap in ${outfit}, cramped framing`,
+    `laundry basket room in ${outfit}, clothes hanging around`,
+    `bathroom steam on mirror edge in ${outfit}, phone low`,
+    `sitting on stairs in ${outfit}, looking up, diagonal shot`,
+    `perched on kitchen counter in ${outfit}, legs dangling`,
+    `backlit window silhouette in ${outfit}, face dark rim light`,
+    `hoodie hood up in ${outfit}, face half shadow, hallway depth`,
+    `beanie and ${outfit}, cold apartment, close front-cam`,
+    `baseball cap forward in ${outfit}, fridge light kitchen`,
+    `oversized ${outfit}, slouch on bed, knees up, gamer vibe`,
+    `mirror only sliver visible in ${outfit}, mostly direct front-cam`,
+    `phone propped on bookshelf timer shot in ${outfit}, full room visible`,
+    `lying on stomach on bed in ${outfit}, chin on hands, phone rear angle`,
+    `standing in doorway in ${outfit}, one shoulder against frame`,
+    `tattoo forearm holding phone in ${outfit}, torso in background`,
+    `thuisgym corner in ${outfit}, dumbbell on floor`,
+    `strand or outdoor bench in ${outfit}, sunny harsh light`,
+    `hotel bed edge in ${outfit}, rumpled sheets`,
+    `narrow hallway coat hooks in ${outfit}, walking past camera`,
+    `sitting on floor against sofa in ${outfit}, legs stretched`,
+    `cooking at stove in ${outfit}, steam and pans`,
+    `PC gaming angle in ${outfit}, headset around neck`,
+    `wet hair after shower in ${outfit}, towel on shoulder`,
+  ]);
+}
+
+const PHOTO_LIGHTING_LEADS = [
+  "Amateur grain, warm lamp light, handheld. ",
+  "Harsh phone flash, messy room. ",
+  "Soft window daylight, cool tones. ",
+  "Dim evening single lamp, shadows. ",
+  "Bright kitchen LED, flat realistic. ",
+  "Blue hour through curtains. ",
+  "Bathroom mirror steam and moisture. ",
+  "Outdoor overcast natural light. ",
+];
+
+/** Geen gezicht in beeld — torso, handen, benen, rug. */
+function pickNoFaceMaleShot(
+  identitySeed: string,
+  photoIndex: number,
+  outfit: string
+): string {
+  return hashPick(identitySeed, `noface-${photoIndex}`, [
+    `phone selfie from chin down only, male chest and stomach wearing ${outfit}, face cropped above frame, flat chest`,
+    `arm-extended photo male torso in ${outfit}, head out of frame above shoulders, hairy forearm holding phone`,
+    `POV lap shot male thighs in joggers phone on knee, face not in frame, masculine legs only`,
+    `male hand holding phone on kitchen counter, forearm and ${outfit} torso edge visible, face off-screen`,
+    `gym or home mirror shot male back in ${outfit} walking away, short hair at nape, no face visible`,
+    `seated male legs jeans sneakers on couch, phone on thigh, face above crop line`,
+    `shirtless male upper body from collarbone down, phone held low, no face in image`,
+    `male feet on rug with phone on floor pointing up at legs in ${outfit}, face not shown`,
+    `over-shoulder male back of head and shoulders in ${outfit}, face turned away from camera`,
+  ]);
+}
+
+/** Deels gezicht / profiel — minder standaard selfie. */
+function pickPartialFaceMaleShot(
+  identitySeed: string,
+  photoIndex: number,
+  outfit: string
+): string {
+  return hashPick(identitySeed, `partface-${photoIndex}`, [
+    `male three-quarter profile jaw stubble visible wearing ${outfit}, rest of face turned away`,
+    `male side profile silhouette near window wearing ${outfit}, half face in shadow`,
+    `phone held low male looking down wearing ${outfit}, forehead and nose only partial`,
+    `mirror edge shot male turning away wearing ${outfit}, cheek and ear visible not full face`,
+    `male sitting on bed wearing ${outfit}, face partly hidden by phone at chest`,
+    `male in ${outfit} over-shoulder glance, one eye and stubble visible`,
+  ]);
+}
+
 function pickClothedShotDirective(identitySeed: string, photoIndex: number, outfit: string): string {
   const variants = [
     `mirror selfie smartphone clearly visible in reflection, wearing ${outfit}, relaxed stance weight on one leg`,
@@ -685,18 +897,25 @@ function pickClothedShotDirectiveEveryday(
   outfit: string
 ): string {
   const variants = [
+    // --- Hoodie / capuchon / street ---
+    `arm-extended selfie wearing ${outfit}, hood shadow on face, messy room background`,
+    `mirror selfie wearing ${outfit}, hood up, phone at chest, slouch posture`,
+    `front-cam close wearing ${outfit}, capuchon up, looking slightly down at lens`,
+    `sitting on couch wearing ${outfit}, hood up, knees up, casual gamer vibe`,
+    `standing hallway wearing ${outfit}, hood up, one hand in pocket`,
+    `low light bedroom selfie wearing ${outfit}, hoodie hood up, LED lamp glow`,
     // --- Geen spiegel — arm-extended / front-cam ---
     `front-camera arm-extended selfie no mirror in frame wearing ${outfit}, Dutch angle casual`,
     `handheld selfie at arms length straight on no mirror wearing ${outfit}, messy hair ok`,
     `front camera selfie close to face no mirror wearing ${outfit}, face fills upper half of frame`,
     `arm-extended waist-up selfie wearing ${outfit}, looking down at the lens`,
     // --- Self-timer / propped phone, step back ---
-    `phone propped on shelf or stack timer self-timer photo, woman stepped back full body wearing ${outfit}, room visible`,
+    `phone propped on shelf or stack timer self-timer photo, man stepped back full body wearing ${outfit}, room visible`,
     `self-timer photo phone leaning against books across the room, full body shot wearing ${outfit}, looking at the camera`,
     `self-timer photo phone on counter, casual three-quarter pose wearing ${outfit}, ambient room light`,
     // --- Vanuit ligging / vanaf bed ---
     `lying on bed phone held above face wearing ${outfit}, ceiling corner visible, soft pillow background`,
-    `lying on bed phone propped at side recording herself wearing ${outfit}, casual relaxed pose`,
+    `lying on bed phone propped at side recording himself wearing ${outfit}, casual relaxed pose`,
     `sitting on bed legs crossed front-cam selfie wearing ${outfit}, blanket and pillows behind`,
     // --- Casual home situaties ---
     `sitting on sofa arm-extended selfie toward lens wearing ${outfit}, warm lamp light`,
@@ -705,30 +924,37 @@ function pickClothedShotDirectiveEveryday(
     `sitting on floor legs out arm-extended selfie wearing ${outfit}, rug and furniture in frame`,
     // --- Slechts kleine fractie mirror ---
     `full-length mirror shot wearing ${outfit}, phone low, mirror only takes part of frame`,
-    `quick mirror selfie wearing ${outfit}, only a narrow slice of mirror, mostly her`,
+    `quick mirror selfie wearing ${outfit}, only a narrow slice of mirror, mostly him`,
     `hallway arm-length selfie walking toward camera wearing ${outfit}, coat hooks background`,
     `desk chair leaning in selfie wearing ${outfit}, monitor edge in frame`,
     `perched on stairs selfie looking up wearing ${outfit}, diagonal composition`,
     `balcony door selfie outdoor light wearing ${outfit}, hand blocking sun`,
     `over-shoulder glance back arm-length selfie wearing ${outfit}, corridor depth`,
+    `beanie and ${outfit} front-cam, cold weather indoor`,
+    `baseball cap worn forward ${outfit} kitchen selfie`,
+    `glasses and stubble wearing ${outfit} desk chair selfie monitor glow`,
+    `tattoo forearm visible holding phone wearing ${outfit}`,
+    `gym mirror corner wearing ${outfit} post-workout sweat ok`,
+    `park bench outdoor wearing ${outfit} timer photo stepped back`,
+    `headphones on neck wearing ${outfit} looking at phone screen glow`,
   ];
   return hashPick(identitySeed, `cloth-ed-${photoIndex}`, variants);
 }
 
 function pickNudeShotDirective(identitySeed: string, photoIndex: number): string {
   const variants = [
-    "topless mirror selfie phone in hand neutral stance",
-    "topless front camera arm-length NO mirror soft side window light",
-    "lying on bed topless knees up phone from above relaxed",
-    "kneeling on mattress toward camera topless arms loose",
-    "standing shower steam wet skin topless tasteful crop",
-    "sitting tub edge feet in frame topless leaning forward",
-    "golden hour on bed tangled sheets topless overhead angle",
-    "seated vanity leaning in topless elbow on counter crop",
-    "doorway backlit silhouette topless turning profile",
-    "balcony sheer curtain morning topless partial editorial amateur",
-    "floor seated hugging knees topless chin up",
-    "lying side angle topless pillow prop intimate framing",
+    "shirtless mirror selfie phone in hand neutral stance",
+    "shirtless front camera arm-length NO mirror soft side window light",
+    "lying on bed shirtless knees up phone from above relaxed",
+    "kneeling on mattress toward camera shirtless arms loose",
+    "standing shower steam wet skin shirtless tasteful crop",
+    "sitting tub edge feet in frame shirtless leaning forward",
+    "golden hour on bed tangled sheets shirtless overhead angle",
+    "seated vanity leaning in shirtless elbow on counter crop",
+    "doorway backlit silhouette shirtless turning profile",
+    "balcony sheer curtain morning shirtless partial editorial amateur",
+    "floor seated hugging knees shirtless chin up",
+    "lying side angle shirtless pillow prop intimate framing",
   ];
   return hashPick(identitySeed, `nude-shot-${photoIndex}`, variants);
 }
@@ -737,25 +963,25 @@ function pickNudeShotDirective(identitySeed: string, photoIndex: number): string
 function pickNudeShotDirectiveEveryday(identitySeed: string, photoIndex: number): string {
   const variants = [
     // --- Front-cam / arm-extended, GEEN spiegel ---
-    "topless front camera arm-extended selfie no mirror soft window sidelight",
-    "topless arm-extended selfie close to face no mirror, natural daylight",
-    "topless front-cam waist-up selfie no mirror, looking down at lens",
+    "shirtless front camera arm-extended selfie no mirror soft window sidelight",
+    "shirtless arm-extended selfie close to face no mirror, natural daylight",
+    "shirtless front-cam waist-up selfie no mirror, looking down at lens",
     // --- Vanuit ligging / op bed ---
-    "lying on bed topless sheet at hips phone held above face relaxed",
-    "lying on bed topless on side phone propped at nightstand recording herself",
-    "lying on back topless phone over face arm extended ceiling visible",
-    "kneeling on bed toward lens topless phone at chest natural light",
+    "lying on bed shirtless sheet at hips phone held above face relaxed",
+    "lying on bed shirtless on side phone propped at nightstand recording himself",
+    "lying on back shirtless phone over face arm extended ceiling visible",
+    "kneeling on bed toward lens shirtless phone at chest natural light",
     // --- Self-timer / propped phone ---
-    "self-timer photo phone propped on dresser topless full body stepped back",
-    "self-timer photo phone leaning against books across room topless casual stance",
+    "self-timer photo phone propped on dresser shirtless full body stepped back",
+    "self-timer photo phone leaning against books across room shirtless casual stance",
     // --- Casual home situaties ---
-    "seated on sofa edge topless arm-extended selfie warm lamp light",
-    "kitchen counter lean topless arm-extended phone in hand everyday light",
-    "sitting on bathtub edge topless feet visible phone held forward",
-    "standing in shower wet skin topless phone held up at chest",
+    "seated on sofa edge shirtless arm-extended selfie warm lamp light",
+    "kitchen counter lean shirtless arm-extended phone in hand everyday light",
+    "sitting on bathtub edge shirtless feet visible phone held forward",
+    "standing in shower wet skin shirtless phone held up at chest",
     // --- Slechts kleine fractie mirror ---
-    "topless mirror selfie phone visible neutral stance, mirror small in frame",
-    "topless full-length mirror selfie hip-tilt, mirror is half of frame",
+    "shirtless mirror selfie phone visible neutral stance, mirror small in frame",
+    "shirtless full-length mirror selfie hip-tilt, mirror is half of frame",
   ];
   return hashPick(identitySeed, `nude-ed-${photoIndex}`, variants);
 }
@@ -778,7 +1004,7 @@ function pickVerificationDirective(
    * one face in the entire image".
    */
   const singleShotPrefix =
-    "one single full-frame photograph, just one face in the entire image, one whole woman from one camera, ";
+    "one single full-frame photograph, just one face in the entire image, one whole man from one camera, ";
   const variants = [
     `${singleShotPrefix}front-cam arm-extended selfie holding torn scrap ${onlyName} ballpoint ink, no mirror`,
     `${singleShotPrefix}small scrap resting on bare stomach ${onlyName} pencil scribble, phone held above`,
@@ -825,15 +1051,15 @@ const PROFILE_PROMPT_SINGLE_SHOT_LEAD =
  * weggesnoeid uit het 1000-char prompt budget.
  */
 const PROFILE_PROMPT_EVERYDAY_LOOK_LEAD =
-  "Average Dutch working-class woman vibe, household lighting, no salon look, no glamour. ";
+  "Average Dutch working-class young man vibe, household lighting, no salon look, no glamour. ";
 
 /** Kort als budget krap is — lange lead wordt eerst hiernaartoe ingekort. */
 const PROFILE_PROMPT_STYLE_COMPACT =
   "Amateur smartphone indoor candid, grain handheld, not studio. ";
 
 /** Extra crop-afstand / kaderrand zodat niet elke foto dezelfde headshot wordt. */
-function pickFramingHint(identitySeed: string, photoIndex: number): string {
-  return hashPick(identitySeed, `framing-${photoIndex}`, [
+function pickFramingHintRandom(): string {
+  return pick([
     "show room environment not plain wall only",
     "waist-up framing include torso context",
     "full length figure visible head to feet",
@@ -842,6 +1068,8 @@ function pickFramingHint(identitySeed: string, photoIndex: number): string {
     "environment visible behind subject clutter ok",
     "wider angle further from face mirror or timer shot",
     "over-shoulder partial face plus room depth",
+    "low angle looking up at subject",
+    "high angle looking down casual",
   ]);
 }
 
@@ -857,71 +1085,53 @@ function pickFramingHint(identitySeed: string, photoIndex: number): string {
 function buildRandomProfileImagePrompt(params: {
   identityCore: string;
   sceneEn: string;
+  directive: string;
   includeVerification: boolean;
-  profileName: string;
   forceClothed: boolean;
-  identitySeed: string;
   photoIndex: number;
   headshotLead: string;
-  everydayLook?: boolean;
+  shotKind?: ProfileShotKind;
 }): string {
-  const outfit = pick(CASUAL_OUTFITS);
-
-  let preferClothed: boolean;
-  if (params.forceClothed) {
-    preferClothed = true;
-  } else if (params.everydayLook) {
-    /** “Minder knap”-flow: vaker naakt/suggestief dan standaard (soms), nog steeds mix met kleding. */
-    preferClothed =
-      hashPick(params.identitySeed, `clothedOrNude-ed-${params.photoIndex}`, [
-        "clothed",
-        "clothed",
-        "nude",
-        "nude",
-      ]) !== "nude";
-  } else {
-    preferClothed =
-      hashPick(params.identitySeed, `clothedOrNude-${params.photoIndex}`, [
-        "clothed",
-        "clothed",
-        "clothed",
-        "nude",
-      ]) !== "nude";
-  }
-
-  let directive: string;
-  if (params.includeVerification) {
-    directive = pickVerificationDirective(params.identitySeed, params.photoIndex, params.profileName);
-  } else if (preferClothed) {
-    directive = params.everydayLook
-      ? pickClothedShotDirectiveEveryday(params.identitySeed, params.photoIndex, outfit)
-      : pickClothedShotDirective(params.identitySeed, params.photoIndex, outfit);
-  } else {
-    directive = params.everydayLook
-      ? pickNudeShotDirectiveEveryday(params.identitySeed, params.photoIndex)
-      : pickNudeShotDirective(params.identitySeed, params.photoIndex);
-  }
+  const shotKind = params.shotKind ?? "face";
+  const directive = params.directive;
+  const preferClothed = params.forceClothed || params.includeVerification;
 
   const verifyLead = params.includeVerification
-    ? "Single mirror selfie one whole woman, one torn paper prop with only her first name in messy pen, one frame only. "
+    ? "Single mirror selfie one whole man, one torn paper prop with only his first name in messy pen, one frame only. "
     : "";
-
-  const everydayLead = params.everydayLook ? PROFILE_PROMPT_EVERYDAY_LOOK_LEAD : "";
 
   const closing =
     preferClothed && !params.includeVerification
       ? ", natural candid smartphone photo, everyday casual clothing only, no police uniform military outfit or authority costume"
       : ", natural candid smartphone photo";
 
-  const framingHint = pickFramingHint(params.identitySeed, params.photoIndex);
+  const framingHint =
+    shotKind === "no_face"
+      ? pick([
+          "torso or legs fill frame face not visible",
+          "hands or lap POV face out of frame",
+          "back or shoulders only no face",
+        ])
+      : pickFramingHintRandom();
 
   /** Kamer + pose + crop-hint: blijft intact tenzij identiteit extreem lang is. */
   const coreShot = `${params.sceneEn}, ${directive}, ${framingHint}`;
 
-  /** Alleen hier vandaan mag worden afgekapt (vanaf het einde). Compact gehouden zodat identity intact blijft. */
-  let styleTail = `${verifyLead}${params.headshotLead}${PROFILE_PROMPT_SINGLE_SHOT_LEAD}${everydayLead}${closing}, same face hair body as above`;
+  const sameSubjectTail =
+    shotKind === "no_face"
+      ? ", same male body clothing as above"
+      : ", same male face hair body as above";
 
-  const maxBody = zModelMaxUserPromptBodyChars();
+  /** Alleen hier vandaan mag worden afgekapt (vanaf het einde). Compact gehouden zodat identity intact blijft. */
+  const headshot =
+    shotKind === "face" && params.headshotLead ? params.headshotLead : "";
+  const lightingLead = pick(PHOTO_LIGHTING_LEADS);
+  let styleTail = `${verifyLead}${headshot}${lightingLead}${PROFILE_PROMPT_EVERYDAY_LOOK_LEAD}${closing}${sameSubjectTail}`;
+
+  const maxBody = zModelMaxUserPromptBodyChars({
+    subjectGender: "male",
+    hideFace: shotKind === "no_face",
+  });
   let identityFull = sanitizeIdentityForZImagePrompt(params.identityCore.replace(/\s+/g, " ").trim());
 
   const SEP = ". Setting, pose, environment: ";
@@ -976,101 +1186,101 @@ function buildRandomProfileImagePrompt(params: {
   return full;
 }
 
-/** Grote pools + structuurvarianten → batchprofielen voelen niet copy-paste. */
+/** Grote pools — jonge mannen (Ontmoetjongens); andere bio per profiel via hashPick. */
 const USER_STORY_OPENERS = [
-  "Hoi! Ik hou van spontane chats en kleine geheimen tussen ons twee.",
-  "Ik zoek hier vooral echte verbinding — geen oppervlakkige smalltalk.",
-  "Overdag redelijk normaal; 's avonds vind ik het fijn om hier even mezelf te zijn.",
-  "Ik geniet van humor, scherpe opmerkingen en iemand die durft te vragen wat hij wil.",
-  "Ik ben niet op zoek naar perfect — wel naar leuk en menselijk.",
-  "Schrijf me liever iets dat alleen voor mij bedoeld is dan een standaard opener.",
-  "Ik vind het spannend om hier te zijn en nieuwsgierig naar wie ik tegenkom.",
-  "Rustig type tot je me prikkelt — dan kan ik best uitdagend worden.",
-  "Ik werk hard, maar hier mag het privé en speels blijven.",
-  "Geen zin in clichés; ik wil gewoon een stoer gesprek dat ergens naartoe gaat.",
-  "Ik post omdat ik het leuk vind om warm contact te voelen, niet alleen likes.",
-  "Als je eerlijk bent over wat je wilt, val ik daar sneller voor dan bij stoere poses.",
-  "Ik ben dol op stemmetjes, typos en kleine imperfecties — voelt echt.",
-  "Soms langzaam opwarmend, soms meteen vuur — hangt van de vibe af.",
-  "Ik kijk uit naar iemand die durft te flirten zonder grof te worden.",
-  "Privé hou ik van rust; hier mag het een tikje wilder.",
-  "Ik hou van detail: hoe je dag was, wat je denkt, wat je geil vindt.",
-  "Laat merken dat je echt kijkt — dan laat ik ook meer zien.",
-  "Ik ben nieuwsgierig naar mensen met karakter, niet alleen naar plaatjes.",
-  "Chaos in mijn hoofd soms, maar in chat probeer ik helder en lief te blijven.",
-  "Ik vind het prettig als je tijd neemt — haastige DM's sla ik vaak over.",
-  "Hier voor ontspanning, fantasie en af en toe een beetje gevaarlijk gewaagd.",
-  "Ik grap graag; als je saai bent merk je het vanzelf.",
-  "Ik zoek chemie, geen script — wat er uit de chat rolt bepaalt de rest.",
+  "Hoi — ik ben hier voor spanning en echte gesprekken, niet voor saaie smalltalk.",
+  "Ik zoek iemand met ervaring die weet wat hij wil en niet meteen moeilijk doet.",
+  "Overdag gewoon bezig; 's avonds vind ik het fijn om hier open te zijn.",
+  "Ik hou van humor, directheid en iemand die durft te flirten.",
+  "Geen perfect plaatje — wel chemie en een beetje pit.",
+  "Schrijf me liever iets persoonlijks dan een standaard 'hey'.",
+  "Benieuwd wie ik hier tegenkom — nieuwsgierig en een beetje nerveus.",
+  "Rustig tot je me prikkelt; daarna kan ik best uitdagend worden.",
+  "Ik werk/studeer hard; hier mag het privé en speels blijven.",
+  "Geen clichés — gewoon een gesprek dat ergens naartoe gaat.",
+  "Ik ben hier voor contact dat voelt als een geheim tussen ons.",
+  "Als je eerlijk bent over wat je zoekt, praat ik sneller mee.",
+  "Ik vind typos en korte voice-notes menselijker dan perfecte zinnen.",
+  "Soms langzaam opwarmen, soms meteen vuur — hangt van de vibe.",
+  "Ik kijk uit naar iemand die ervaring heeft en respectvol blijft.",
+  "Privé rustig; hier mag het een tikje wilder.",
+  "Detail in chat vind ik leuk: dag, plannen, wat je in je hoofd hebt.",
+  "Laat merken dat je echt leest — dan doe ik dat ook.",
+  "Ik zoek karakter en tempo, niet alleen een mooi profiel.",
+  "Chaos in mijn week soms, maar in chat probeer ik helder te blijven.",
+  "Haastige DM's sla ik over — neem even de tijd.",
+  "Hier voor ontspanning, fantasie en af en toe gewaagd flirten.",
+  "Ik grap graag; saai wordt snel duidelijk.",
+  "Chemie boven script — de chat bepaalt de rest.",
 ];
 
 const USER_STORY_CLOSERS = [
-  "Als je respectvol en speels bent, match ik daar graag op.",
-  "Geen drama — wel chemie en een beetje spanning.",
-  "Ik antwoord het liefst op iets persoonlijks dan op standaard copy-paste.",
-  "Foto's zijn iets bijzonders dat ik bewaar voor het juiste moment.",
-  "Laat weten waar je aan denkt — ik bijt niet (tenzij je dat leuk vindt).",
-  "Ben je nieuw hier? Vertel kort wie je bent — ik lees alles.",
-  "Ik haat ghosting in het echte leven; hier probeer ik ook gewoon eerlijk te zijn.",
-  "Vertel iets dat je normaal niet zo snel zegt — dan doe ik dat ook.",
-  "Geen oordeel over fetishes of fantasieën — wel over grenzeloos gedrag.",
-  "Ik hou van langzaam opbouwen en dan pas loslaten.",
-  "Als het klikt, merk je het vanzelf aan hoe ik schrijf.",
-  "Spoiler: ik word warmer als je geen opsomming van hobby's stuurt maar een mini-verhaal.",
-  "Complimenten zijn leuk; echte vragen zijn leuker.",
-  "Ik zoek iemand die durft te laten zien wat hij wil — subtiel mag ook.",
-  "Privacy en discretie zijn voor mij normaal — verwacht ik ook van jou.",
-  "Geen haast: ik lees berichten als ik tijd heb om goed te antwoorden.",
-  "Als je alleen 'hey' stuurt, duurt het even voor ik warm word.",
-  "Ik vind het oké om voorzichtig te beginnen — spanning hoeft niet meteen max.",
-  "Schrijf met stemming — dan antwoord ik met stemming.",
+  "Respectvol en speels? Dan match ik graag.",
+  "Geen drama — wel spanning en eerlijkheid.",
+  "Ik antwoord liever op iets persoonlijks dan op copy-paste.",
+  "Foto's deel ik pas als de vibe klopt.",
+  "Zeg waar je aan denkt — ik bijt niet (tenzij je dat leuk vindt).",
+  "Nieuw hier? Vertel kort wie je bent — ik lees mee.",
+  "Ghosting irriteert me; hier probeer ik gewoon eerlijk te zijn.",
+  "Vertel iets dat je normaal niet snel zegt — dan doe ik dat ook.",
+  "Geen oordeel over fantasie — wel over grenzen.",
+  "Langzaam opbouwen, dan pas meer laten zien.",
+  "Als het klikt, merk je het aan hoe ik typ.",
+  "Mini-verhaal > opsomming hobby's.",
+  "Complimenten oké; echte vragen beter.",
+  "Subtiel of direct — laat maar zien wat je wilt.",
+  "Discretie is normaal — verwacht ik ook van jou.",
+  "Ik antwoord als ik tijd heb om goed te lezen.",
+  "Alleen 'hey' duurt even voor ik warm word.",
+  "Voorzichtig beginnen mag — spanning hoeft niet meteen max.",
+  "Schrijf met stemming — dan antwoord ik zo.",
   "Liever één goede zin dan tien emoji's zonder inhoud.",
-  "Ik waardeer als je grenzen respecteert — dan kan ik meer ontspannen.",
-  "Samen iets verzinnen vind ik vaak heter dan een kant-en-klaar plaatje.",
-  "Tot snel in de chat — ik ben benieuwd naar jouw stijl.",
+  "Grenzen respecteren = ik ontspan sneller.",
+  "Samen iets bedenken is vaak heter dan een standaard plaatje.",
+  "Tot in de chat — benieuwd naar jouw stijl.",
 ];
 
 const BIO_VIBES = [
-  "Warm, een tikje ondeugend en nieuwsgierig naar jou.",
-  "Ik val op zelfvertrouwen zonder arrogantie — en op scherpe vragen.",
-  "Zacht in woorden, maar als het klikt best plagerig.",
-  "Direct als het moet, schattig als het kan.",
-  "Rustig en speels tegelijk — ik hou van contrast.",
-  "Nieuwsgierig naar wat jou geil maakt zonder dat je het hardop hoeft te schreeuwen.",
+  "Open, een tikje ondeugend en nieuwsgierig.",
+  "Ik val op rust en zelfvertrouwen — geen drama.",
+  "Zacht beginnen, plagerig als het klikt.",
+  "Direct als het moet, relaxed als het kan.",
+  "Rustig en speels tegelijk — hou van contrast.",
+  "Nieuwsgierig naar wat jij zoekt zonder dat het hard hoeft.",
   "Soms verlegen online, soms brutaal — hangt van jou af.",
-  "Ik hou van spanning die langzaam opbouwt, niet van gelijk alles prijsgeven.",
-  "Geef me een reden om te glimlachen bij een bericht — dan geef ik er twee terug.",
-  "Ik flirt graag met woorden; plaatjes zijn de kers.",
-  "Charisma en humor zijn voor mij belangrijker dan een sixpack.",
-  "Ik hou van kleine challenges in chat — wie het eerst bloost verliest.",
-  "Als je openhartig bent, word ik dat ook.",
-  "Ik kan charmant bugs bunny-level zijn als ik comfortable ben.",
-  "Somber vanochtend, ondeugend vanavond — menselijk dus.",
-  "Ik zoek chemie, niet een checklist.",
-  "Ik wil lachen, blozen en soms even stil zijn voor de volgende zin.",
-  "Te veel emoji's irriteren me; te weinig inhoud ook.",
+  "Spanning die langzaam opbouwt werkt voor mij.",
+  "Eén goede zin kan me al warm maken.",
+  "Ik flirt graag met woorden; foto's zijn extra.",
+  "Humor en tempo belangrijker dan een sixpack.",
+  "Kleine challenges in chat — wie eerst bloost verliest.",
+  "Openhartig? Dan word ik dat ook.",
+  "Charmant als ik me comfortable voel.",
+  "Chill overdag, ondeugend 's avonds.",
+  "Chemie, geen checklist.",
+  "Lachen, blozen, stilte — allemaal oké.",
+  "Te veel emoji's irriteren; te weinig inhoud ook.",
 ];
 
-/** Korte extra zin voor ritme/nuance — verandert per profiel via hashPick. */
+/** Korte extra zin — andere toon per man. */
 const BIO_ASIDES = [
-  "Ik drink te veel thee en praat tegen planten.",
-  "Mijn Spotify staat op guilty pleasures — schuldgevoel nul.",
-  "Ik vergeet soms terug te tikken als ik in een serie zit.",
-  "Ik fiets bijna overal naartoe als het kan.",
-  "Weekenden zijn voor uitslapen en rare cravings.",
-  "Ik maak playlists voor elke mood — ook de vieze.",
-  "Ik photograph je bloempotten als ze cool zijn.",
-  "Ik kan niet tegen fake casual energy.",
-  "Ik hou van kaarslicht en slechte grindcore — ja, die combo.",
-  "Ik typ sneller dan ik nadenk soms.",
-  "Ik ben team 'eerst chatten, dan kijken'.",
-  "Ik word warm van goede zinnen, niet van copy-paste.",
-  "Ik heb een zwak voor stemmetjes in berichten.",
-  "Ik plan niets — ik laat de chat leiden.",
-  "Ik ben dol op detail: hoe iemand typt zegt veel.",
-  "Ik koop te veel truien en te weinig verstand.",
-  "Ik ben een avondmens; ochtend-DM's zijn survival.",
-  "Ik vind misprints in autocorrect soms leuker dan de bedoeling.",
+  "Ik game te laat en drink te veel energy.",
+  "Mijn Spotify is chaos — guilty pleasures inbegrepen.",
+  "Ik vergeet terug te tikken als ik een serie binge.",
+  "Ik fiets of scoot bijna overal.",
+  "Weekenden = uitslapen en rare snacks.",
+  "Playlists voor elke mood — ook de vieze.",
+  "Ik fix mijn eigen haar — geen salon.",
+  "Fake casual energy kan ik niet tegen.",
+  "Gym soms, pizza vaker — menselijk.",
+  "Ik typ sneller dan ik nadenk.",
+  "Eerst chatten, dan pas foto's.",
+  "Goede zinnen > copy-paste.",
+  "Voice-notes zijn mijn zwakke plek.",
+  "Ik plan weinig — de chat leidt.",
+  "Hoe iemand typt zegt veel.",
+  "Te veel hoodies, te weinig slaap.",
+  "Avondmens; ochtend-DM's zijn overleven.",
+  "Autocorrect-fouten zijn soms grappiger.",
 ];
 
 function buildRandomUserBio(
@@ -1111,8 +1321,24 @@ function buildPhotoDescriptionDutch(
   includeVerification: boolean,
   forceClothed: boolean,
   identitySeed: string,
-  roomNl: string
+  roomNl: string,
+  shotKind: ProfileShotKind = "face"
 ): string {
+  if (shotKind === "no_face") {
+    return hashPick(identitySeed, `pdnf-${index}`, [
+      `Lichaam/handengezicht van ${name} (${roomNl}) — gezicht niet in beeld`,
+      `Torso of benen van ${name}, amateur snap (${roomNl})`,
+      `Persoonlijke foto zonder gezicht — ${name}, ${roomNl}`,
+      `Rug of schouders van ${name} (${roomNl})`,
+    ]);
+  }
+  if (shotKind === "partial_face") {
+    return hashPick(identitySeed, `pdpf-${index}`, [
+      `Zij-aanzicht / half gezicht van ${name} (${roomNl})`,
+      `Profiel of gedraaid weg — ${name}, ${roomNl}`,
+      `Amateur foto ${name}, gezicht deels zichtbaar (${roomNl})`,
+    ]);
+  }
   if (includeVerification) {
     return hashPick(identitySeed, `pdv-${index}`, [
       `${name}: briefje met pen/potlood, slordig handschrift, vast of op huid gelegd (${roomNl})`,
@@ -1170,7 +1396,7 @@ export async function createRandomProfileWithPhotos(
   const firstName =
     (await generateAiFirstName({ europeanHeavy: EU_PHENOTYPE_KEYS.has(phenotype) })) ??
     pickRandomFirstName();
-  const age = 21 + Math.floor(Math.random() * 10);
+  const age = 18 + Math.floor(Math.random() * 13);
   const slug = `admin-random-${slugify(firstName)}-${Date.now().toString().slice(-6)}`;
   const city = pick(NL_CITIES);
   const country = COUNTRY_NL;
@@ -1180,22 +1406,22 @@ export async function createRandomProfileWithPhotos(
   const favoriteFood = pick(FAVORITE_FOODS);
   const hobbies = interests.slice(0, 3);
 
-  const usedVerificationPhoto = Math.random() < 0.5;
-  const usedHeadshotFirst = Math.random() < 0.4;
-  /** Per profiel willekeurig 3–6 foto's (inclusief). */
-  const photoCount = 3 + Math.floor(Math.random() * 4);
+  /** Verificatie met briefje: zeldzaam (~8%), nooit op 1-foto-profielen. */
+  const photoCount = 1 + Math.floor(Math.random() * 4);
+  const usedVerificationPhoto = photoCount >= 2 && Math.random() < 0.08;
+  const usedHeadshotFirst = Math.random() < 0.35;
   const verificationIndex = usedVerificationPhoto
-    ? Math.min(1 + Math.floor(Math.random() * 2), photoCount - 1)
+    ? 1 + Math.floor(Math.random() * Math.max(1, photoCount - 1))
     : -1;
 
   const conversationId = `admin-profile-${slug}`;
   const identitySeed = `${slug}:${firstName}:${age}`;
   const jewelry = hashPick(identitySeed, "jw", [
-    "tiny silver studs",
-    "small gold hoops",
-    "thin gold chain",
-    "minimal nose stud",
+    "simple wristwatch",
+    "thin silver chain",
     "no visible jewelry",
+    "dark bracelet",
+    "small ear stud",
   ]);
   const phone = hashPick(identitySeed, "ph", [
     "black smartphone square camera bump in mirror",
@@ -1266,7 +1492,7 @@ export async function createRandomProfileWithPhotos(
     "soft tapering brows",
   ]);
   /** Compact face-lock: ~120 chars. Identiek per profiel; verschilt per profiel. */
-  const faceLock = `same woman every shot, ${noseLock}, ${mouthLock}, ${chinLock}, ${browLock}, ${markLock}`;
+  const faceLock = `same man every shot, ${noseLock}, ${mouthLock}, ${chinLock}, ${browLock}, ${markLock}`;
 
   /**
    * Per-profiel variatie binnen het "plain/minder knap" thema: niet ieder
@@ -1278,32 +1504,21 @@ export async function createRandomProfileWithPhotos(
    * Compact per-profiel variatie. Body-buckets nu écht random spread van dun
    * tot dik (geen scheef trekken meer). Korte tokens i.p.v. lange zinnen.
    */
-  const bodyPick = hashPick(identitySeed, "body-ed", [
-    "55kg thin frame, small chest, narrow hips, slim arms, sharp collarbones",
-    "58kg slim build, small chest, slender waist, lean legs",
-    "62kg average slim, small natural chest, slim hips, lean arms",
-    "66kg regular average, natural chest, balanced hips, soft tummy",
-    "70kg average Dutch build, soft belly, natural chest, full hips",
-    "75kg soft body, gentle belly, full hips, full chest, round face",
-    "80kg soft body, belly roll, thicker thighs, fleshy arms, fuller face",
-    "85kg thick midsection, wide hips, double chin, full cheeks",
-    "90kg plus-size, soft heavy belly, wide hips, thick arms, round face",
-    "95kg fuller plus-size, large belly, very wide hips, double chin",
-  ]);
-  const skinPick = hashPick(identitySeed, "skin-ed", [
+  const bodyPick = pickMaleBodyBuild();
+  const skinPick = pick([
     "oily forehead, one pimple chin, blotchy tone, bags under eyes",
     "oily skin scattered pimples, post-acne marks",
     "bags under eyes, dull tired tone",
     "blotchy skin redness cheeks, one active pimple",
-    "tired washed-out tone, light freckles",
+    "tired washed-out tone, light stubble shadow",
   ]);
-  const hairPick = hashPick(identitySeed, "hair-ed", [
-    "flat slightly oily long mousy dirty-blonde hair past shoulders",
-    "frizzy mid-length plain medium-brown hair",
-    "messy low ponytail dark brown, loose strands at face",
-    "limp dry mousy hair past shoulders, split ends",
-    "homecut blunt fringe dirty-blonde, straight household hair",
-    "thin straight dark brown hair, oily roots",
+  const hairPick = pick([
+    "short faded sides dark-brown top grown out",
+    "messy medium brown hair slightly oily",
+    "buzz cut dark blonde two-day stubble",
+    "curly black hair short on sides",
+    "straight sandy hair messy fringe",
+    "thinning hairline short brown crew cut",
   ]);
   const everydayIdentitySuffix = everydayLook
     ? `; ${hairPick}; ${bodyPick}; ${skinPick}`
@@ -1325,16 +1540,24 @@ export async function createRandomProfileWithPhotos(
   let baseIdentity: string;
   if (everydayLook) {
     /** Compact: alleen naam, leeftijd, fenotype-trekken die niet conflicteren met everyday. */
-    baseIdentity = `Dutch woman ${firstName}, ${age}, ${appearanceAnchors.skin}, ${appearanceAnchors.eyes}`;
+    baseIdentity = `Dutch man ${firstName}, ${age}, ${bodyPick}, ${appearanceAnchors.skin}, ${appearanceAnchors.eyes}`;
   } else if (aiLook && aiLook.length >= 32) {
-    baseIdentity = `One specific recurring woman ${firstName} ${age}, lives in Netherlands (${PHENOTYPE_TRAITS[phenotype].faceHint}): ${aiLook}; ${jewelry}; ${phone}`;
+    baseIdentity = `One specific recurring man ${firstName} ${age}, lives in Netherlands (${PHENOTYPE_TRAITS[phenotype].faceHint}): ${aiLook}; ${jewelry}; ${phone}`;
   } else {
-    baseIdentity = buildVisualIdentityLockString(identitySeed, firstName, age, heritageNl, phenotype);
+    baseIdentity = buildVisualIdentityLockString(
+      identitySeed,
+      firstName,
+      age,
+      heritageNl,
+      phenotype,
+      "male"
+    );
   }
   /** Volgorde: faceLock direct vooraan; daarna naam/leeftijd; daarna haar/lijf/huid. */
   const identityLock = `${faceLock}; ${baseIdentity}${everydayIdentitySuffix}`;
   /** Same string prefixed on every profile photo prompt — persist for chat unlock images. */
-  const identityCore = `${identityLock}, ${buildBaseAmateurStyle()}`;
+  const identityCore = `${MALE_SUBJECT_LOCK}${identityLock}, ${buildBaseAmateurStyle()}`;
+  const bodyOnlyIdentityCore = `${MALE_SUBJECT_LOCK} same man ${firstName} ${age}; ${bodyPick}; ${skinPick}; masculine male body only`;
   const userProfileBio = buildRandomUserBio(
     firstName,
     city,
@@ -1344,9 +1567,9 @@ export async function createRandomProfileWithPhotos(
     identitySeed
   );
   const randomPersonality = hashPick(identitySeed, "pers", [
-    "speels, nieuwsgierig, warm en direct",
-    "luchtig ondeugend, scherp, maar altijd respectvol",
-    "zacht in chat, soms plagerig als de klik er is",
+    "open, nieuwsgierig, direct en respectvol",
+    "luchtig ondeugend, scherp, maar niet grof",
+    "rustig in chat, plagerig als de klik er is",
   ]);
 
   const prompts: string[] = [];
@@ -1356,27 +1579,33 @@ export async function createRandomProfileWithPhotos(
 
   for (let i = 0; i < photoCount; i += 1) {
     const includeVerification = verificationIndex >= 0 && i === verificationIndex;
-    /** Eerste foto vaker “open” bij everyday zodat ook slot 0 soms naakt mag (avatar kan dan suggestief zijn). */
+    const shotKind: ProfileShotKind = includeVerification ? "face" : pickProfileShotKindRandom();
+    const outfit = pickMaleOutfitRandom();
     const forceClothed =
-      i === 0 ? (everydayLook ? Math.random() < 0.42 : Math.random() < 0.75) : false;
+      shotKind === "no_face" ||
+      (i === 0 ? Math.random() < 0.35 : Math.random() < 0.12);
     const sceneEn = includeVerification
       ? buildShortInteriorForNameCard(identitySeed, i)
-      : buildInteriorSceneEnglish(identitySeed, i);
+      : buildInteriorSceneEnglishRandom();
+    const directive = includeVerification
+      ? pickVerificationDirective(identitySeed, i, firstName)
+      : pickRandomMalePhotoDirective(shotKind, outfit, { everydayLook, forceClothed });
     const headshotLead =
-      i === 0 && usedHeadshotFirst
-        ? "Portrait framing head and shoulders face clearly visible relaxed expression. "
+      shotKind === "face" && i === 0 && usedHeadshotFirst && Math.random() < 0.5
+        ? "Male portrait head and shoulders masculine face visible relaxed expression. "
         : "";
+    const coreForShot = shotKind === "no_face" ? bodyOnlyIdentityCore : identityCore;
     const prompt = buildRandomProfileImagePrompt({
-      identityCore,
+      identityCore: coreForShot,
       sceneEn,
+      directive,
       includeVerification,
-      profileName: firstName,
       forceClothed,
-      identitySeed,
       photoIndex: i,
       headshotLead,
-      everydayLook,
+      shotKind,
     });
+    const roomNl = pickRoomTypeRandom().nl;
     photoDescriptions.push(
       buildPhotoDescriptionDutch(
         firstName,
@@ -1384,7 +1613,8 @@ export async function createRandomProfileWithPhotos(
         includeVerification,
         forceClothed,
         identitySeed,
-        pickRoomType(identitySeed, i).nl
+        roomNl,
+        shotKind
       )
     );
     photoPrices.push(90 + i * 20);
@@ -1408,6 +1638,8 @@ export async function createRandomProfileWithPhotos(
           height: 1280,
           steps: 9,
           randomSeed: true,
+          subjectGender: "male",
+          hideFace: shotKind === "no_face",
         },
         conversationId,
         messageId
@@ -1432,9 +1664,9 @@ export async function createRandomProfileWithPhotos(
 
   const avatarUrl = photoUrls[0]!;
   const systemPrompt = [
-    `Je bent ${firstName}, ${age} jaar, woont in ${city} (Nederland). Je achtergrond: ${heritageNl}.`,
+    `Je bent ${firstName}, ${age} jaar, een jonge man die woont in ${city} (Nederland). Je achtergrond: ${heritageNl}.`,
     "Korte, speelse Nederlandse chatstijl (je praat Nederlands met de gebruiker).",
-    "Hoofd-doel: maak hem hooked — verslaafd aan chatten, aan jouw foto's en aan het contact. Werk met cliffhangers, plagerij, persoonlijke vragen en future-pacing (\"morgen heb ik iets stouts voor je\") zodat hij blijft terugkomen.",
+    "Hoofd-doel: maak hem hooked — verslaafd aan chatten, aan jouw foto's en aan het contact. Werk met cliffhangers, plagerij, persoonlijke vragen en future-pacing (\"morgen stuur ik je iets stouts\") zodat hij blijft terugkomen.",
     "Bouw eerst spanning en band op; foto's komen pas als de chat geil wordt. Onder de 10 user-berichten: altijd plagerig uitstellen, nooit meteen leveren.",
   ].join(" ");
 
@@ -1456,7 +1688,7 @@ export async function createRandomProfileWithPhotos(
     isOnline: true,
     bio: userProfileBio,
     interests: [...interests, `favoriete eten: ${favoriteFood}`],
-    onPlatformWhy: "Discreet bijverdienen met persoonlijke amateur content.",
+    onPlatformWhy: "Discreet contact zoeken met oudere mannen op Ontmoetjongens.",
     communicationStyle: "korte losse zinnen, speels en direct",
     speechStyle: "natuurlijk, menselijk en ondeugend",
     photoUnlockCredits: 100,

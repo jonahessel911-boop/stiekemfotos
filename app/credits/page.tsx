@@ -78,7 +78,7 @@ export default function CreditsPage() {
             <Wallet className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Credits</h1>
+            <h1 className="platform-heading text-2xl">Credits</h1>
             <p className="text-sm text-gray-600 mt-1">
               Overzicht van je saldo.
             </p>

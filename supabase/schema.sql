@@ -133,7 +133,7 @@ create table if not exists profiles (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
   first_name text not null,
-  age integer not null check (age between 21 and 32),
+  age integer not null check (age between 18 and 30),
   city text not null,
   lengte_cm integer,
   gewicht_kg integer,

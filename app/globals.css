@@ -28,16 +28,16 @@ label {
 
 @layer base {
   :root {
-    --background: 220 14% 96%;
-    --foreground: 222.2 84% 4.9%;
-    --surface: #ffffff;
-    --surface-card: #f8fafc;
+    --background: 0 60% 97%;
+    --foreground: 0 0% 15%;
+    --surface: #fff0f0;
+    --surface-card: #ffffff;
     --brand: #dc2626;
-    /** Signup / login / wachtwoord */
-    --onboarding-bg: #fff5f5;
+    /** Signup / login / wachtwoord — zelfde tint als /start */
+    --onboarding-bg: #fff0f0;
     --onboarding-card: #ffffff;
-    --onboarding-footer-bg: #fee2e2;
-    --auth-shell-bg: #ffffff;
+    --onboarding-footer-bg: #fecaca;
+    --auth-shell-bg: #fff0f0;
   }
 
   /** /lander/2 — bordeaux-roze signup flow */
