@@ -1,25 +1,17 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import OntmoetjongensBrand from '@/components/OntmoetjongensBrand';
 import { CircularLoader } from '@/components/CircularLoader';
-import { Clock } from 'lucide-react';
 import Image from 'next/image';
 import ClickFlareCapture from '@/components/ClickFlareCapture';
 import OntmoetjongensPaidReturn from '@/components/OntmoetjongensPaidReturn';
-import { startOntmoetjongensCheckout } from '@/lib/start-ontmoetjongens-checkout';
+import StartPaymentCheckoutBlock from '@/components/StartPaymentCheckoutBlock';
 
 type Step = 'q1' | 'q2' | 'loading' | 'congrats' | 'discretion' | 'payment' | 'paid';
 
 const PAYMENT_TIMER_SECONDS = 60;
 const LOADING_MS = 4000;
-
-function formatCountdown(totalSeconds: number): string {
-  const s = Math.max(0, totalSeconds);
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-}
 
 function JaNeeButtons({ onAnswer }: { onAnswer: (ja: boolean) => void }) {
   return (
@@ -46,8 +38,6 @@ export default function StartPage() {
   const [step, setStep] = useState<Step>('q1');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(PAYMENT_TIMER_SECONDS);
-  const [checkoutBusy, setCheckoutBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (step !== 'loading') return;
@@ -73,17 +63,6 @@ export default function StartPage() {
     }, 250);
     return () => window.clearInterval(id);
   }, [step]);
-
-  const startCheckout = useCallback(async () => {
-    setError(null);
-    setCheckoutBusy(true);
-    try {
-      await startOntmoetjongensCheckout('/start');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Account voltooien mislukt');
-      setCheckoutBusy(false);
-    }
-  }, []);
 
   return (
     <div className="min-h-screen bg-[var(--onboarding-bg)] flex flex-col">
@@ -193,27 +172,7 @@ export default function StartPage() {
                 </p>
               </section>
 
-              <section className="start-payment-block" aria-live="polite">
-                <div
-                  className="start-timer-box mb-3 flex w-full items-center justify-center gap-2 px-4 py-2.5"
-                  aria-label={`${formatCountdown(secondsLeft)} om uw plek te reserveren`}
-                >
-                  <Clock className="h-4 w-4 shrink-0 text-[#dc2626]" aria-hidden />
-                  <span className="text-lg font-bold tabular-nums text-[#dc2626]">
-                    {formatCountdown(secondsLeft)}
-                  </span>
-                  <span className="text-sm text-gray-800">om uw plek te reserveren</span>
-                </div>
-                {error && <p className="start-error mb-3 text-sm px-4 py-2">{error}</p>}
-                <button
-                  type="button"
-                  disabled={checkoutBusy}
-                  onClick={startCheckout}
-                  className="start-btn start-btn-primary w-full py-4 px-6 text-lg text-center"
-                >
-                  {checkoutBusy ? 'Even geduld…' : 'Voltooi account'}
-                </button>
-              </section>
+              <StartPaymentCheckoutBlock startPath="/start" secondsLeft={secondsLeft} />
             </div>
           )}
 

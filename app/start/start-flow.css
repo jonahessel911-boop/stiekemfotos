@@ -79,6 +79,10 @@
   color: #7f1d1d;
 }
 
+.start-flow .start-email-input {
+  font-family: Tahoma, Verdana, Arial, sans-serif !important;
+}
+
 .start-flow .start-loader-track {
   fill: none;
   stroke: #fecaca;

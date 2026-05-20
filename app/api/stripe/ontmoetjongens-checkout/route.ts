@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
+import {
+  createSessionValue,
+  parseSessionValue,
+  SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE,
+} from "@/lib/server/session";
 import { findUserById } from "@/lib/server/users";
+import { registerStartLead } from "@/lib/server/startLead";
 import {
   getStripe,
   ONTMOETJONGENS_ONBOARDING,
@@ -25,9 +31,14 @@ function appendStripeSessionPlaceholder(urlStr: string): string {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as { returnUrl?: string; clickId?: string };
+    const body = (await req.json()) as {
+      returnUrl?: string;
+      clickId?: string;
+      email?: string;
+      startPath?: string;
+    };
     const jar = await cookies();
-    const userId = parseSessionValue(jar.get(SESSION_COOKIE_NAME)?.value);
+    let userId = parseSessionValue(jar.get(SESSION_COOKIE_NAME)?.value);
     const clickId =
       (typeof body.clickId === "string" ? body.clickId.trim() : "") ||
       jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim() ||
@@ -37,6 +48,19 @@ export async function POST(req: Request) {
     if (userId) {
       const user = await findUserById(userId);
       customerEmail = user?.email;
+    }
+
+    let setSessionUserId: string | null = null;
+    const bodyEmail = typeof body.email === "string" ? body.email.trim() : "";
+    if (!userId && bodyEmail) {
+      const { user } = await registerStartLead({
+        email: bodyEmail,
+        startPath: typeof body.startPath === "string" ? body.startPath.trim() : undefined,
+        clickId,
+      });
+      userId = user.id;
+      customerEmail = user.email;
+      setSessionUserId = user.id;
     }
 
     const baseReturn = resolveReturnUrl(body.returnUrl ?? `${SITE_URL}/start`);
@@ -98,7 +122,17 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ url: session.url, sessionId: session.id });
+    const res = NextResponse.json({ url: session.url, sessionId: session.id });
+    if (setSessionUserId) {
+      res.cookies.set(SESSION_COOKIE_NAME, createSessionValue(setSessionUserId), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: SESSION_MAX_AGE,
+        path: "/",
+      });
+    }
+    return res;
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Checkout maken mislukt." },
