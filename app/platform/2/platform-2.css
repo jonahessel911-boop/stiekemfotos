@@ -458,6 +458,10 @@
   font-size: 11px;
 }
 
+.platform2-main {
+  min-width: 0;
+}
+
 .platform2-footer {
   margin-top: 30px;
   padding-top: 16px;
@@ -465,6 +469,7 @@
   text-align: center;
   font-size: 11px;
   color: #666;
+  flex-shrink: 0;
 }
 
 .platform2-footer-links {
@@ -652,6 +657,7 @@
   padding: 8px 10px;
   background: #e8e8e8;
   border-bottom: 1px solid var(--p2-border);
+  flex-shrink: 0;
 }
 
 .platform2-chat-thread-head > div:not(:first-child) {
@@ -758,6 +764,7 @@
   padding: 10px;
   border-top: 1px solid var(--p2-border);
   background: #fafafa;
+  flex-shrink: 0;
 }
 
 .platform2-chat-compose input {
@@ -915,6 +922,59 @@
   .platform2-chat-nav,
   .platform2-chat-back {
     display: none !important;
+  }
+}
+
+/* Berichten: volle breedte op desktop, chat vult hoogte, footer onderaan pagina */
+.platform2-root--chat-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.platform2-root--chat-page .platform2-wrap--chat-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding-bottom: 12px;
+}
+
+.platform2-main--chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+}
+
+.platform2-main--chat .platform2-chat {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+  margin-bottom: 0;
+  width: 100%;
+}
+
+.platform2-root--chat-page .platform2-footer {
+  margin-top: 0;
+  padding: 14px clamp(10px, 2vw, 20px) 18px;
+  background: #fff;
+}
+
+@media (min-width: 1024px) {
+  .platform2-wrap--chat-page {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .platform2-main--chat .platform2-chat {
+    grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+    min-height: calc(100dvh - 200px);
   }
 }
 

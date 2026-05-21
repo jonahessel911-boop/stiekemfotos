@@ -51,6 +51,7 @@ import { saveConversationImage, saveConversationVoiceInput } from "@/lib/server/
 import { tryUploadImageToStorage } from "@/lib/server/imageStorage";
 import {
   findUserById,
+  resolveAppUserById,
   canSendInboxNotificationEmail,
   touchLastInboxNotificationEmail,
   updateUserPersonalFacts,
@@ -2835,27 +2836,43 @@ function previewTextForAdminNotify(messages: ChatMessage[]): string {
   return parts.join(" · ").slice(0, 200);
 }
 
-function scheduleAdminNotifyUserMessage(
-  conversationId: string,
-  userMessages: ChatMessage[]
-): void {
-  if (userMessages.length === 0) return;
-  void maybeNotifyAdminOfUserMessage(conversationId, userMessages).catch((e) => {
-    console.error("[admin-notify:user-message]", e);
-  });
-}
+type AdminNotifyConvHint = {
+  ownerUserId?: string;
+  profileName?: string;
+  lastAdminUserMessageEmailAt?: string;
+};
 
-async function maybeNotifyAdminOfUserMessage(
+async function notifyAdminOfUserMessage(
   conversationId: string,
-  userMessages: ChatMessage[]
+  userMessages: ChatMessage[],
+  hint?: AdminNotifyConvHint
 ): Promise<void> {
-  const to = getAdminNotifyEmail();
-  if (!to) return;
-  if (!process.env.POSTMARK_SERVER_TOKEN && !process.env.POSTMARK_API_TOKEN) return;
+  if (userMessages.length === 0) return;
 
-  const list = await loadList();
-  const conv = list.find((c) => c.id === conversationId);
-  if (!conv?.ownerUserId) return;
+  const to = getAdminNotifyEmail();
+  if (!to) {
+    console.warn("[admin-notify] ADMIN_NOTIFY_EMAIL leeg — geen mail");
+    return;
+  }
+  if (!process.env.POSTMARK_SERVER_TOKEN && !process.env.POSTMARK_API_TOKEN) {
+    console.error("[admin-notify] POSTMARK_SERVER_TOKEN ontbreekt — geen mail verstuurd");
+    return;
+  }
+
+  const conv =
+    hint?.ownerUserId != null
+      ? {
+          id: conversationId,
+          ownerUserId: hint.ownerUserId,
+          profileName: hint.profileName ?? "Profiel",
+          lastAdminUserMessageEmailAt: hint.lastAdminUserMessageEmailAt,
+        }
+      : await loadNormalizedConversationById(conversationId);
+
+  if (!conv?.ownerUserId) {
+    console.warn("[admin-notify] geen ownerUserId op gesprek", conversationId);
+    return;
+  }
 
   const now = Date.now();
   const lastMs = conv.lastAdminUserMessageEmailAt
@@ -2863,21 +2880,41 @@ async function maybeNotifyAdminOfUserMessage(
     : 0;
   if (lastMs && now - lastMs < ADMIN_USER_MESSAGE_NOTIFY_COOLDOWN_MS) return;
 
-  const owner = await findUserById(conv.ownerUserId);
-  if (!owner) return;
+  const owner = await resolveAppUserById(conv.ownerUserId);
+  if (!owner?.email) {
+    console.warn("[admin-notify] user niet gevonden of geen e-mail", conv.ownerUserId);
+    return;
+  }
 
   const preview = previewTextForAdminNotify(userMessages);
   await sendAdminNewUserMessageEmail({
     to,
     profileName: conv.profileName,
     userName: owner.naam || "Gebruiker",
-    userEmail: owner.email || "",
+    userEmail: owner.email,
     preview,
     conversationId: conv.id,
   });
   await updateConversationAtomic(conv.id, (latest) => {
     latest.lastAdminUserMessageEmailAt = new Date().toISOString();
   });
+  console.info("[admin-notify] mail verstuurd naar", to, "voor", conversationId);
+}
+
+async function notifyAdminOfUserMessageSafe(
+  conv: Conversation,
+  conversationId: string,
+  userMessages: ChatMessage[]
+): Promise<void> {
+  try {
+    await notifyAdminOfUserMessage(conversationId, userMessages, {
+      ownerUserId: conv.ownerUserId,
+      profileName: conv.profileName,
+      lastAdminUserMessageEmailAt: conv.lastAdminUserMessageEmailAt,
+    });
+  } catch (e) {
+    console.error("[admin-notify:user-message]", e);
+  }
 }
 
 async function maybeSendOfflineAssistantEmail(
@@ -3159,7 +3196,7 @@ export async function appendUserMessagesAndReply(
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
     }
-    scheduleAdminNotifyUserMessage(conversationId, userMessages);
+    await notifyAdminOfUserMessageSafe(conv, conversationId, userMessages);
     return {
       userMessages,
       assistantMessage: null,
@@ -3294,7 +3331,7 @@ export async function appendUserMessagesAndReply(
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
     }
-    scheduleAdminNotifyUserMessage(conversationId, userMessages);
+    await notifyAdminOfUserMessageSafe(conv, conversationId, userMessages);
     const prefDelay = Math.min(1200, getRealisticReplyDelay(realismState));
     const [_, preferenceText] = await Promise.all([
       sleep(prefDelay),
@@ -3337,7 +3374,7 @@ export async function appendUserMessagesAndReply(
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
     }
-    scheduleAdminNotifyUserMessage(conversationId, userMessages);
+    await notifyAdminOfUserMessageSafe(conv, conversationId, userMessages);
     // No direct reply here: avoid immediate extra follow-up bubbles.
     return {
       userMessages,
@@ -3443,7 +3480,7 @@ export async function appendUserMessagesAndReply(
   if (conv.ownerUserId) {
     await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
   }
-  scheduleAdminNotifyUserMessage(conversationId, userMessages);
+  await notifyAdminOfUserMessageSafe(conv, conversationId, userMessages);
 
   // Typing delay runs in parallel with Grok — do not stack artificial wait + model latency.
   const realisticDelay = getRealisticReplyDelay(realismState);

@@ -111,9 +111,11 @@ export default function Platform2Chrome({ children }: Props) {
     }
   };
 
+  const isChatPage = Boolean(pathname?.startsWith('/platform/2/berichten'));
+
   return (
-    <div className="platform2-root">
-      <div className="platform2-wrap">
+    <div className={`platform2-root${isChatPage ? ' platform2-root--chat-page' : ''}`}>
+      <div className={`platform2-wrap${isChatPage ? ' platform2-wrap--chat-page' : ''}`}>
         <header
           className={`platform2-header${signupFunnel && !sessionUser ? ' platform2-header--signup' : ''}`}
         >
@@ -229,7 +231,9 @@ export default function Platform2Chrome({ children }: Props) {
           </nav>
         ) : null}
 
-        {children}
+        <main className={`platform2-main${isChatPage ? ' platform2-main--chat' : ''}`}>
+          {children}
+        </main>
 
         <footer className="platform2-footer">
           <div className="platform2-footer-links">
