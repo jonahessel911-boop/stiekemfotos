@@ -7,6 +7,18 @@
     {
       "path": "/api/internal/daily-chat-prompt",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/internal/platform2-online-prompt",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/internal/platform2-online-prompt",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/internal/platform2-online-prompt",
+      "schedule": "0 19 * * *"
     }
   ]
 }

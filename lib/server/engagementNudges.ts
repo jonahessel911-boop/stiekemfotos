@@ -8,6 +8,7 @@ import {
   ENGAGEMENT_DEFER_MS,
   pruneEngagementOutboundLog,
 } from "@/lib/server/engagementWeeklyCap";
+import { isPlatform2User } from "@/lib/server/platform2-user";
 import {
   findUserById,
   updateUserEngagementOutboundLog,
@@ -88,6 +89,7 @@ export async function maybeSendEngagementNudges(userId: string): Promise<void> {
 
   const user = await findUserById(userId);
   if (!user) return;
+  if (isPlatform2User(user)) return;
 
   // SINGLE loadList() for the entire function — was previously O(slots) full blob loads + getConversation side effects
   const list = await loadList();

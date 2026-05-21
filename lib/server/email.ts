@@ -462,3 +462,139 @@ export async function sendGiftReceivedEmail(input: {
     text: `${t.text}\n\n${input.profileName} stuurde je ${input.credits} credits.`,
   });
 }
+
+/** Platform/2: gratis welkom — zelfde toon als toegangs-mail, CTA = inloggen (geen wachtwoord-setup). */
+export async function sendPlatform2WelcomeEmail(input: {
+  to: string;
+  naam: string;
+  loginUrl: string;
+}): Promise<void> {
+  const nm = escapeHtml(input.naam || "daar");
+  const loginHref = escapeHtml(
+    input.loginUrl.startsWith("http")
+      ? input.loginUrl
+      : `${getSiteUrl()}${input.loginUrl.startsWith("/") ? input.loginUrl : `/${input.loginUrl}`}`
+  );
+  const html = `<!DOCTYPE html>
+<html>
+  <body style="margin:0; padding:0; background:#ffffff; font-family:Arial, sans-serif; color:#111111;">
+    <div style="max-width:620px; margin:0 auto; padding:44px 24px; font-size:18px; line-height:1.65;">
+
+      <p>Hoi ${nm},</p>
+
+      <p>Gefeliciteerd.</p>
+
+      <p>Je bent toegelaten.</p>
+
+      <p>Je toegang staat klaar.</p>
+
+      <p>Log in en ontdek hoe je kunt chatten en afspreken met jongere mannen die zin hebben in een leuk gesprek.</p>
+
+      <br>
+
+      <p>Er staat al een bericht voor je klaar in je inbox.</p>
+
+      <p>Een simpele hoi is vaak genoeg om iets leuks te starten.</p>
+
+      <br>
+
+      <p>
+        <a href="${loginHref}" style="display:inline-block; background:#111827; color:#ffffff; text-decoration:none; padding:16px 24px; border-radius:4px; font-weight:bold;">
+          Inloggen
+        </a>
+      </p>
+
+      <br>
+
+      <p>Veel plezier,</p>
+
+      <p>Het team</p>
+
+    </div>
+  </body>
+</html>`;
+  const text = `Hoi ${input.naam || "daar"},
+
+Je account staat klaar. Log in en chat met mannen die online zijn.
+
+Inloggen: ${loginHref}
+
+Veel plezier,
+Het team`;
+
+  await sendMail({
+    to: input.to,
+    subject: "Welkom — je kunt nu chatten",
+    html,
+    text,
+  });
+}
+
+/** Platform/2: dagelijkse “nu online”-mail (raw HTML, profielnaam + leeftijd). */
+export async function sendPlatform2OnlinePromptEmail(input: {
+  to: string;
+  naam: string;
+  profiles: Array<{ name: string; age: number }>;
+  ctaUrl: string;
+}): Promise<void> {
+  const nm = escapeHtml(input.naam || "daar");
+  const ctaHref = escapeHtml(
+    input.ctaUrl.startsWith("http")
+      ? input.ctaUrl
+      : `${getSiteUrl()}${input.ctaUrl.startsWith("/") ? input.ctaUrl : `/${input.ctaUrl}`}`
+  );
+  const lines = input.profiles
+    .slice(0, 5)
+    .map(
+      (p) =>
+        `<p><strong>${escapeHtml(p.name)}, ${p.age}</strong> is nu online en wilt chatten.</p>`
+    )
+    .join("\n      ");
+  const first = input.profiles[0];
+  const subject = first
+    ? `${first.name} (${first.age}) is nu online en wilt chatten`
+    : "Iemand is online en wilt chatten";
+
+  const html = `<!DOCTYPE html>
+<html>
+  <body style="margin:0; padding:0; background:#ffffff; font-family:Arial, sans-serif; color:#111111;">
+    <div style="max-width:620px; margin:0 auto; padding:44px 24px; font-size:18px; line-height:1.65;">
+
+      <p>Hoi ${nm},</p>
+
+      <p>Er zijn mannen online die met je willen praten:</p>
+
+      <br>
+
+      ${lines || "<p>Er is iemand online en wilt chatten.</p>"}
+
+      <br>
+
+      <p>
+        <a href="${ctaHref}" style="display:inline-block; background:#111827; color:#ffffff; text-decoration:none; padding:16px 24px; border-radius:4px; font-weight:bold;">
+          Ga naar chat
+        </a>
+      </p>
+
+      <br>
+
+      <p>Veel plezier,</p>
+
+      <p>Het team</p>
+
+    </div>
+  </body>
+</html>`;
+
+  const textProfiles = input.profiles
+    .slice(0, 5)
+    .map((p) => `${p.name} (${p.age}) is nu online en wilt chatten.`)
+    .join("\n");
+
+  await sendMail({
+    to: input.to,
+    subject,
+    html,
+    text: `Hoi ${input.naam || "daar"},\n\n${textProfiles}\n\nGa naar chat: ${ctaHref}`,
+  });
+}

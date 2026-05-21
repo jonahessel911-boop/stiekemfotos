@@ -2,6 +2,7 @@ import type { Profile } from "@/lib/types/profile";
 import { appendAssistantOutboundForOwner } from "@/lib/server/conversations";
 import { sendDailyChatPromptEmail } from "@/lib/server/email";
 import { listDbProfiles } from "@/lib/server/profilesDb";
+import { isPlatform2User } from "@/lib/server/platform2-user";
 import type { UserRecord } from "@/lib/server/users";
 import { updateUserLastDailyChatPromptDay } from "@/lib/server/users";
 
@@ -66,6 +67,7 @@ export async function maybeSendDailyChatPromptForUser(
 ): Promise<"sent" | "skipped" | "error"> {
   if (profiles.length === 0) return "skipped";
   if (!user.email?.trim()) return "skipped";
+  if (isPlatform2User(user)) return "skipped";
   if (user.lastDailyChatPromptDay === todayKey) return "skipped";
 
   const token = process.env.POSTMARK_SERVER_TOKEN ?? process.env.POSTMARK_API_TOKEN ?? "";

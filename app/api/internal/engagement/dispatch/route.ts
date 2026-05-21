@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ensureUserInboxForOwner, listSummaries } from "@/lib/server/conversations";
 import { processDueAbandonmentOfferEmails } from "@/lib/server/abandonmentOffer";
 import { maybeSendEngagementNudges } from "@/lib/server/engagementNudges";
+import { isPlatform2User } from "@/lib/server/platform2-user";
 import { listUsers } from "@/lib/server/users";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
   let processed = 0;
   for (const user of users) {
     if (!user.id) continue;
+    if (isPlatform2User(user)) continue;
     try {
       await ensureUserInboxForOwner(user.id);
       await maybeSendEngagementNudges(user.id);

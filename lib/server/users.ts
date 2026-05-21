@@ -68,6 +68,14 @@ export type UserRecord = {
   abandonmentOfferEmailSentAt?: string;
   /** ClickFlare postback na signup op platform/2 (éénmalig). */
   clickflareSignupSentAt?: string;
+  /** `platform2` = gratis /platform/2 (eigen mail-flow, geen paid onboarding). */
+  signupSource?: string;
+  /** Welkomstmail platform/2 verstuurd. */
+  platform2WelcomeEmailSentAt?: string;
+  /** Kalenderdag (Amsterdam) voor online-prompt-teller. */
+  platform2OnlineEmailDay?: string;
+  /** Aantal online-prompt-mails vandaag (max. 3). */
+  platform2OnlineEmailCount?: number;
   /** Eigen profiel (platform/2 — Mijn profiel). */
   profilePhotoUrl?: string;
   profileBio?: string;
@@ -243,6 +251,7 @@ export type CreateUserInput = {
   zoekEigenschappen?: string[];
   geschatteMatches?: number;
   clickId?: string;
+  signupSource?: string;
 };
 
 export async function createUser(input: CreateUserInput): Promise<UserRecord> {
@@ -261,7 +270,10 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     voorwaardenAkkoord: input.voorwaardenAkkoord,
     createdAt,
     emailVerifiedAt: createdAt,
-    engagementSlots: await resolveEngagementSlotsForNewUser(createdAt),
+    engagementSlots:
+      input.signupSource === "platform2"
+        ? []
+        : await resolveEngagementSlotsForNewUser(createdAt),
     ...(input.zoekLeeftijdCategorie
       ? { zoekLeeftijdCategorie: input.zoekLeeftijdCategorie }
       : {}),
@@ -272,6 +284,7 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
       ? { geschatteMatches: input.geschatteMatches }
       : {}),
     ...(input.clickId && input.clickId.trim() ? { clickId: input.clickId.trim() } : {}),
+    ...(input.signupSource?.trim() ? { signupSource: input.signupSource.trim() } : {}),
     platformOnboardingCompletedAt: null,
   };
   const list = await load();

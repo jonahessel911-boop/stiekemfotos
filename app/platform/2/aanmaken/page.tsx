@@ -6,17 +6,15 @@ import Link from 'next/link';
 import Platform2Chrome from '@/components/platform2/Platform2Chrome';
 import { setStoredUser } from '@/lib/onboarding-client';
 
-const ZOEK_OPTIES = [
-  { value: 'vrouw', label: 'een man die een vrouw zoekt' },
-  { value: 'man', label: 'een vrouw die een man zoekt' },
-] as const;
+/** Platform/2: alleen mannen die mannen zoeken. */
+const ZOEK_WAARDE = 'man' as const;
+const ZOEK_LABEL = 'een man die een man zoekt';
 
 export default function Platform2AanmakenPage() {
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
   const [wachtwoord, setWachtwoord] = useState('');
   const [leeftijd, setLeeftijd] = useState('');
-  const [zoekt, setZoekt] = useState<(typeof ZOEK_OPTIES)[number]['value']>('vrouw');
   const [akkoord, setAkkoord] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,7 +52,7 @@ export default function Platform2AanmakenPage() {
           wachtwoord,
           discreetAkkoord: true,
           voorwaardenAkkoord: true,
-          zoekEigenschappen: [`zoekt_${zoekt}`],
+          zoekEigenschappen: [`zoekt_${ZOEK_WAARDE}`],
           source: 'platform2',
         }),
       });
@@ -112,12 +110,8 @@ export default function Platform2AanmakenPage() {
             </label>
             <label>
               <b>Ik ben</b>
-              <select value={zoekt} onChange={(e) => setZoekt(e.target.value as typeof zoekt)}>
-                {ZOEK_OPTIES.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
+              <select value={ZOEK_WAARDE} disabled aria-readonly>
+                <option value={ZOEK_WAARDE}>{ZOEK_LABEL}</option>
               </select>
             </label>
             <label>

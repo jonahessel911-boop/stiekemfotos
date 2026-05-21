@@ -2927,6 +2927,8 @@ async function maybeSendOfflineAssistantEmail(
   if (!conv?.ownerUserId) return;
   const owner = await findUserById(conv.ownerUserId);
   if (!owner?.email) return;
+  const { isPlatform2User } = await import("@/lib/server/platform2-user");
+  if (isPlatform2User(owner)) return;
   if (!canSendInboxNotificationEmail(owner)) return;
 
   const now = Date.now();

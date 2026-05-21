@@ -5,6 +5,7 @@ import { createUser, findUserByEmail, persistClickIdOnUser } from "@/lib/server/
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
 import { SVL_CLICK_ID_COOKIE } from "@/lib/clickflare-postback";
 import { sendPlatform2SignupClickflareIfNeeded } from "@/lib/server/platform2-signup-conversion";
+import { sendPlatform2WelcomeIfNeeded } from "@/lib/server/platform2-welcome";
 
 type SignupBody = {
   naam: string;
@@ -63,6 +64,8 @@ export async function POST(req: Request) {
     const jar = await cookies();
     const clickIdCookie = jar.get(SVL_CLICK_ID_COOKIE)?.value?.trim();
 
+    const isPlatform2 = String(body.source ?? "").trim() === "platform2";
+
     let user;
     try {
       user = await createUser({
@@ -76,6 +79,7 @@ export async function POST(req: Request) {
         ...(zoekEigenschappen?.length ? { zoekEigenschappen } : {}),
         ...(geschatteMatches != null ? { geschatteMatches } : {}),
         ...(clickIdCookie ? { clickId: clickIdCookie } : {}),
+        ...(isPlatform2 ? { signupSource: "platform2" } : {}),
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Fout";
@@ -100,8 +104,11 @@ export async function POST(req: Request) {
     });
     writeJson("onboarding-signups.json", list);
 
-    if (String(body.source ?? "").trim() === "platform2") {
+    if (isPlatform2) {
       await sendPlatform2SignupClickflareIfNeeded(user.id, clickIdCookie);
+      void sendPlatform2WelcomeIfNeeded(user).catch((e) => {
+        console.error("[platform2-welcome] signup:", e);
+      });
     }
 
     const res = NextResponse.json({

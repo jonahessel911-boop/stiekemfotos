@@ -350,14 +350,98 @@
   resize: vertical;
 }
 
-/* ——— Chats (3 kolommen) ——— */
+/* ——— Chats: platte lijst + thread ——— */
 .admin-chats {
   display: grid;
-  grid-template-columns: minmax(200px, 24%) minmax(200px, 28%) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 36%) minmax(0, 1fr);
   gap: 0;
   min-height: min(78vh, 780px);
   border: 1px solid var(--adm-border);
   background: #fff;
+}
+
+.admin-chats-nav {
+  display: none;
+}
+
+.admin-chats-back {
+  display: none;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: bold;
+  border: none;
+  border-bottom: 1px solid var(--adm-border);
+  background: var(--adm-head);
+  cursor: pointer;
+  font-family: inherit;
+  color: #003366;
+}
+
+.admin-chats-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid #e8e8e8;
+  background: #fff;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.admin-chats-row:hover {
+  background: #f0f6fc;
+}
+
+.admin-chats-row.is-active {
+  background: #fff3d6;
+  border-left: 3px solid var(--adm-sidebar-active);
+  padding-left: 9px;
+}
+
+.admin-chats-row-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.admin-chats-row-profile {
+  font-size: 14px;
+}
+
+.admin-chats-row-time {
+  flex-shrink: 0;
+  color: #888;
+  font-size: 11px;
+}
+
+.admin-chats-row-user {
+  color: #444;
+  font-weight: bold;
+}
+
+.admin-chats-row-preview {
+  color: #666;
+  margin-top: 2px;
+}
+
+.admin-chats-thread-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-chats-thread-title .sub {
+  display: block;
+  font-weight: normal;
+  color: #666;
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .admin-chats-col {
@@ -529,17 +613,60 @@
 
   .admin-chats {
     grid-template-columns: 1fr;
-    min-height: 0;
+    min-height: min(72dvh, 680px);
+    max-height: min(85dvh, 900px);
+  }
+
+  .admin-chats:not(.admin-chats--thread-open) .admin-chats-col--thread {
+    display: none;
+  }
+
+  .admin-chats--thread-open .admin-chats-col--inbox {
+    display: none;
+  }
+
+  .admin-chats--thread-open .admin-chats-nav {
+    display: block;
+  }
+
+  .admin-chats--thread-open .admin-chats-back {
+    display: block;
   }
 
   .admin-chats-col {
-    max-height: 220px;
     border-right: none;
-    border-bottom: 1px solid var(--adm-border);
+    border-bottom: none;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .admin-chats-col--inbox {
+    flex: 1;
+    min-height: 0;
   }
 
   .admin-chats-col--thread {
-    max-height: none;
-    min-height: 360px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .admin-chats-list {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .admin-chats-messages {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .admin-chats-row-profile {
+    font-size: 15px;
+  }
+
+  .admin-chats-list button {
+    padding: 12px;
   }
 }
