@@ -155,32 +155,69 @@ export default function Platform2Chrome({ children }: Props) {
           )}
         </header>
 
-        {authChecked && sessionUser ? (
+        {authChecked ? (
           <nav className="platform2-nav" aria-label="Hoofdmenu">
-            <Link
-              href="/platform/2/profielen"
-              className={platform2NavActive(pathname, '/platform/2/profielen') ? 'is-active' : undefined}
-            >
-              Zoek profielen
-            </Link>
-            <Link
-              href="/platform/2/berichten"
-              className={platform2NavActive(pathname, '/platform/2/berichten') ? 'is-active' : undefined}
-            >
-              Berichten
-            </Link>
-            <Link
-              href="/platform/2/mijn-profiel"
-              className={platform2NavActive(pathname, '/platform/2/mijn-profiel') ? 'is-active' : undefined}
-            >
-              Mijn profiel
-            </Link>
-            <Link
-              href="/platform/2/credits"
-              className={platform2NavActive(pathname, '/platform/2/credits') ? 'is-active' : undefined}
-            >
-              Credits kopen
-            </Link>
+            {sessionUser ? (
+              <>
+                <Link
+                  href="/platform/2/profielen"
+                  className={
+                    platform2NavActive(pathname, '/platform/2/profielen') ? 'is-active' : undefined
+                  }
+                >
+                  Zoek profielen
+                </Link>
+                <Link
+                  href="/platform/2/berichten"
+                  className={
+                    platform2NavActive(pathname, '/platform/2/berichten') ? 'is-active' : undefined
+                  }
+                >
+                  Berichten
+                </Link>
+                <Link
+                  href="/platform/2/mijn-profiel"
+                  className={
+                    platform2NavActive(pathname, '/platform/2/mijn-profiel') ? 'is-active' : undefined
+                  }
+                >
+                  Mijn profiel
+                </Link>
+                <Link
+                  href="/platform/2/credits"
+                  className={
+                    platform2NavActive(pathname, '/platform/2/credits') ? 'is-active' : undefined
+                  }
+                >
+                  Credits kopen
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/platform/2/aanmaken"
+                  className={
+                    pathname === '/platform/2/aanmaken' || pathname === '/platform/2'
+                      ? 'is-active'
+                      : undefined
+                  }
+                >
+                  Gratis aanmelden
+                </Link>
+                <Link
+                  href="/platform/2/aanmelden"
+                  className={platform2NavActive(pathname, '/platform/2/aanmelden') ? 'is-active' : undefined}
+                >
+                  Inloggen
+                </Link>
+                <Link
+                  href="/platform/2/profielen"
+                  className={platform2NavActive(pathname, '/platform/2/profielen') ? 'is-active' : undefined}
+                >
+                  Profielen
+                </Link>
+              </>
+            )}
           </nav>
         ) : null}
 
