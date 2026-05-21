@@ -2829,7 +2829,7 @@ function previewTextForAdminNotify(messages: ChatMessage[]): string {
   const parts = messages.map((m) => {
     const text = (m.content || "").trim();
     if (m.voice) return m.voice.transcript?.trim() || "🎤 Spraakbericht";
-    if (m.imageUrl || m.type === "locked_photo") return "📷 Foto";
+    if (m.imageUrl || m.photoLock) return "📷 Foto";
     return text || "Bericht";
   });
   return parts.join(" · ").slice(0, 200);

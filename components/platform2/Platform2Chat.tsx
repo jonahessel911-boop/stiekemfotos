@@ -11,7 +11,6 @@ import {
   spendChatCredit,
   refundChatCredit,
 } from '@/lib/credits-client';
-import { scheduleTypingIndicatorFromEvents } from '@/lib/chat-typing-indicator';
 import { avatarUrlForSummary, formatP2MessageTime } from '@/lib/platform2-chat-utils';
 import { resolveProfileImageUrl } from '@/lib/profile-image-url';
 
@@ -27,11 +26,9 @@ export default function Platform2Chat() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingThread, setLoadingThread] = useState(false);
   const [sending, setSending] = useState(false);
-  const [peerTyping, setPeerTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [credits, setCredits] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const typingPlaybackCleanupRef = useRef<(() => void) | null>(null);
   const chatHistoryPushedRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -66,10 +63,19 @@ export default function Platform2Chat() {
       const data = (await res.json()) as { conversation?: Conversation; error?: string };
       if (!res.ok) throw new Error(data.error || 'Gesprek niet gevonden');
       if (data.conversation) {
-        setConversation(data.conversation);
-        typingPlaybackCleanupRef.current?.();
-        typingPlaybackCleanupRef.current = null;
-        setPeerTyping(false);
+        setConversation((prev) => {
+          if (!soft || !prev || prev.id !== id) return data.conversation!;
+          const incomingIds = new Set(data.conversation!.messages.map((m) => m.id));
+          const carry = prev.messages.filter((m) => !incomingIds.has(m.id));
+          if (carry.length === 0) return data.conversation!;
+          return {
+            ...data.conversation!,
+            messages: sortChatMessagesChronologically([
+              ...data.conversation!.messages,
+              ...carry,
+            ]),
+          };
+        });
       }
     } catch (e) {
       if (!soft) setError(e instanceof Error ? e.message : 'Fout');
@@ -168,13 +174,7 @@ export default function Platform2Chat() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation?.messages.length, peerTyping]);
-
-  useEffect(() => {
-    return () => {
-      typingPlaybackCleanupRef.current?.();
-    };
-  }, []);
+  }, [conversation?.messages.length]);
 
   const send = async () => {
     const text = draft.trim();
@@ -189,9 +189,6 @@ export default function Platform2Chat() {
     setDraft('');
     spendChatCredit(CREDITS_PER_MESSAGE);
     syncCredits();
-    typingPlaybackCleanupRef.current?.();
-    typingPlaybackCleanupRef.current = null;
-    setPeerTyping(false);
 
     const optimistic: ChatMessage = {
       id: `opt-${Date.now()}`,
@@ -227,58 +224,22 @@ export default function Platform2Chat() {
         refundChatCredit(CREDITS_PER_MESSAGE);
         syncCredits();
         setError('Credits op. Koop meer om te antwoorden.');
-        setPeerTyping(false);
         return;
       }
 
-      const assistant = data.assistantMessage ?? null;
       const userMsgs = data.userMessages ?? [];
-
-      if (assistant?.typingEvents?.length) {
-        setConversation((c) => {
-          if (!c || c.id !== sid) return c;
-          const withoutOpt = c.messages.filter((m) => m.id !== optimistic.id);
-          const ids = new Set(withoutOpt.map((m) => m.id));
-          const freshUser = userMsgs.filter((m) => !ids.has(m.id));
-          return {
-            ...c,
-            messages: sortChatMessagesChronologically([...withoutOpt, ...freshUser]),
-          };
-        });
-        typingPlaybackCleanupRef.current?.();
-        typingPlaybackCleanupRef.current = scheduleTypingIndicatorFromEvents(
-          assistant.typingEvents,
-          setPeerTyping
-        );
-        const assistantToShow = assistant;
-        window.setTimeout(() => {
-          typingPlaybackCleanupRef.current?.();
-          typingPlaybackCleanupRef.current = null;
-          setPeerTyping(false);
-          setConversation((c) => {
-            if (!c || c.id !== sid) return c;
-            const ids = new Set(c.messages.map((m) => m.id));
-            if (ids.has(assistantToShow.id)) return c;
-            return {
-              ...c,
-              messages: sortChatMessagesChronologically([...c.messages, assistantToShow]),
-            };
-          });
-        }, typingPlaybackDurationMs(assistant.typingEvents));
-      } else {
-        setConversation((c) => {
-          if (!c || c.id !== sid) return c;
-          const add = [...userMsgs, ...(assistant ? [assistant] : [])];
-          const ids = new Set(c.messages.map((m) => m.id));
-          const fresh = add.filter((m) => !ids.has(m.id));
-          const withoutOpt = c.messages.filter((m) => m.id !== optimistic.id);
-          return {
-            ...c,
-            messages: sortChatMessagesChronologically([...withoutOpt, ...fresh]),
-          };
-        });
-        setPeerTyping(false);
-      }
+      const assistant = data.assistantMessage ?? null;
+      setConversation((c) => {
+        if (!c || c.id !== sid) return c;
+        const add = [...userMsgs, ...(assistant ? [assistant] : [])];
+        const ids = new Set(c.messages.map((m) => m.id));
+        const fresh = add.filter((m) => !ids.has(m.id));
+        const withoutOpt = c.messages.filter((m) => m.id !== optimistic.id);
+        return {
+          ...c,
+          messages: sortChatMessagesChronologically([...withoutOpt, ...fresh]),
+        };
+      });
       void fetchList();
     } catch (e) {
       refundChatCredit(CREDITS_PER_MESSAGE);
@@ -289,22 +250,10 @@ export default function Platform2Chat() {
           : c
       );
       setError(e instanceof Error ? e.message : 'Versturen mislukt');
-      setPeerTyping(false);
     } finally {
       setSending(false);
     }
   };
-
-  function typingPlaybackDurationMs(events: NonNullable<ChatMessage['typingEvents']>): number {
-    if (!events?.length) return 0;
-    const base = new Date(events[0]!.startedAt).getTime();
-    const end = events.reduce((max, ev) => {
-      const t = [new Date(ev.startedAt).getTime()];
-      if (ev.stoppedAt) t.push(new Date(ev.stoppedAt).getTime());
-      return Math.max(max, ...t);
-    }, base);
-    return Math.max(0, end - base) + 120;
-  }
 
   const backToInbox = () => {
     if (chatHistoryPushedRef.current) {
@@ -430,18 +379,6 @@ export default function Platform2Chat() {
                       <small>{formatP2MessageTime(m.createdAt)}</small>
                     </div>
                   ))}
-                  {peerTyping ? (
-                    <div className="platform2-bubble platform2-bubble-in platform2-typing">
-                      <span className="sr-only">
-                        {conversation?.profileName ?? 'Ze'} is aan het typen
-                      </span>
-                      <span className="platform2-typing-dots" aria-hidden>
-                        <span className="typing-dot" />
-                        <span className="typing-dot" style={{ animationDelay: '0.18s' }} />
-                        <span className="typing-dot" style={{ animationDelay: '0.36s' }} />
-                      </span>
-                    </div>
-                  ) : null}
                   <div ref={messagesEndRef} />
                 </>
               )}

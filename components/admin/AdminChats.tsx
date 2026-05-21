@@ -1,17 +1,30 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useAdmin } from '@/components/admin/AdminProvider';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fmt } from '@/components/admin/admin-utils';
-import {
-  isConversationAwaitingReply,
-  openChatsForUser,
-} from '@/lib/admin/chat-open';
-import type { AdminChatMessage } from '@/lib/admin/types';
+import { countOpenChats } from '@/lib/admin/chat-open';
+import type { AdminChatMessage, AdminConversation, AdminUserConversations } from '@/lib/admin/types';
+
+type ChatsPayload = {
+  conversationsByUser: AdminUserConversations[];
+  openChats: number;
+};
+
+function patchUserConv(
+  users: AdminUserConversations[],
+  convId: string,
+  patch: (c: AdminConversation) => AdminConversation
+): AdminUserConversations[] {
+  return users.map((u) => ({
+    ...u,
+    conversations: u.conversations.map((c) => (c.id === convId ? patch(c) : c)),
+  }));
+}
 
 export default function AdminChats() {
-  const { data, loading, appendAdminConversationMessage, reconcileAdminConversationMessage } =
-    useAdmin();
+  const [chats, setChats] = useState<ChatsPayload | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [listLoading, setListLoading] = useState(true);
   const [userQuery, setUserQuery] = useState('');
   const [convQuery, setConvQuery] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -20,11 +33,32 @@ export default function AdminChats() {
   const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sendGuardRef = useRef(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const openChats = data?.stats.openChats ?? 0;
+  const loadChats = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setListLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetch('/api/admin/chats', { credentials: 'include', cache: 'no-store' });
+      const body = (await res.json()) as ChatsPayload & { error?: string };
+      if (!res.ok) throw new Error(body.error || 'Chats laden mislukt');
+      setChats({
+        conversationsByUser: body.conversationsByUser ?? [],
+        openChats: body.openChats ?? 0,
+      });
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Fout');
+    } finally {
+      if (!opts?.silent) setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadChats();
+  }, [loadChats]);
 
   const users = useMemo(() => {
-    let list = data?.conversationsByUser ?? [];
+    let list = chats?.conversationsByUser ?? [];
     const q = userQuery.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -35,7 +69,7 @@ export default function AdminChats() {
       );
     }
     return list;
-  }, [data?.conversationsByUser, userQuery]);
+  }, [chats?.conversationsByUser, userQuery]);
 
   const effectiveUserId = selectedUserId ?? users[0]?.userId ?? null;
   const selectedUser = users.find((u) => u.userId === effectiveUserId) ?? null;
@@ -51,17 +85,110 @@ export default function AdminChats() {
           c.id.toLowerCase().includes(q)
       );
     }
-    return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return list;
   }, [selectedUser, convQuery]);
 
   const effectiveConvId = selectedConvId ?? conversations[0]?.id ?? null;
   const selectedConv = conversations.find((c) => c.id === effectiveConvId) ?? null;
   const threadMessages: AdminChatMessage[] = selectedConv?.history ?? [];
-  const awaitingReply = selectedConv ? isConversationAwaitingReply(threadMessages) : false;
+
+  const refreshThread = useCallback(
+    async (convId: string) => {
+      try {
+        const res = await fetch(`/api/admin/conversations/${convId}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const body = (await res.json()) as {
+          conversation?: {
+            id: string;
+            messages: AdminChatMessage[];
+            updatedAt: string;
+          };
+          error?: string;
+        };
+        if (!res.ok || !body.conversation) return;
+        const msgs = body.conversation.messages;
+        const last = msgs[msgs.length - 1];
+        setChats((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            conversationsByUser: patchUserConv(prev.conversationsByUser, convId, (c) => ({
+              ...c,
+              history: msgs,
+              messages: msgs.length,
+              lastMessage: last?.content?.slice(0, 240) ?? c.lastMessage,
+              updatedAt: body.conversation!.updatedAt,
+            })),
+          };
+        });
+      } catch {
+        /* stille poll */
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (!effectiveConvId) return;
+    pollRef.current = setInterval(() => {
+      void refreshThread(effectiveConvId);
+    }, 8000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [effectiveConvId, refreshThread]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [threadMessages.length, effectiveConvId]);
+
+  const appendMessage = useCallback((convId: string, message: AdminChatMessage) => {
+    setChats((prev) => {
+      if (!prev) return prev;
+      const conversationsByUser = patchUserConv(prev.conversationsByUser, convId, (c) => ({
+        ...c,
+        history: [...c.history, message],
+        messages: c.messages + 1,
+        lastMessage: message.content.slice(0, 240),
+        updatedAt: message.createdAt,
+      }));
+      return {
+        ...prev,
+        conversationsByUser,
+        openChats: countOpenChats(conversationsByUser),
+      };
+    });
+  }, []);
+
+  const reconcileMessage = useCallback(
+    (convId: string, tempId: string, message: AdminChatMessage | null) => {
+      setChats((prev) => {
+        if (!prev) return prev;
+        const conversationsByUser = patchUserConv(prev.conversationsByUser, convId, (c) => {
+          const history = message
+            ? c.history.map((m) => (m.id === tempId ? message : m))
+            : c.history.filter((m) => m.id !== tempId);
+          const last = history[history.length - 1];
+          return {
+            ...c,
+            history,
+            messages: message ? c.messages : Math.max(0, c.messages - 1),
+            lastMessage: last?.content.slice(0, 240) ?? c.lastMessage,
+            updatedAt: last?.createdAt ?? c.updatedAt,
+          };
+        });
+        return {
+          ...prev,
+          conversationsByUser,
+          openChats: countOpenChats(conversationsByUser),
+        };
+      });
+    },
+    []
+  );
 
   const pickUser = (userId: string) => {
     setSelectedUserId(userId);
@@ -73,6 +200,7 @@ export default function AdminChats() {
   const pickConv = (convId: string) => {
     setSelectedConvId(convId);
     setSendError(null);
+    void refreshThread(convId);
   };
 
   const sendAsProfile = () => {
@@ -87,7 +215,7 @@ export default function AdminChats() {
       createdAt: new Date().toISOString(),
     };
 
-    appendAdminConversationMessage(effectiveConvId, optimistic);
+    appendMessage(effectiveConvId, optimistic);
     setDraft('');
     setSendError(null);
     sendGuardRef.current = true;
@@ -105,13 +233,13 @@ export default function AdminChats() {
           message?: AdminChatMessage;
         };
         if (!res.ok) throw new Error(body.error || 'Versturen mislukt');
-        if (body.message) {
-          reconcileAdminConversationMessage(effectiveConvId, tempId, body.message);
-        } else {
-          reconcileAdminConversationMessage(effectiveConvId, tempId, optimistic);
-        }
+        reconcileMessage(
+          effectiveConvId,
+          tempId,
+          body.message ?? optimistic
+        );
       } catch (e) {
-        reconcileAdminConversationMessage(effectiveConvId, tempId, null);
+        reconcileMessage(effectiveConvId, tempId, null);
         setSendError(e instanceof Error ? e.message : 'Versturen mislukt');
       } finally {
         sendGuardRef.current = false;
@@ -119,7 +247,9 @@ export default function AdminChats() {
     })();
   };
 
-  if (loading && !data) {
+  const openChats = chats?.openChats ?? 0;
+
+  if (listLoading && !chats) {
     return <p className="admin-chats-empty">Laden…</p>;
   }
 
@@ -128,11 +258,11 @@ export default function AdminChats() {
       <div className="admin-panel" style={{ marginBottom: 12 }}>
         <div className="admin-panel-head">
           Chats — handmatig beantwoorden
-          <small>
-            {openChats} open · AI uit — antwoord als profiel hieronder
-          </small>
+          <small>{openChats} open · AI uit</small>
         </div>
       </div>
+
+      {loadError ? <div className="admin-alert admin-alert-error">{loadError}</div> : null}
 
       <div className="admin-chats">
         <div className="admin-chats-col">
@@ -147,30 +277,21 @@ export default function AdminChats() {
           </div>
           <ul className="admin-chats-list">
             {users.length === 0 ? (
-              <li className="admin-chats-empty">Geen users</li>
+              <li className="admin-chats-empty">Geen gesprekken</li>
             ) : (
-              users.map((u) => {
-                const open = openChatsForUser(u);
-                return (
-                  <li key={u.userId}>
-                    <button
-                      type="button"
-                      className={effectiveUserId === u.userId ? 'is-active' : ''}
-                      onClick={() => pickUser(u.userId)}
-                    >
-                      <strong>
-                        {u.userName}
-                        {open > 0 ? <span className="admin-chat-open-dot"> {open}</span> : null}
-                      </strong>
-                      <span className="sub">{u.userEmail}</span>
-                      <span className="sub">
-                        {open > 0 ? `${open} open · ` : ''}
-                        {u.conversations.length} gesprekken
-                      </span>
-                    </button>
-                  </li>
-                );
-              })
+              users.map((u) => (
+                <li key={u.userId}>
+                  <button
+                    type="button"
+                    className={effectiveUserId === u.userId ? 'is-active' : ''}
+                    onClick={() => pickUser(u.userId)}
+                  >
+                    <strong>{u.userName}</strong>
+                    <span className="sub">{u.userEmail}</span>
+                    <span className="sub">{u.conversations.length} gesprekken</span>
+                  </button>
+                </li>
+              ))
             )}
           </ul>
         </div>
@@ -195,27 +316,21 @@ export default function AdminChats() {
             ) : conversations.length === 0 ? (
               <li className="admin-chats-empty">Geen gesprekken</li>
             ) : (
-              conversations.map((c) => {
-                const open = isConversationAwaitingReply(c.history);
-                return (
-                  <li key={c.id}>
-                    <button
-                      type="button"
-                      className={effectiveConvId === c.id ? 'is-active' : ''}
-                      onClick={() => pickConv(c.id)}
-                    >
-                      <strong>
-                        {c.profileName}
-                        {open ? <span className="admin-chat-open-tag"> OPEN</span> : null}
-                      </strong>
-                      <span className="sub">
-                        {c.messages} berichten · {fmt(c.updatedAt)}
-                      </span>
-                      <span className="sub">{c.lastMessage || '—'}</span>
-                    </button>
-                  </li>
-                );
-              })
+              conversations.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    className={effectiveConvId === c.id ? 'is-active' : ''}
+                    onClick={() => pickConv(c.id)}
+                  >
+                    <strong>{c.profileName}</strong>
+                    <span className="sub">
+                      {c.messages} berichten · {fmt(c.updatedAt)}
+                    </span>
+                    <span className="sub">{c.lastMessage || '—'}</span>
+                  </button>
+                </li>
+              ))
             )}
           </ul>
         </div>
@@ -225,9 +340,6 @@ export default function AdminChats() {
             {selectedConv ? (
               <>
                 Antwoord als <strong>{selectedConv.profileName}</strong>
-                {awaitingReply ? (
-                  <span className="admin-chat-open-tag"> · wacht op antwoord</span>
-                ) : null}
               </>
             ) : (
               'Berichten'
@@ -263,7 +375,7 @@ export default function AdminChats() {
               className="admin-chats-compose"
               onSubmit={(e) => {
                 e.preventDefault();
-                void sendAsProfile();
+                sendAsProfile();
               }}
             >
               {sendError ? <div className="admin-alert admin-alert-error">{sendError}</div> : null}
@@ -273,6 +385,12 @@ export default function AdminChats() {
                 placeholder={`Typ als ${selectedConv.profileName}…`}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendAsProfile();
+                  }
+                }}
               />
               <button
                 type="submit"

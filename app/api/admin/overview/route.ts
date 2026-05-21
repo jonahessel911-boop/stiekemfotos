@@ -6,6 +6,7 @@ import {
   revenueAndPurchasesByDay,
   signupsByDay,
 } from "@/lib/server/adminAnalytics";
+import { adminChatsPayload, buildAdminConversationsByUser } from "@/lib/server/adminChatsPayload";
 import { loadAdminDataset } from "@/lib/server/adminDataset";
 
 export async function GET() {
@@ -53,26 +54,7 @@ export async function GET() {
     };
   });
 
-  const conversationsByUser = users.map((u) => ({
-    userId: u.id,
-    userEmail: u.email,
-    userName: u.naam,
-    conversations: conversations
-      .filter((c) => c.ownerUserId === u.id)
-      .map((c) => ({
-        id: c.id,
-        profileName: c.profileName,
-        updatedAt: c.updatedAt,
-        messages: c.messages.length,
-        lastMessage: c.messages[c.messages.length - 1]?.content ?? "",
-        history: c.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          createdAt: m.createdAt,
-        })),
-      })),
-  }));
+  const conversationsByUser = buildAdminConversationsByUser(users, conversations);
 
   const purchasesTable = paid
     .map((p) => ({
@@ -104,13 +86,7 @@ export async function GET() {
     totalCreditsPurchased,
   } = revenueAndPurchasesByDay(paid, chartDays);
 
-  let openChats = 0;
-  for (const c of conversations) {
-    const msgs = c.messages;
-    if (msgs.length > 0 && msgs[msgs.length - 1]!.role === "user") {
-      openChats += 1;
-    }
-  }
+  const { openChats } = adminChatsPayload(users, conversations);
 
   return NextResponse.json({
     stats: {
