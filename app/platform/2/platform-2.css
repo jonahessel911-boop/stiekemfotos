@@ -77,6 +77,10 @@
   font-weight: normal;
 }
 
+.platform2-header--signup {
+  justify-content: flex-start;
+}
+
 .platform2-login {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
@@ -85,6 +89,13 @@
   font-size: 12px;
   width: 100%;
   max-width: 100%;
+}
+
+/* Geen header-login op mobiel (signup-funnel gebruikt alleen tekstlink in formulier). */
+@media (max-width: 767px) {
+  .platform2-login--header {
+    display: none !important;
+  }
 }
 
 @media (min-width: 480px) {
@@ -269,9 +280,15 @@
 }
 
 .platform2-signup-login-hint {
-  margin-top: 10px;
-  font-size: 11px;
+  margin-top: 12px;
+  font-size: 13px;
   text-align: center;
+}
+
+.platform2-signup-login-hint a {
+  color: #003366;
+  font-weight: bold;
+  text-decoration: underline;
 }
 
 .platform2-hero {
@@ -718,15 +735,21 @@
 }
 
 .platform2-typing {
-  font-style: italic;
-  color: #555;
-  animation: platform2-pulse 1.2s ease-in-out infinite;
+  padding: 12px 16px;
 }
 
-@keyframes platform2-pulse {
-  50% {
-    opacity: 0.6;
-  }
+.platform2-typing-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.platform2-typing-dots .typing-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #94a3b8;
 }
 
 .platform2-chat-compose {
@@ -846,19 +869,11 @@
   }
 
   .platform2-searchbar {
-    flex-direction: column;
-    align-items: stretch;
+    display: none;
   }
 
-  .platform2-searchbar label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .platform2-searchbar .platform2-btn {
-    width: 100%;
-    margin-left: 0 !important;
+  .platform2-results-bar {
+    border-top: 1px solid var(--p2-border);
   }
 
   .platform2-card img {

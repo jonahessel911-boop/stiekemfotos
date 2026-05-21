@@ -33,7 +33,7 @@ function navActive(pathname: string, href: string, exact?: boolean) {
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { loading, error, data, load, logout, resetBusy } = useAdmin();
+  const { refreshing, error, data, load, logout, resetBusy } = useAdmin();
   const title = TITLES[pathname] ?? 'Admin';
   const openChats = useMemo(
     () => data?.stats.openChats ?? countOpenChats(data?.conversationsByUser ?? []),
@@ -76,10 +76,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <button
               type="button"
               className="admin-btn"
-              disabled={loading || resetBusy}
+              disabled={refreshing || resetBusy}
               onClick={() => void load()}
             >
-              {loading ? 'Laden…' : 'Vernieuwen'}
+              Vernieuwen
             </button>
             <button type="button" className="admin-btn" onClick={() => void logout()}>
               Uitloggen

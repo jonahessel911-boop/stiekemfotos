@@ -17,8 +17,14 @@ function platform2NavActive(pathname: string | null, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Alleen signup — geen header-login, menu minimaal (ClickFlare bij aanmelden). */
+function isPlatform2SignupFunnel(pathname: string | null): boolean {
+  return pathname === '/platform/2/aanmaken' || pathname === '/platform/2';
+}
+
 export default function Platform2Chrome({ children }: Props) {
   const pathname = usePathname();
+  const signupFunnel = isPlatform2SignupFunnel(pathname);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -108,7 +114,9 @@ export default function Platform2Chrome({ children }: Props) {
   return (
     <div className="platform2-root">
       <div className="platform2-wrap">
-        <header className="platform2-header">
+        <header
+          className={`platform2-header${signupFunnel && !sessionUser ? ' platform2-header--signup' : ''}`}
+        >
           <Link href="/platform/2/aanmaken" className="platform2-logo">
             <span>Stiekem</span>
             <em>fotos</em> <small>.nl</small>
@@ -127,8 +135,8 @@ export default function Platform2Chrome({ children }: Props) {
                 {logoutBusy ? '…' : 'Uitloggen'}
               </button>
             </div>
-          ) : authChecked ? (
-            <form className="platform2-login" onSubmit={headerLogin}>
+          ) : authChecked && !signupFunnel ? (
+            <form className="platform2-login platform2-login--header" onSubmit={headerLogin}>
               <input
                 type="text"
                 placeholder="Naam/E-mail"
@@ -150,12 +158,12 @@ export default function Platform2Chrome({ children }: Props) {
                 <span className="platform2-login-error">{loginErr}</span>
               ) : null}
             </form>
-          ) : (
+          ) : !authChecked ? (
             <div className="platform2-user-bar platform2-user-bar--loading">…</div>
-          )}
+          ) : null}
         </header>
 
-        {authChecked ? (
+        {authChecked && !signupFunnel ? (
           <nav className="platform2-nav" aria-label="Hoofdmenu">
             {sessionUser ? (
               <>

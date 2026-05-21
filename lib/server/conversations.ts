@@ -65,7 +65,12 @@ import {
 } from "@/lib/server/imageGen";
 import { callGrokResponses, callXaiResponses, buildProfileInstructions, sanitizeAssistantChatText } from "@/lib/grok";
 import { buildStableVisualIdentityForProfile } from "@/lib/server/profileVisualIdentity";
-import { sendGiftReceivedEmail, sendOfflineNewMessageEmail } from "@/lib/server/email";
+import {
+  getAdminNotifyEmail,
+  sendAdminNewUserMessageEmail,
+  sendGiftReceivedEmail,
+  sendOfflineNewMessageEmail,
+} from "@/lib/server/email";
 import { upsertAppUserToSupabaseUsers } from "@/lib/server/supabaseUserSync";
 import {
   dedupeChatMessagesById,
@@ -2818,6 +2823,63 @@ export async function recordOwnerPolledConversation(
   }
 }
 
+const ADMIN_USER_MESSAGE_NOTIFY_COOLDOWN_MS = 2 * 60 * 1000;
+
+function previewTextForAdminNotify(messages: ChatMessage[]): string {
+  const parts = messages.map((m) => {
+    const text = (m.content || "").trim();
+    if (m.voice) return m.voice.transcript?.trim() || "🎤 Spraakbericht";
+    if (m.imageUrl || m.type === "locked_photo") return "📷 Foto";
+    return text || "Bericht";
+  });
+  return parts.join(" · ").slice(0, 200);
+}
+
+function scheduleAdminNotifyUserMessage(
+  conversationId: string,
+  userMessages: ChatMessage[]
+): void {
+  if (userMessages.length === 0) return;
+  void maybeNotifyAdminOfUserMessage(conversationId, userMessages).catch((e) => {
+    console.error("[admin-notify:user-message]", e);
+  });
+}
+
+async function maybeNotifyAdminOfUserMessage(
+  conversationId: string,
+  userMessages: ChatMessage[]
+): Promise<void> {
+  const to = getAdminNotifyEmail();
+  if (!to) return;
+  if (!process.env.POSTMARK_SERVER_TOKEN && !process.env.POSTMARK_API_TOKEN) return;
+
+  const list = await loadList();
+  const conv = list.find((c) => c.id === conversationId);
+  if (!conv?.ownerUserId) return;
+
+  const now = Date.now();
+  const lastMs = conv.lastAdminUserMessageEmailAt
+    ? new Date(conv.lastAdminUserMessageEmailAt).getTime()
+    : 0;
+  if (lastMs && now - lastMs < ADMIN_USER_MESSAGE_NOTIFY_COOLDOWN_MS) return;
+
+  const owner = await findUserById(conv.ownerUserId);
+  if (!owner) return;
+
+  const preview = previewTextForAdminNotify(userMessages);
+  await sendAdminNewUserMessageEmail({
+    to,
+    profileName: conv.profileName,
+    userName: owner.naam || "Gebruiker",
+    userEmail: owner.email || "",
+    preview,
+    conversationId: conv.id,
+  });
+  await updateConversationAtomic(conv.id, (latest) => {
+    latest.lastAdminUserMessageEmailAt = new Date().toISOString();
+  });
+}
+
 async function maybeSendOfflineAssistantEmail(
   conversationId: string,
   assistantMessage: ChatMessage,
@@ -3097,6 +3159,7 @@ export async function appendUserMessagesAndReply(
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
     }
+    scheduleAdminNotifyUserMessage(conversationId, userMessages);
     return {
       userMessages,
       assistantMessage: null,
@@ -3231,6 +3294,7 @@ export async function appendUserMessagesAndReply(
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
     }
+    scheduleAdminNotifyUserMessage(conversationId, userMessages);
     const prefDelay = Math.min(1200, getRealisticReplyDelay(realismState));
     const [_, preferenceText] = await Promise.all([
       sleep(prefDelay),
@@ -3273,6 +3337,7 @@ export async function appendUserMessagesAndReply(
     if (conv.ownerUserId) {
       await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
     }
+    scheduleAdminNotifyUserMessage(conversationId, userMessages);
     // No direct reply here: avoid immediate extra follow-up bubbles.
     return {
       userMessages,
@@ -3378,6 +3443,7 @@ export async function appendUserMessagesAndReply(
   if (conv.ownerUserId) {
     await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
   }
+  scheduleAdminNotifyUserMessage(conversationId, userMessages);
 
   // Typing delay runs in parallel with Grok — do not stack artificial wait + model latency.
   const realisticDelay = getRealisticReplyDelay(realismState);

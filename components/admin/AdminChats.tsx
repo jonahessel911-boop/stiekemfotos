@@ -10,16 +10,16 @@ import {
 import type { AdminChatMessage } from '@/lib/admin/types';
 
 export default function AdminChats() {
-  const { data, loading, load } = useAdmin();
+  const { data, loading, appendAdminConversationMessage, reconcileAdminConversationMessage } =
+    useAdmin();
   const [userQuery, setUserQuery] = useState('');
   const [convQuery, setConvQuery] = useState('');
-  const [onlyOpen, setOnlyOpen] = useState(true);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const sendGuardRef = useRef(false);
 
   const openChats = data?.stats.openChats ?? 0;
 
@@ -34,20 +34,14 @@ export default function AdminChats() {
           u.userId.toLowerCase().includes(q)
       );
     }
-    if (onlyOpen) {
-      list = list.filter((u) => openChatsForUser(u) > 0);
-    }
     return list;
-  }, [data?.conversationsByUser, userQuery, onlyOpen]);
+  }, [data?.conversationsByUser, userQuery]);
 
   const effectiveUserId = selectedUserId ?? users[0]?.userId ?? null;
   const selectedUser = users.find((u) => u.userId === effectiveUserId) ?? null;
 
   const conversations = useMemo(() => {
     let list = selectedUser?.conversations ?? [];
-    if (onlyOpen) {
-      list = list.filter((c) => isConversationAwaitingReply(c.history));
-    }
     const q = convQuery.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -58,7 +52,7 @@ export default function AdminChats() {
       );
     }
     return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }, [selectedUser, convQuery, onlyOpen]);
+  }, [selectedUser, convQuery]);
 
   const effectiveConvId = selectedConvId ?? conversations[0]?.id ?? null;
   const selectedConv = conversations.find((c) => c.id === effectiveConvId) ?? null;
@@ -81,29 +75,48 @@ export default function AdminChats() {
     setSendError(null);
   };
 
-  const sendAsProfile = async () => {
+  const sendAsProfile = () => {
     const text = draft.trim();
-    if (!effectiveConvId || !text || sending) return;
-    setSending(true);
+    if (!effectiveConvId || !text || sendGuardRef.current) return;
+
+    const tempId = `opt-admin-${Date.now()}`;
+    const optimistic: AdminChatMessage = {
+      id: tempId,
+      role: 'assistant',
+      content: text,
+      createdAt: new Date().toISOString(),
+    };
+
+    appendAdminConversationMessage(effectiveConvId, optimistic);
+    setDraft('');
     setSendError(null);
-    try {
-      const res = await fetch(`/api/admin/conversations/${effectiveConvId}/messages`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: text }),
-      });
-      const body = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(body.error || 'Versturen mislukt');
-      setDraft('');
-      await load();
-      setSelectedConvId(effectiveConvId);
-      if (selectedUserId) setSelectedUserId(selectedUserId);
-    } catch (e) {
-      setSendError(e instanceof Error ? e.message : 'Versturen mislukt');
-    } finally {
-      setSending(false);
-    }
+    sendGuardRef.current = true;
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/conversations/${effectiveConvId}/messages`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text }),
+        });
+        const body = (await res.json()) as {
+          error?: string;
+          message?: AdminChatMessage;
+        };
+        if (!res.ok) throw new Error(body.error || 'Versturen mislukt');
+        if (body.message) {
+          reconcileAdminConversationMessage(effectiveConvId, tempId, body.message);
+        } else {
+          reconcileAdminConversationMessage(effectiveConvId, tempId, optimistic);
+        }
+      } catch (e) {
+        reconcileAdminConversationMessage(effectiveConvId, tempId, null);
+        setSendError(e instanceof Error ? e.message : 'Versturen mislukt');
+      } finally {
+        sendGuardRef.current = false;
+      }
+    })();
   };
 
   if (loading && !data) {
@@ -118,16 +131,6 @@ export default function AdminChats() {
           <small>
             {openChats} open · AI uit — antwoord als profiel hieronder
           </small>
-        </div>
-        <div style={{ padding: '8px 12px', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-          <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={onlyOpen}
-              onChange={(e) => setOnlyOpen(e.target.checked)}
-            />
-            Alleen open (niet beantwoord)
-          </label>
         </div>
       </div>
 
@@ -270,14 +273,13 @@ export default function AdminChats() {
                 placeholder={`Typ als ${selectedConv.profileName}…`}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                disabled={sending}
               />
               <button
                 type="submit"
                 className="admin-btn admin-btn-primary"
-                disabled={sending || !draft.trim()}
+                disabled={!draft.trim()}
               >
-                {sending ? 'Versturen…' : 'Verstuur als profiel'}
+                Verstuur als profiel
               </button>
             </form>
           ) : null}

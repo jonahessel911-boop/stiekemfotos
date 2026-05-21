@@ -169,7 +169,7 @@ export default function Platform2AanmakenPage() {
             </button>
           </form>
           <p className="platform2-signup-login-hint">
-            Al een account? <Link href="/platform/2/aanmelden">Inloggen</Link>
+            <Link href="/platform/2/aanmelden">Ik heb al een account</Link>
           </p>
         </div>
       </div>

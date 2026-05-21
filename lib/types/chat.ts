@@ -106,6 +106,8 @@ export interface Conversation {
   creditsExhaustedNudgeSentAt?: string;
   /** Anti-spam voor e-mail: laatste offline nieuw-bericht mail. */
   lastOfflineMessageEmailAt?: string;
+  /** Anti-spam: laatste admin-notificatie bij user-bericht. */
+  lastAdminUserMessageEmailAt?: string;
   /** Anti-spam voor e-mail: laatste gift-mail. */
   lastGiftEmailAt?: string;
   /**

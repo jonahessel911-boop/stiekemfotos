@@ -1,12 +1,16 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AdminLogin from '@/components/admin/AdminLogin';
 import AdminShell from '@/components/admin/AdminShell';
-import type { AdminData, PeriodOverview } from '@/lib/admin/types';
+import { countOpenChats } from '@/lib/admin/chat-open';
+import type { AdminChatMessage, AdminData, PeriodOverview } from '@/lib/admin/types';
 
 type AdminContextValue = {
+  /** Alleen eerste load (geen data nog). */
   loading: boolean;
+  /** Achtergrond-verversen via Vernieuwen — geen “Laden…” in de UI. */
+  refreshing: boolean;
   error: string | null;
   data: AdminData | null;
   overview: PeriodOverview | null;
@@ -18,6 +22,12 @@ type AdminContextValue = {
   resetBusy: boolean;
   seedTestBusy: boolean;
   load: () => Promise<void>;
+  appendAdminConversationMessage: (conversationId: string, message: AdminChatMessage) => void;
+  reconcileAdminConversationMessage: (
+    conversationId: string,
+    tempId: string,
+    message: AdminChatMessage | null
+  ) => void;
   logout: () => Promise<void>;
   sendKortingEmail: (userId: string, userEmail: string, force?: boolean) => Promise<void>;
   sendPasswordEmail: (userId: string, userEmail: string) => Promise<void>;
@@ -37,6 +47,7 @@ export function useAdmin() {
 export default function AdminProvider({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AdminData | null>(null);
   const [overview, setOverview] = useState<PeriodOverview | null>(null);
@@ -47,9 +58,76 @@ export default function AdminProvider({ children }: { children: React.ReactNode 
   const [passwordEmailNotice, setPasswordEmailNotice] = useState<string | null>(null);
   const [kortingEmailUserId, setKortingEmailUserId] = useState<string | null>(null);
   const [kortingEmailNotice, setKortingEmailNotice] = useState<string | null>(null);
+  const dataRef = useRef<AdminData | null>(null);
+  dataRef.current = data;
+
+  const appendAdminConversationMessage = useCallback(
+    (conversationId: string, message: AdminChatMessage) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        const conversationsByUser = prev.conversationsByUser.map((u) => ({
+          ...u,
+          conversations: u.conversations.map((c) => {
+            if (c.id !== conversationId) return c;
+            return {
+              ...c,
+              history: [...c.history, message],
+              messages: c.messages + 1,
+              lastMessage: message.content.slice(0, 240),
+              updatedAt: message.createdAt,
+            };
+          }),
+        }));
+        return {
+          ...prev,
+          conversationsByUser,
+          stats: {
+            ...prev.stats,
+            openChats: countOpenChats(conversationsByUser),
+          },
+        };
+      });
+    },
+    []
+  );
+
+  const reconcileAdminConversationMessage = useCallback(
+    (conversationId: string, tempId: string, message: AdminChatMessage | null) => {
+      setData((prev) => {
+        if (!prev) return prev;
+        const conversationsByUser = prev.conversationsByUser.map((u) => ({
+          ...u,
+          conversations: u.conversations.map((c) => {
+            if (c.id !== conversationId) return c;
+            const history = message
+              ? c.history.map((m) => (m.id === tempId ? message : m))
+              : c.history.filter((m) => m.id !== tempId);
+            const last = history[history.length - 1];
+            return {
+              ...c,
+              history,
+              messages: message ? c.messages : Math.max(0, c.messages - 1),
+              lastMessage: last?.content.slice(0, 240) ?? c.lastMessage,
+              updatedAt: last?.createdAt ?? c.updatedAt,
+            };
+          }),
+        }));
+        return {
+          ...prev,
+          conversationsByUser,
+          stats: {
+            ...prev.stats,
+            openChats: countOpenChats(conversationsByUser),
+          },
+        };
+      });
+    },
+    []
+  );
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (dataRef.current) setRefreshing(true);
+    else setLoading(true);
     setError(null);
     setOverviewError(null);
     try {
@@ -78,6 +156,7 @@ export default function AdminProvider({ children }: { children: React.ReactNode 
       setError(e instanceof Error ? e.message : 'Fout');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -195,6 +274,7 @@ export default function AdminProvider({ children }: { children: React.ReactNode 
 
   const value: AdminContextValue = {
     loading,
+    refreshing,
     error,
     data,
     overview,
@@ -206,6 +286,8 @@ export default function AdminProvider({ children }: { children: React.ReactNode 
     resetBusy,
     seedTestBusy,
     load,
+    appendAdminConversationMessage,
+    reconcileAdminConversationMessage,
     logout,
     sendKortingEmail,
     sendPasswordEmail,

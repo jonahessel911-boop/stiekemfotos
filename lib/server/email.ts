@@ -250,6 +250,48 @@ export async function sendPasswordResetEmail(input: {
   });
 }
 
+const DEFAULT_ADMIN_NOTIFY_EMAIL = "jonahessel911@gmail.com";
+
+export function getAdminNotifyEmail(): string {
+  return (process.env.ADMIN_NOTIFY_EMAIL ?? DEFAULT_ADMIN_NOTIFY_EMAIL).trim();
+}
+
+export async function sendAdminNewUserMessageEmail(input: {
+  to: string;
+  profileName: string;
+  userName: string;
+  userEmail: string;
+  preview: string;
+  conversationId: string;
+}): Promise<void> {
+  const adminChatsUrl = `${getSiteUrl()}/admin/chats`;
+  const safePreview = escapeHtml(input.preview);
+  const safeUser = escapeHtml(input.userName || "Gebruiker");
+  const safeEmail = escapeHtml(input.userEmail || "—");
+  const safeProfile = escapeHtml(input.profileName || "profiel");
+  const t = shellTemplate(
+    `Nieuw bericht → ${input.profileName}`,
+    `${input.userName} wacht op een antwoord in de admin-chat.`,
+    "Open admin chats",
+    adminChatsUrl,
+    `<p style="margin:0 0 12px 0;font-size:15px;line-height:1.6;">
+      <b>${safeUser}</b> (${safeEmail}) stuurde een bericht aan <b>${safeProfile}</b>.
+    </p>
+    <blockquote style="margin:0 0 12px 0;border-left:4px solid #e2e8f0;padding:8px 12px;color:#334155;background:#f8fafc;border-radius:8px;">
+      ${safePreview}
+    </blockquote>
+    <p style="margin:0;font-size:14px;line-height:1.5;color:#64748b;">
+      Log in op het admin-panel (admin@admin.nl) en antwoord handmatig in Chats.
+    </p>`
+  );
+  await sendMail({
+    to: input.to,
+    subject: `Chat: ${input.userName} → ${input.profileName}`,
+    html: t.html,
+    text: `${t.text}\n\nBericht: ${input.preview}\n\nAdmin: ${adminChatsUrl}`,
+  });
+}
+
 export async function sendOfflineNewMessageEmail(input: {
   to: string;
   naam: string;
