@@ -97,7 +97,7 @@ export default function KortingPage() {
             <div className="rounded-sm border-2 border-[#dc2626] bg-white p-6 text-center space-y-3">
               <p className="text-lg font-bold text-gray-900">Je hebt al toegang</p>
               <p className="text-sm text-gray-700">
-                Controleer je inbox voor de login-link, of log in als je je wachtwoord al hebt ingesteld.
+                Controleer je inbox voor de mail met &quot;Ga naar platform&quot; om je wachtwoord aan te maken.
               </p>
               <a
                 href="/login"

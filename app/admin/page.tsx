@@ -195,7 +195,7 @@ export default function AdminPage() {
   const sendPasswordEmail = async (userId: string, userEmail: string) => {
     if (
       !window.confirm(
-        `Toegangs-e-mail versturen naar ${userEmail}?\n\nZelfde mail als na Stripe-betaling (lange welkomsttekst + link om wachtwoord in te stellen).`
+        `Toegangs-e-mail versturen naar ${userEmail}?\n\nZelfde mail als na Stripe-betaling (knop Ga naar platform → onboarding + wachtwoord aanmaken).`
       )
     ) {
       return;

@@ -296,7 +296,11 @@ export async function markOntmoetjongensPaidForUser(userId: string): Promise<Use
   const i = list.findIndex((u) => u.id === userId);
   if (i === -1) return null;
   if (list[i]!.ontmoetjongensPaidAt) return list[i]!;
-  const next = { ...list[i]!, ontmoetjongensPaidAt: new Date().toISOString() };
+  const next = {
+    ...list[i]!,
+    ontmoetjongensPaidAt: new Date().toISOString(),
+    abandonmentOfferDueAt: undefined,
+  };
   list[i] = next;
   await save(list);
   await upsertAppUserToSupabaseUsers(next);
@@ -480,6 +484,8 @@ export async function touchLastInboxNotificationEmail(userId: string): Promise<v
 }
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+/** Eerste platformtoegang na betaling — langere geldigheid dan vergeten-wachtwoord. */
+export const PLATFORM_SETUP_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type PasswordResetRequestResult = {
   token: string;
@@ -489,30 +495,44 @@ export type PasswordResetRequestResult = {
 
 /** Maakt reset-token aan. Retourneert null als e-mail niet bestaat. */
 export async function createPasswordResetRequest(
-  emailRaw: string
+  emailRaw: string,
+  options?: { ttlMs?: number }
 ): Promise<PasswordResetRequestResult | null> {
   const email = emailRaw.trim().toLowerCase();
   if (!email) return null;
-  const user = await findUserByEmail(email);
+  const user = await resolveAppUserByEmail(email);
   if (!user) return null;
   const token = randomUUID();
-  const expires = new Date(Date.now() + PASSWORD_RESET_TTL_MS).toISOString();
-  const list = await load();
-  const i = list.findIndex((u) => u.id === user.id);
-  if (i === -1) return null;
-  list[i] = {
-    ...list[i]!,
+  const ttl = options?.ttlMs ?? PASSWORD_RESET_TTL_MS;
+  const expires = new Date(Date.now() + ttl).toISOString();
+  const patched = await patchUserRecord(user.id, {
     passwordResetToken: token,
     passwordResetExpiresAt: expires,
-  };
-  await save(list);
-  return { token, email: user.email, naam: user.naam };
+  });
+  if (!patched) return null;
+  return { token, email: patched.email, naam: patched.naam };
+}
+
+/** Link voor eerste platformbezoek (na betaling / toegangs-mail). */
+export async function createPlatformSetupRequest(
+  emailRaw: string
+): Promise<PasswordResetRequestResult | null> {
+  return createPasswordResetRequest(emailRaw, { ttlMs: PLATFORM_SETUP_TOKEN_TTL_MS });
+}
+
+export async function findUserByPasswordResetToken(
+  tokenRaw: string
+): Promise<UserRecord | null> {
+  const token = tokenRaw.trim();
+  if (!token) return null;
+  const list = await load();
+  return list.find((u) => u.passwordResetToken === token) ?? null;
 }
 
 export async function completePasswordReset(
   tokenRaw: string,
   newPassword: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const token = tokenRaw.trim();
   if (!token) return { ok: false, error: "Ongeldige link." };
   if (newPassword.length < 8) {
@@ -545,7 +565,7 @@ export async function completePasswordReset(
   };
   await save(list);
   await upsertAppUserToSupabaseUsers(list[i]!);
-  return { ok: true };
+  return { ok: true, userId: list[i]!.id };
 }
 
 export async function updateUserPersonalFacts(

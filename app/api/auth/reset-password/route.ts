@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { completePasswordReset } from "@/lib/server/users";
+import {
+  completePasswordReset,
+  completePlatformOnboarding,
+  resolveAppUserById,
+  touchUserSeen,
+  toPublicUser,
+} from "@/lib/server/users";
+import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
 
 export async function POST(req: Request) {
   try {
@@ -13,7 +20,26 @@ export async function POST(req: Request) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, message: "Je wachtwoord is bijgewerkt. Je kunt nu inloggen." });
+
+    await completePlatformOnboarding(result.userId);
+    await touchUserSeen(result.userId);
+
+    const user = await resolveAppUserById(result.userId);
+    const publicUser = user ? toPublicUser(user) : null;
+
+    const res = NextResponse.json({
+      ok: true,
+      message: "Je wachtwoord is aangemaakt. Welkom op het platform!",
+      user: publicUser,
+    });
+    res.cookies.set(SESSION_COOKIE_NAME, createSessionValue(result.userId), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: SESSION_MAX_AGE,
+      path: "/",
+    });
+    return res;
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Fout" },

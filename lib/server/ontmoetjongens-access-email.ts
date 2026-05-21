@@ -5,7 +5,10 @@ import {
   getStripeCheckoutBySessionId,
   upsertStripeCheckoutRecord,
 } from "@/lib/server/stripeCheckoutStore";
-import { createPasswordResetRequest, findUserById } from "@/lib/server/users";
+import {
+  createPlatformSetupRequest,
+  resolveAppUserById,
+} from "@/lib/server/users";
 import type Stripe from "stripe";
 
 export type SendAccessEmailResult = {
@@ -15,8 +18,8 @@ export type SendAccessEmailResult = {
   to?: string;
 };
 
-async function buildAccessLoginLink(email: string): Promise<string | null> {
-  const reset = await createPasswordResetRequest(email);
+async function buildPlatformSetupLink(email: string): Promise<string | null> {
+  const reset = await createPlatformSetupRequest(email);
   if (!reset) return null;
   return `${SITE_URL}/wachtwoord-reset?token=${encodeURIComponent(reset.token)}`;
 }
@@ -34,13 +37,13 @@ export async function sendPlatformAccessEmailToUser(input: {
   const userId = input.userId.trim();
   if (!userId) return { sent: false, reason: "missing_user_id" };
 
-  const user = await findUserById(userId);
+  const user = await resolveAppUserById(userId);
   if (!user) return { sent: false, reason: "user_not_found" };
 
   const to = (input.toEmail?.trim() || user.email).toLowerCase();
   const naam = input.naam?.trim() || user.naam;
 
-  const loginLink = await buildAccessLoginLink(user.email);
+  const loginLink = await buildPlatformSetupLink(user.email);
   if (!loginLink) return { sent: false, reason: "reset_token_failed" };
 
   try {
@@ -77,7 +80,7 @@ export async function sendOntmoetjongensAccessEmailIfNeeded(input: {
     return { sent: false, skipped: true, reason: "already_sent" };
   }
 
-  const user = await findUserById(userId);
+  const user = await resolveAppUserById(userId);
   if (!user) {
     return { sent: false, reason: "user_not_found" };
   }

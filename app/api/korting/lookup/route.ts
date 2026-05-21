@@ -4,7 +4,7 @@ import {
   KORTING_PRICE_LABEL,
   KORTING_REFERENCE_LABEL,
 } from "@/lib/korting-offer";
-import { processAbandonmentOfferForUserId, resolveUserForKortingPage } from "@/lib/server/abandonmentOffer";
+import { resolveUserForKortingPage } from "@/lib/server/abandonmentOffer";
 
 export async function GET(req: Request) {
   try {
@@ -15,9 +15,6 @@ export async function GET(req: Request) {
     }
 
     const user = await resolveUserForKortingPage(email);
-    if (user) {
-      await processAbandonmentOfferForUserId(user.id).catch(() => {});
-    }
 
     return NextResponse.json({
       email,
