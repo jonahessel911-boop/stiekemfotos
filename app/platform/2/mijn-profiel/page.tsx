@@ -8,7 +8,7 @@ import type { UserMyProfile } from '@/lib/user-my-profile';
 export default function Platform2MijnProfielPage() {
   const [profile, setProfile] = useState<UserMyProfile | null>(null);
   const [naam, setNaam] = useState('');
-  const [leeftijd, setLeeftijd] = useState('35');
+  const [leeftijd, setLeeftijd] = useState('');
   const [location, setLocation] = useState('');
   const [bio, setBio] = useState('');
   const [hobbiesRaw, setHobbiesRaw] = useState('');
@@ -53,6 +53,11 @@ export default function Platform2MijnProfielPage() {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    const age = parseInt(leeftijd, 10);
+    if (!leeftijd.trim() || !Number.isFinite(age) || age < 18 || age > 99) {
+      setError('Vul een geldige leeftijd in (18–99).');
+      return;
+    }
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -63,7 +68,7 @@ export default function Platform2MijnProfielPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           naam: naam.trim(),
-          leeftijd: parseInt(leeftijd, 10),
+          leeftijd: age,
           profileLocation: location.trim(),
           profileBio: bio.trim(),
           profileHobbies: hobbiesRaw,
@@ -178,6 +183,7 @@ export default function Platform2MijnProfielPage() {
                   min={18}
                   max={99}
                   required
+                  placeholder="Leeftijd"
                   value={leeftijd}
                   onChange={(e) => setLeeftijd(e.target.value)}
                 />

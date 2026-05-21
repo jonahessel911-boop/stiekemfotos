@@ -115,7 +115,7 @@ export async function provisionOntmoetjongensUser(input: {
     const user = await createUser({
       email,
       naam: naamFromStripeSession(session, email),
-      leeftijd: 35,
+      leeftijd: 18,
       password: randomPassword(),
       discreetAkkoord: true,
       voorwaardenAkkoord: true,

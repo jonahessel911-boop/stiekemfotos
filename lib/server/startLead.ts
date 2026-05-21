@@ -101,7 +101,7 @@ export async function registerStartLead(input: {
     user = await createUser({
       email,
       naam: naamFromEmail(email),
-      leeftijd: 35,
+      leeftijd: 18,
       password: randomPassword(),
       discreetAkkoord: true,
       voorwaardenAkkoord: true,

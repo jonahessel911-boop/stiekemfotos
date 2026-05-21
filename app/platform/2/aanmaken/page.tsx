@@ -15,7 +15,7 @@ export default function Platform2AanmakenPage() {
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
   const [wachtwoord, setWachtwoord] = useState('');
-  const [leeftijd, setLeeftijd] = useState('35');
+  const [leeftijd, setLeeftijd] = useState('');
   const [zoekt, setZoekt] = useState<(typeof ZOEK_OPTIES)[number]['value']>('vrouw');
   const [akkoord, setAkkoord] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,12 +25,12 @@ export default function Platform2AanmakenPage() {
     e.preventDefault();
     setError(null);
     const age = parseInt(leeftijd, 10);
-    if (!naam.trim() || !email.trim()) {
+    if (!naam.trim() || !email.trim() || !leeftijd.trim()) {
       setError('Vul alle velden in.');
       return;
     }
     if (!Number.isFinite(age) || age < 18) {
-      setError('Je moet minimaal 18 jaar zijn.');
+      setError('Vul een geldige leeftijd in (minimaal 18).');
       return;
     }
     if (wachtwoord.length < 8) {
@@ -127,6 +127,7 @@ export default function Platform2AanmakenPage() {
                 min={18}
                 max={99}
                 required
+                placeholder="Leeftijd"
                 value={leeftijd}
                 onChange={(e) => setLeeftijd(e.target.value)}
               />

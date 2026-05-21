@@ -52,7 +52,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <li key={item.href}>
               <Link
                 href={item.href}
-                className={navActive(pathname, item.href, item.exact) ? 'is-active' : undefined}
+                className={
+                  navActive(pathname, item.href, 'exact' in item && item.exact)
+                    ? 'is-active'
+                    : undefined
+                }
               >
                 {item.label}
                 {item.href === '/admin/chats' && openChats > 0 ? (
