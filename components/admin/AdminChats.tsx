@@ -10,6 +10,9 @@ type ChatsPayload = {
   openChats: number;
 };
 
+const LIST_POLL_MS = 3_000;
+const THREAD_POLL_MS = 2_000;
+
 function patchUserConv(
   users: AdminUserConversations[],
   convId: string,
@@ -19,6 +22,19 @@ function patchUserConv(
     ...u,
     conversations: u.conversations.map((c) => (c.id === convId ? patch(c) : c)),
   }));
+}
+
+/** Behoud optimistische admin-berichten tijdens poll terwijl POST nog loopt. */
+function mergeThreadMessages(
+  server: AdminChatMessage[],
+  local: AdminChatMessage[]
+): AdminChatMessage[] {
+  const serverIds = new Set(server.map((m) => m.id));
+  const pending = local.filter(
+    (m) => m.id.startsWith('opt-admin-') && !serverIds.has(m.id)
+  );
+  if (pending.length === 0) return server;
+  return [...server, ...pending].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export default function AdminChats() {
@@ -33,7 +49,10 @@ export default function AdminChats() {
   const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const sendGuardRef = useRef(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const listPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const threadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const threadLenRef = useRef(0);
+  const effectiveConvIdRef = useRef<string | null>(null);
 
   const loadChats = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setListLoading(true);
@@ -42,20 +61,55 @@ export default function AdminChats() {
       const res = await fetch('/api/admin/chats', { credentials: 'include', cache: 'no-store' });
       const body = (await res.json()) as ChatsPayload & { error?: string };
       if (!res.ok) throw new Error(body.error || 'Chats laden mislukt');
-      setChats({
-        conversationsByUser: body.conversationsByUser ?? [],
-        openChats: body.openChats ?? 0,
+      const conversationsByUser = body.conversationsByUser ?? [];
+      setChats((prev) => {
+        if (!prev || !opts?.silent) {
+          return {
+            conversationsByUser,
+            openChats: body.openChats ?? 0,
+          };
+        }
+        const activeId = effectiveConvIdRef.current;
+        if (!activeId) {
+          return {
+            conversationsByUser,
+            openChats: body.openChats ?? 0,
+          };
+        }
+        const localConv = prev.conversationsByUser
+          .flatMap((u) => u.conversations)
+          .find((c) => c.id === activeId);
+        if (!localConv) {
+          return {
+            conversationsByUser,
+            openChats: body.openChats ?? 0,
+          };
+        }
+        return {
+          conversationsByUser: patchUserConv(conversationsByUser, activeId, (c) => ({
+            ...c,
+            history: mergeThreadMessages(
+              c.history,
+              localConv.history
+            ),
+            messages: mergeThreadMessages(c.history, localConv.history).length,
+          })),
+          openChats: body.openChats ?? 0,
+        };
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('admin-open-chats', {
+            detail: { openChats: body.openChats ?? 0 },
+          })
+        );
+      }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Fout');
     } finally {
       if (!opts?.silent) setListLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    void loadChats();
-  }, [loadChats]);
 
   const users = useMemo(() => {
     let list = chats?.conversationsByUser ?? [];
@@ -92,57 +146,103 @@ export default function AdminChats() {
   const selectedConv = conversations.find((c) => c.id === effectiveConvId) ?? null;
   const threadMessages: AdminChatMessage[] = selectedConv?.history ?? [];
 
-  const refreshThread = useCallback(
-    async (convId: string) => {
-      try {
-        const res = await fetch(`/api/admin/conversations/${convId}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        const body = (await res.json()) as {
-          conversation?: {
-            id: string;
-            messages: AdminChatMessage[];
-            updatedAt: string;
-          };
-          error?: string;
+  useEffect(() => {
+    effectiveConvIdRef.current = effectiveConvId;
+  }, [effectiveConvId]);
+
+  const refreshThread = useCallback(async (convId: string) => {
+    try {
+      const res = await fetch(`/api/admin/conversations/${convId}`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      const body = (await res.json()) as {
+        conversation?: {
+          id: string;
+          messages: AdminChatMessage[];
+          updatedAt: string;
         };
-        if (!res.ok || !body.conversation) return;
-        const msgs = body.conversation.messages;
-        const last = msgs[msgs.length - 1];
-        setChats((prev) => {
-          if (!prev) return prev;
+        error?: string;
+      };
+      if (!res.ok || !body.conversation) return;
+      const serverMsgs = body.conversation.messages;
+      let mergedLen = serverMsgs.length;
+      setChats((prev) => {
+        if (!prev) return prev;
+        const conversationsByUser = patchUserConv(prev.conversationsByUser, convId, (c) => {
+          const history = mergeThreadMessages(serverMsgs, c.history);
+          mergedLen = history.length;
+          const last = history[history.length - 1];
           return {
-            ...prev,
-            conversationsByUser: patchUserConv(prev.conversationsByUser, convId, (c) => ({
-              ...c,
-              history: msgs,
-              messages: msgs.length,
-              lastMessage: last?.content?.slice(0, 240) ?? c.lastMessage,
-              updatedAt: body.conversation!.updatedAt,
-            })),
+            ...c,
+            history,
+            messages: history.length,
+            lastMessage: last?.content?.slice(0, 240) ?? c.lastMessage,
+            updatedAt: body.conversation!.updatedAt,
           };
         });
-      } catch {
-        /* stille poll */
+        return {
+          ...prev,
+          conversationsByUser,
+          openChats: countOpenChats(conversationsByUser),
+        };
+      });
+      if (effectiveConvIdRef.current === convId && mergedLen > threadLenRef.current) {
+        threadLenRef.current = mergedLen;
+        queueMicrotask(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        });
+      } else if (effectiveConvIdRef.current === convId) {
+        threadLenRef.current = mergedLen;
       }
-    },
-    []
-  );
+    } catch {
+      /* stille poll */
+    }
+  }, []);
 
   useEffect(() => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    if (!effectiveConvId) return;
-    pollRef.current = setInterval(() => {
-      void refreshThread(effectiveConvId);
-    }, 8000);
+    void loadChats();
+    if (listPollRef.current) clearInterval(listPollRef.current);
+    listPollRef.current = setInterval(() => {
+      void loadChats({ silent: true });
+    }, LIST_POLL_MS);
+
+    const onFocus = () => {
+      void loadChats({ silent: true });
+      const id = effectiveConvIdRef.current;
+      if (id) void refreshThread(id);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') onFocus();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      if (listPollRef.current) clearInterval(listPollRef.current);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [loadChats, refreshThread]);
+
+  useEffect(() => {
+    if (threadPollRef.current) clearInterval(threadPollRef.current);
+    if (!effectiveConvId) return;
+    threadLenRef.current = threadMessages.length;
+    void refreshThread(effectiveConvId);
+    threadPollRef.current = setInterval(() => {
+      void refreshThread(effectiveConvId);
+    }, THREAD_POLL_MS);
+    return () => {
+      if (threadPollRef.current) clearInterval(threadPollRef.current);
     };
   }, [effectiveConvId, refreshThread]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (threadMessages.length > threadLenRef.current) {
+      threadLenRef.current = threadMessages.length;
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [threadMessages.length, effectiveConvId]);
 
   const appendMessage = useCallback((convId: string, message: AdminChatMessage) => {

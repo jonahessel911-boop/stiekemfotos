@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAdmin } from '@/components/admin/AdminProvider';
@@ -35,10 +35,19 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const { refreshing, error, data, load, logout, resetBusy } = useAdmin();
   const title = TITLES[pathname] ?? 'Admin';
-  const openChats = useMemo(
-    () => data?.stats.openChats ?? countOpenChats(data?.conversationsByUser ?? []),
-    [data]
-  );
+  const [liveOpenChats, setLiveOpenChats] = useState<number | null>(null);
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const n = (e as CustomEvent<{ openChats?: number }>).detail?.openChats;
+      if (typeof n === 'number') setLiveOpenChats(n);
+    };
+    window.addEventListener('admin-open-chats', onOpen);
+    return () => window.removeEventListener('admin-open-chats', onOpen);
+  }, []);
+  const openChats = useMemo(() => {
+    if (liveOpenChats !== null) return liveOpenChats;
+    return data?.stats.openChats ?? countOpenChats(data?.conversationsByUser ?? []);
+  }, [data, liveOpenChats]);
 
   return (
     <div className="admin-shell">

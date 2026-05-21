@@ -12,5 +12,7 @@ export async function GET() {
 
   const { users, conversations } = await loadAdminDataset();
   const payload = adminChatsPayload(users, conversations);
-  return NextResponse.json(payload);
+  return NextResponse.json(payload, {
+    headers: { "Cache-Control": "no-store, max-age=0" },
+  });
 }

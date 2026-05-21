@@ -23,18 +23,21 @@ export async function GET(
     return NextResponse.json({ error: "Gesprek niet gevonden" }, { status: 404 });
   }
 
-  return NextResponse.json({
-    conversation: {
-      id: conv.id,
-      profileName: conv.profileName,
-      updatedAt: conv.updatedAt,
-      ownerUserId: conv.ownerUserId,
-      messages: conv.messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        createdAt: m.createdAt,
-      })),
+  return NextResponse.json(
+    {
+      conversation: {
+        id: conv.id,
+        profileName: conv.profileName,
+        updatedAt: conv.updatedAt,
+        ownerUserId: conv.ownerUserId,
+        messages: conv.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+        })),
+      },
     },
-  });
+    { headers: { "Cache-Control": "no-store, max-age=0" } }
+  );
 }
