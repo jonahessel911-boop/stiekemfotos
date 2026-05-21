@@ -16,20 +16,27 @@ export async function POST(req: Request) {
   if (!ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let everydayLook = false;
+  let inactiveUntilPhotos = true;
   try {
     const body = (await req.json().catch(() => ({}))) as {
       everydayLook?: unknown;
       minderKnap?: unknown;
+      inactiveUntilPhotos?: unknown;
+      pasZichtbaarMetFotos?: unknown;
     };
     everydayLook = Boolean(body.everydayLook ?? body.minderKnap);
+    if (body.inactiveUntilPhotos === false || body.pasZichtbaarMetFotos === false) {
+      inactiveUntilPhotos = false;
+    }
   } catch {
     everydayLook = false;
   }
 
   try {
-    const created = await createRandomProfileWithPhotos(
-      everydayLook ? { everydayLook: true } : undefined
-    );
+    const created = await createRandomProfileWithPhotos({
+      ...(everydayLook ? { everydayLook: true } : {}),
+      inactiveUntilPhotos,
+    });
     return NextResponse.json({
       items: [created],
       errors: [] as { index: number; message: string }[],

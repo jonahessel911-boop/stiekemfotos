@@ -256,6 +256,43 @@ const listDbProfiles100Cached = unstable_cache(
   { revalidate: 45, tags: ["v2-profile-media"] }
 );
 
+/** Admin: alle profielen (ook zonder foto / verborgen). */
+export async function listDbProfilesForAdmin(limit = 300): Promise<
+  Array<Pick<Profile, "id" | "name" | "age" | "location" | "heritage" | "photo"> & { isActive: boolean }>
+> {
+  if (!isSupabaseProfilesEnabled()) return [];
+  const supabase = getSupabaseAdmin() ?? getSupabaseProfilesClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, first_name, age, city, heritage, avatar_url, is_active")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) {
+    console.error("[profilesDb] admin list failed:", error?.message);
+    return [];
+  }
+
+  return (data as Array<{
+    id: string;
+    first_name: string;
+    age: number;
+    city: string | null;
+    heritage: string | null;
+    avatar_url: string | null;
+    is_active: boolean;
+  }>).map((row) => ({
+    id: row.id,
+    name: row.first_name,
+    age: row.age,
+    location: row.city?.trim() || "Nederland",
+    heritage: row.heritage?.trim() || undefined,
+    photo: row.avatar_url?.trim() || "",
+    isActive: Boolean(row.is_active),
+  }));
+}
+
 export async function listDbProfiles(limit = 100): Promise<Profile[]> {
   if (!isSupabaseProfilesEnabled()) {
     return [];

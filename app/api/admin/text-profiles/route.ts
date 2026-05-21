@@ -13,17 +13,27 @@ export async function POST(req: Request) {
   }
 
   let count = 10;
+  let inactiveUntilPhotos = true;
   try {
-    const body = (await req.json().catch(() => ({}))) as { count?: unknown };
+    const body = (await req.json().catch(() => ({}))) as {
+      count?: unknown;
+      inactiveUntilPhotos?: unknown;
+      pasZichtbaarMetFotos?: unknown;
+    };
     if (typeof body.count === "number" && Number.isFinite(body.count)) {
       count = body.count;
     }
+    if (body.inactiveUntilPhotos === false || body.pasZichtbaarMetFotos === false) {
+      inactiveUntilPhotos = false;
+    }
   } catch {
-    /* default 50 */
+    /* default */
   }
 
   try {
-    const { created, errors } = await createWestEuropeTextProfiles(count);
+    const { created, errors } = await createWestEuropeTextProfiles(count, {
+      inactiveUntilPhotos,
+    });
     return NextResponse.json({
       ok: true,
       requested: count,

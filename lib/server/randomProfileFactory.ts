@@ -102,11 +102,8 @@ const RAW_FIRST_NAMES = [
   "Jesse", "Ruben", "Thijs", "Bram", "Stijn", "Jordy", "Kevin", "Mike", "Rick", "Nick", "Bas",
   "Mark", "Paul", "Peter", "Jan", "Martijn", "Dennis", "Roy", "Patrick", "Sander", "Robin",
   "Koen", "Niels", "Wesley", "Glenn", "Dylan", "Jayden", "Tygo", "Gijs", "Floris", "Hidde",
-  "Mats", "Cas", "Boaz", "Teun", "Olivier", "Victor", "Alex", "Chris", "David", "Daniel",
-  "Adam", "Kamil", "Piotr", "Jakub", "Mateusz", "Tomasz", "Ivan", "Dmitri", "Andrei", "Viktor",
-  "Marco", "Luca", "Matteo", "Diego", "Carlos", "Hugo", "Pablo", "Rafael", "Antonio",
-  "Yusuf", "Emre", "Can", "Burak", "Mehmet", "Ali", "Omar", "Karim", "Rayan", "Samir",
-  "Jamal", "Kwame", "Kofi", "Malik", "Tariq", "Nabil", "Hassan", "Ibrahim",
+  "Mats", "Cas", "Boaz", "Teun", "Olivier", "Victor", "Chris", "David", "Daniel",
+  "Wouter", "Jeroen", "Pieter", "Floris", "Gert", "Henk", "Dirk", "Frank", "Erik", "Arjan",
 ];
 
 function uniqCapitalizedFirstNames(names: string[]): string[] {
@@ -204,22 +201,14 @@ const NAME_STYLE_HINTS = [
   "Twee lettergrepen, zachte klanken, niet in je standaard top-lijst.",
 ];
 
-/** Alleen hints die passen bij NL/Noords/West-/Oost-Europees (naam + uiterlijk gelijk trekken). */
-const NAME_STYLE_HINTS_EU = [
-  "Zeldzamer Nederlands of Vlaams; niet de allergrootste top-10.",
-  "Pools of Baltisch klinkend; veel voorkomend onder migranten in NL.",
-  "Scandinavische voornaam (kort tot middellang).",
-  "Duits of Oostenrijks klinkend; in NL herkenbaar.",
-  "Oost-Europees (Roemeens, Hongaars, Tsjechisch, Slowaaks, Bulgaars) in Latijnse letters.",
+/** Alleen Nederlandse voornamen (geen buitenlandse/migratie-clichés). */
+const NAME_STYLE_HINTS_NL = [
+  "Typisch Nederlands; niet de allergrootste top-10.",
+  "Zeldzamer Nederlands; nog wel herkenbaar in NL.",
+  "Kort Nederlands (2–5 letters).",
   "Historisch Nederlands, zelden gebruikt — nog geloofwaardig.",
-  "Noords (Deens/Zweeds/Noors) passend bij erfgoed/expat in NL.",
-  "Iers of Noord-Brits klinkend; zeldzaam maar valide.",
-  "Franstalig (Wallonië/Zwitser francofoon); in NL voorkomend.",
-  "Griekse voornaam verromaniseerd — geen Griekse letters in output.",
-  "Kort en zacht, stereotypisch Noord-Europees klinkend.",
-  "Twee lettergrepen, Duitse of Deense invloed; geen exotische AI-default.",
-  "Baltisch of Oekraïens aandoend; vermijd extreem voorspelbare set.",
-  "Fins of Ests aandoend (kort, uniek genoeg).",
+  "Vlaams-Nederlands randje; blijft een gangbare NL-voornaam.",
+  "Twee lettergrepen, zachte klanken, NL-stijl.",
 ];
 
 const EU_PHENOTYPE_KEYS = new Set<PhenotypeKey>([
@@ -233,12 +222,11 @@ const EU_PHENOTYPE_KEYS = new Set<PhenotypeKey>([
  * Voornaam door Grok laten verzinnen — met retries, anti-herhaallijst en wisselende stijl.
  * Fallback: `pickRandomFirstName()`.
  */
-async function generateAiFirstName(opts?: { europeanHeavy?: boolean }): Promise<string | null> {
+async function generateAiFirstName(): Promise<string | null> {
   const uniqueness = `${randomUUID()}:${Date.now()}:${randomInt(0, 2_000_000_000)}`;
-  const hintPool = opts?.europeanHeavy ? NAME_STYLE_HINTS_EU : NAME_STYLE_HINTS;
-  const europeanExtra = opts?.europeanHeavy
-    ? " Prefer a given name typical among Northern, Western, or Eastern European men living in the Netherlands — not Arabic, Turkish, South Asian, or East Asian default names."
-    : "";
+  const hintPool = NAME_STYLE_HINTS_NL;
+  const dutchOnlyExtra =
+    " Only a typical Dutch male first name used in the Netherlands. No Polish, Turkish, Arabic, Asian, Latin-American, or other non-Dutch names.";
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const styleHint = hintPool[randomInt(0, hintPool.length)]!;
@@ -251,8 +239,8 @@ async function generateAiFirstName(opts?: { europeanHeavy?: boolean }): Promise<
               "You output exactly ONE fictional man's first name for an adult profile on a Dutch website.",
               "Single token only: letters A–Z plus accented Latin (é, ï, …). No surname, no punctuation, no explanation, no quotes.",
               "Length 2–15 characters. Invent variety — do NOT lazily reuse the same few multicultural cliché names across requests.",
-              "If you almost picked a very common 'AI default' name, deliberately choose a different rarer valid Dutch/European male name instead.",
-              europeanExtra,
+              "If you almost picked a very common 'AI default' name, deliberately choose a different rarer valid Dutch male name instead.",
+              dutchOnlyExtra,
             ]
               .filter(Boolean)
               .join(" "),
@@ -329,60 +317,15 @@ const NL_CITIES = [
 
 const COUNTRY_NL = "Netherlands";
 
-/**
- * Veel gelijker verdeeld voor échte etnische diversiteit binnen een batch.
- * Som = 100. Geen enkel fenotype dominant; alle hoofdgroepen ~6-13%.
- */
-const PHENOTYPE_WEIGHTS: { key: PhenotypeKey; weight: number }[] = [
-  { key: "nl_north", weight: 13 },
-  { key: "west_european_fair", weight: 12 },
-  { key: "nordic", weight: 9 },
-  { key: "east_european", weight: 12 },
-  { key: "mediterranean", weight: 11 },
-  { key: "mena", weight: 9 },
-  { key: "sub_saharan", weight: 9 },
-  { key: "east_asian", weight: 8 },
-  { key: "south_asian", weight: 7 },
-  { key: "southeast_asian", weight: 6 },
-  { key: "latam", weight: 4 },
-];
+/** Alleen Nederlands uiterlijk (licht Noord-Europees). */
+const NL_PHENOTYPE_POOL: PhenotypeKey[] = ["nl_north", "west_european_fair"];
 
 function pickWeightedPhenotype(): PhenotypeKey {
-  const total = PHENOTYPE_WEIGHTS.reduce((s, x) => s + x.weight, 0);
-  let r = Math.random() * total;
-  for (const row of PHENOTYPE_WEIGHTS) {
-    r -= row.weight;
-    if (r <= 0) return row.key;
-  }
-  return PHENOTYPE_WEIGHTS[PHENOTYPE_WEIGHTS.length - 1]!.key;
+  return pick(NL_PHENOTYPE_POOL);
 }
 
-function heritageLabelForPhenotype(phenotype: PhenotypeKey): string {
-  switch (phenotype) {
-    case "nl_north":
-    case "west_european_fair":
-      return pick(["Nederlands", "Nederlands / West-Europees"]);
-    case "nordic":
-      return pick(["Nederlands met Noords erfgoed", "Nederlands met Zweeds/Deens erfgoed"]);
-    case "east_european":
-      return pick(["Pools", "Oekraïens", "Roemeens", "Bulgaars", "Hongaars", "Litouws"]);
-    case "mediterranean":
-      return pick(["Italiaans", "Spaans", "Portugees", "Grieks"]);
-    case "mena":
-      return pick(["Marokkaans", "Turks", "Syrisch", "Iraaks"]);
-    case "sub_saharan":
-      return pick(["Ghanees", "Nigeriaans", "Kaapverdisch"]);
-    case "east_asian":
-      return pick(["Chinees", "Vietnamees", "Koreaans"]);
-    case "south_asian":
-      return pick(["Indiaas", "Pakistaans", "Sri Lankaans"]);
-    case "southeast_asian":
-      return pick(["Indonesisch", "Filipijns", "Thais"]);
-    case "latam":
-      return pick(["Braziliaans", "Colombiaans", "Dominicaans"]);
-    default:
-      return "Nederlands";
-  }
+function heritageLabelForPhenotype(_phenotype: PhenotypeKey): string {
+  return "Nederlands";
 }
 
 function appearanceConstraintForPhenotype(phenotype: PhenotypeKey): string {
@@ -1372,6 +1315,8 @@ function buildPhotoDescriptionDutch(
 export type CreateRandomProfileOptions = {
   /** Minder conventioneel aantrekkelijk / minder “modelachtig” in tekst + beeld. */
   everydayLook?: boolean;
+  /** `true`: niet op platform tot er minstens één foto in Supabase staat. */
+  inactiveUntilPhotos?: boolean;
 };
 
 export async function createRandomProfileWithPhotos(
@@ -1384,6 +1329,9 @@ export async function createRandomProfileWithPhotos(
    * naar de oude glamour-flow.
    */
   const everydayLook = opts?.everydayLook === false ? false : true;
+  const inactiveUntilPhotos = Boolean(opts?.inactiveUntilPhotos);
+  const activateOnPlatform = (photoCount: number) =>
+    inactiveUntilPhotos ? photoCount > 0 : true;
   const writable = getSupabaseWritableClient();
   if (!writable) {
     throw new Error("Supabase niet beschikbaar. Zet SUPABASE_URL + sleutel in env.");
@@ -1393,9 +1341,7 @@ export async function createRandomProfileWithPhotos(
 
   const phenotype = pickWeightedPhenotype();
   const heritageNl = heritageLabelForPhenotype(phenotype);
-  const firstName =
-    (await generateAiFirstName({ europeanHeavy: EU_PHENOTYPE_KEYS.has(phenotype) })) ??
-    pickRandomFirstName();
+  const firstName = (await generateAiFirstName()) ?? pickRandomFirstName();
   const age = 18 + Math.floor(Math.random() * 13);
   const slug = `admin-random-${slugify(firstName)}-${Date.now().toString().slice(-6)}`;
   const city = pick(NL_CITIES);
@@ -1664,7 +1610,7 @@ export async function createRandomProfileWithPhotos(
 
   const avatarUrl = photoUrls[0]!;
   const systemPrompt = [
-    `Je bent ${firstName}, ${age} jaar, een jonge man die woont in ${city} (Nederland). Je achtergrond: ${heritageNl}.`,
+    `Je bent ${firstName}, ${age} jaar, een Nederlandse man uit ${city}.`,
     "Korte, speelse Nederlandse chatstijl (je praat Nederlands met de gebruiker).",
     "Hoofd-doel: maak hem hooked — verslaafd aan chatten, aan jouw foto's en aan het contact. Werk met cliffhangers, plagerij, persoonlijke vragen en future-pacing (\"morgen stuur ik je iets stouts\") zodat hij blijft terugkomen.",
     "Bouw eerst spanning en band op; foto's komen pas als de chat geil wordt. Onder de 10 user-berichten: altijd plagerig uitstellen, nooit meteen leveren.",
@@ -1713,7 +1659,7 @@ export async function createRandomProfileWithPhotos(
         heritage: heritageNl,
         visual_identity_prompt: identityCore,
         photo_unlock_credits: 100,
-        is_active: true,
+        is_active: activateOnPlatform(0),
       },
       { onConflict: "slug" }
     )
@@ -1764,6 +1710,18 @@ export async function createRandomProfileWithPhotos(
     sort_order: idx,
   }));
   const { error: mediaErr } = await supabase.from("profile_media").insert(mediaRows);
+  if (!mediaErr && photoUrls.length > 0) {
+    const { error: activeErr } = await supabase
+      .from("profiles")
+      .update({
+        is_active: activateOnPlatform(photoUrls.length),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", profileId);
+    if (activeErr) {
+      console.warn("[randomProfile] is_active update failed:", activeErr.message);
+    }
+  }
   if (mediaErr) {
     console.error(
       `[randomProfile] profile_media insert FAILED → storage=local id=${profileId}`,

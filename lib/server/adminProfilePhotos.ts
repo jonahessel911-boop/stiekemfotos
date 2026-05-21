@@ -42,6 +42,7 @@ async function syncProfilePhotoFields(profileId: string): Promise<string[]> {
     .update({
       avatar_url: avatarUrl,
       photo_urls: urls,
+      is_active: urls.length > 0,
       updated_at: new Date().toISOString(),
     })
     .eq("id", profileId);

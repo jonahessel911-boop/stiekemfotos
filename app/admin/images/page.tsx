@@ -25,6 +25,7 @@ type Profile = {
   age: number;
   heritage?: string;
   location: string;
+  isActive?: boolean;
 };
 
 type AdminProfilePhoto = {
@@ -92,13 +93,33 @@ export default function AdminImageTest() {
   );
   const [textBatchError, setTextBatchError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  /** Standaard aan: nieuwe profielen pas op platform na foto-upload. */
+  const [inactiveUntilPhotos, setInactiveUntilPhotos] = useState(true);
 
   const loadProfiles = async () => {
     try {
-      const profRes = await fetch('/api/profiles', { credentials: 'include' });
-      const profData = (await profRes.json()) as { profiles?: Profile[] };
+      const profRes = await fetch('/api/admin/profiles', { credentials: 'include' });
+      const profData = (await profRes.json()) as {
+        profiles?: Array<{
+          id: string;
+          name: string;
+          age: number;
+          heritage?: string;
+          location: string;
+          isActive?: boolean;
+        }>;
+      };
       if (profData.profiles) {
-        setProfiles(profData.profiles);
+        setProfiles(
+          profData.profiles.map((p) => ({
+            id: p.id,
+            name: p.name,
+            age: p.age,
+            heritage: p.heritage,
+            location: p.location,
+            isActive: p.isActive,
+          }))
+        );
       }
     } catch (e) {
       console.error(e);
@@ -255,7 +276,10 @@ export default function AdminImageTest() {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(everydayLook ? { everydayLook: true } : {}),
+      body: JSON.stringify({
+        ...(everydayLook ? { everydayLook: true } : {}),
+        inactiveUntilPhotos,
+      }),
     });
     const { items } = await parseRandomProfileResponse(res);
     const first = items[0];
@@ -322,7 +346,10 @@ export default function AdminImageTest() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: TEXT_PROFILE_BATCH_COUNT }),
+        body: JSON.stringify({
+          count: TEXT_PROFILE_BATCH_COUNT,
+          inactiveUntilPhotos,
+        }),
       });
       const data = (await res.json()) as {
         items?: TextProfileItem[];
@@ -384,13 +411,25 @@ export default function AdminImageTest() {
     <div style={{ maxWidth: 960 }}>
         <div className="admin-panel" style={{ marginBottom: 12 }}>
           <div className="admin-panel-head">
-            Stap 1 — {TEXT_PROFILE_BATCH_COUNT} West-Europese profielen (alleen tekst)
+            Stap 1 — {TEXT_PROFILE_BATCH_COUNT} Nederlandse profielen (alleen tekst)
           </div>
           <div style={{ padding: 12 }}>
           <p className="text-sm text-gray-600" style={{ marginTop: 0 }}>
-            Nederlandse steden, logische voornaam per land (NL, Vlaams, Duits, Frans, Pools, Oekraïens, …).
-            Uitgebreide bio via AI. Geen foto&apos;s — die upload je hieronder per profiel.
+            Alleen Nederlandse steden en herkomst (Nederlands). Uitgebreide bio via AI.
+            Geen foto&apos;s — die upload je hieronder per profiel.
           </p>
+          <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm text-gray-800">
+            <input
+              type="checkbox"
+              checked={inactiveUntilPhotos}
+              onChange={(e) => setInactiveUntilPhotos(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <strong>Pas zichtbaar op platform na foto&apos;s</strong> — profiel blijft verborgen tot je in stap 2
+              minstens één foto uploadt.
+            </span>
+          </label>
           <button
             type="button"
             onClick={() => void createTextOnlyBatch()}
@@ -442,6 +481,7 @@ export default function AdminImageTest() {
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.age}, {p.heritage || p.location})
+                    {p.isActive === false ? ' · verborgen' : ''}
                   </option>
                 ))}
               </select>
@@ -530,6 +570,17 @@ export default function AdminImageTest() {
             Geavanceerd — AI-foto&apos;s genereren (oud, traag)
           </summary>
           <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-gray-800">
+              <input
+                type="checkbox"
+                checked={inactiveUntilPhotos}
+                onChange={(e) => setInactiveUntilPhotos(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Pas zichtbaar op platform na foto&apos;s (ook bij AI-profielen met gegenereerde foto&apos;s)
+              </span>
+            </label>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">User request (test)</label>
               <input
@@ -609,6 +660,7 @@ export default function AdminImageTest() {
                   {randomProfileResult.usedVerificationPhoto ? 'ja' : 'nee'} · eerste foto headshot:{' '}
                   {randomProfileResult.usedHeadshotFirst ? 'ja' : 'nee'} · opslag:{' '}
                   {randomProfileResult.storage}
+                  {inactiveUntilPhotos ? ' · zichtbaar na foto\'s' : ' · direct zichtbaar'}
                 </p>
                 <p className="text-xs text-gray-600">
                   Favoriete eten: <strong>{randomProfileResult.favoriteFood}</strong> · Hobby&apos;s:{' '}

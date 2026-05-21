@@ -20,6 +20,11 @@ export type CreateWestEuropeTextBatchResult = {
   errors: { index: number; message: string }[];
 };
 
+export type CreateWestEuropeTextOptions = {
+  /** Standaard aan: profiel pas zichtbaar na upload van foto's. */
+  inactiveUntilPhotos?: boolean;
+};
+
 const PROFILES_CACHE_TAG = "v2-profile-media";
 const COUNTRY_NL = "Netherlands";
 const DEFAULT_COUNT = 10;
@@ -37,85 +42,19 @@ type HeritageRow = {
   names: string[];
 };
 
-/** West-Europa + Oekraïne/Polen expliciet; geen MENA/Azië/LatAm in deze batch. */
-const WEST_EU_HERITAGES: HeritageRow[] = [
-  {
-    heritage: "Nederlands",
-    weight: 22,
-    names: [
-      "Daan", "Lucas", "Sem", "Milan", "Finn", "Lars", "Tim", "Tom", "Max", "Jesse",
-      "Ruben", "Thijs", "Bram", "Stijn", "Jordy", "Koen", "Niels", "Wesley", "Gijs",
-      "Floris", "Mats", "Cas", "Teun", "Victor", "Martijn", "Sander", "Robin", "Bas",
-      "Mark", "Dennis", "Roy", "Patrick", "Jan", "Pieter", "Wouter", "Jeroen",
-    ],
-  },
-  {
-    heritage: "Vlaams",
-    weight: 6,
-    names: ["Brent", "Lennert", "Jens", "Niels", "Robbe", "Tibo", "Arne", "Lowie", "Warre", "Yorick"],
-  },
-  {
-    heritage: "Duits",
-    weight: 10,
-    names: ["Felix", "Jonas", "Lukas", "Niklas", "Tobias", "Moritz", "Jan", "Paul", "Leon", "Timo", "Fabian", "Erik"],
-  },
-  {
-    heritage: "Frans",
-    weight: 6,
-    names: ["Julien", "Théo", "Lucas", "Hugo", "Louis", "Mathis", "Enzo", "Raphaël", "Clément", "Antoine"],
-  },
-  {
-    heritage: "Brits",
-    weight: 5,
-    names: ["Jack", "Harry", "Charlie", "George", "James", "Oliver", "William", "Thomas", "Ben", "Sam"],
-  },
-  {
-    heritage: "Iers",
-    weight: 4,
-    names: ["Liam", "Sean", "Conor", "Cian", "Darragh", "Eoin", "Niall", "Ronan", "Patrick", "Declan"],
-  },
-  {
-    heritage: "Pools",
-    weight: 14,
-    names: [
-      "Kamil", "Piotr", "Jakub", "Mateusz", "Tomasz", "Michał", "Krzysztof", "Bartek", "Damian",
-      "Adrian", "Patryk", "Łukasz", "Marcin", "Wojtek", "Hubert", "Oskar", "Filip", "Kacper",
-    ],
-  },
-  {
-    heritage: "Oekraïens",
-    weight: 12,
-    names: [
-      "Oleks", "Dmytro", "Andriy", "Viktor", "Ivan", "Maksym", "Yaroslav", "Bohdan", "Roman",
-      "Serhiy", "Volodymyr", "Artem", "Denys", "Mykola", "Taras", "Vadym",
-    ],
-  },
-  {
-    heritage: "Roemeens",
-    weight: 5,
-    names: ["Andrei", "Mihai", "Alexandru", "Stefan", "Vlad", "Cristian", "Ionut", "Bogdan", "Razvan"],
-  },
-  {
-    heritage: "Tsjechisch",
-    weight: 4,
-    names: ["Jakub", "Tomáš", "Martin", "Ondřej", "Filip", "David", "Adam", "Matěj", "Lukáš"],
-  },
-  {
-    heritage: "Scandinavisch",
-    weight: 5,
-    names: ["Erik", "Magnus", "Oscar", "Noah", "Emil", "Axel", "Viktor", "Sven", "Lars", "Henrik"],
-  },
-  {
-    heritage: "Spaans",
-    weight: 4,
-    names: ["Carlos", "Diego", "Pablo", "Hugo", "Álvaro", "Mario", "Sergio", "Iván", "Raúl"],
-  },
-  {
-    heritage: "Italiaans",
-    weight: 3,
-    names: ["Marco", "Luca", "Matteo", "Andrea", "Giuseppe", "Francesco", "Alessandro", "Davide"],
-  },
-];
+/** Alleen Nederlandse profielen (woonplaats + herkomst). */
+const NL_HERITAGE: HeritageRow = {
+  heritage: "Nederlands",
+  weight: 100,
+  names: [
+    "Daan", "Lucas", "Sem", "Milan", "Finn", "Lars", "Tim", "Tom", "Max", "Jesse",
+    "Ruben", "Thijs", "Bram", "Stijn", "Jordy", "Koen", "Niels", "Wesley", "Gijs",
+    "Floris", "Mats", "Cas", "Teun", "Victor", "Martijn", "Sander", "Robin", "Bas",
+    "Mark", "Dennis", "Roy", "Patrick", "Jan", "Pieter", "Wouter", "Jeroen",
+    "Kevin", "Mike", "Rick", "Nick", "Dylan", "Jayden", "Tygo", "Hidde", "Boaz",
+    "Olivier", "Levi", "Noah", "Paul", "Peter",
+  ],
+};
 
 const INTEREST_SETS: string[][] = [
   ["voetbal", "gaming", "fitness", "late night chats"],
@@ -143,13 +82,7 @@ function pick<T>(arr: T[]): T {
 }
 
 function pickWeightedHeritage(): HeritageRow {
-  const total = WEST_EU_HERITAGES.reduce((s, r) => s + r.weight, 0);
-  let r = Math.random() * total;
-  for (const row of WEST_EU_HERITAGES) {
-    r -= row.weight;
-    if (r <= 0) return row;
-  }
-  return WEST_EU_HERITAGES[0]!;
+  return NL_HERITAGE;
 }
 
 function slugify(input: string): string {
@@ -181,7 +114,7 @@ function buildFallbackBio(
 ): string {
   const interestLine = interests.slice(0, 4).join(", ");
   return [
-    `Ik ben ${name}, ${age}, woon in ${city}. Achtergrond: ${heritage} — in Nederland opgegroeid of lang gewoond, dus Nederlands chatten gaat vanzelf.`,
+    `Ik ben ${name}, ${age}, woon in ${city}. Nederlands, hier opgegroeid — chatten gaat vanzelf.`,
     `Overdag houd ik me bezig met van alles; 's avonds ben ik hier voor discreet contact met oudere mannen die weten wat ze zoeken.`,
     `Hobby's en vibe: ${interestLine}. Als ik iets deel, is het pas als de chat echt klikt — geen standaard praatjes.`,
     `Comfortfood: ${favoriteFood}. Ik typ kort en direct, met af en toe plagerij.`,
@@ -245,7 +178,8 @@ async function generateAiBio(input: {
 
 async function createOneTextProfile(
   supabase: SupabaseClient,
-  index: number
+  index: number,
+  inactiveUntilPhotos: boolean
 ): Promise<CreatedTextProfile> {
   const row = pickWeightedHeritage();
   const firstName = pick(row.names);
@@ -254,7 +188,7 @@ async function createOneTextProfile(
   const interests = pick(INTEREST_SETS);
   const favoriteFood = pick(FAVORITE_FOODS);
   const heritage = row.heritage;
-  const slug = `eu-${slugify(heritage)}-${slugify(firstName)}-${Date.now().toString(36)}-${index}`;
+  const slug = `nl-${slugify(firstName)}-${Date.now().toString(36)}-${index}`;
 
   const bio = await generateAiBio({
     name: firstName,
@@ -268,7 +202,7 @@ async function createOneTextProfile(
   const personality = pick(PERSONALITIES);
   const personaStyle: PersonaStyle = "dutch";
   const systemPrompt = [
-    `Je bent ${firstName}, ${age} jaar, een jonge man die woont in ${city} (Nederland). Je achtergrond: ${heritage}.`,
+    `Je bent ${firstName}, ${age} jaar, een Nederlandse man uit ${city}.`,
     "Korte, speelse Nederlandse chatstijl.",
     "Hoofd-doel: maak hem hooked — verslaafd aan chatten en aan het contact. Werk met cliffhangers en plagerij.",
     "Foto's komen pas als de chat goed loopt; onder de 10 user-berichten: uitstellen, niet meteen leveren.",
@@ -296,7 +230,7 @@ async function createOneTextProfile(
         heritage,
         visual_identity_prompt: null,
         photo_unlock_credits: 100,
-        is_active: true,
+        is_active: inactiveUntilPhotos ? false : true,
       },
       { onConflict: "slug" }
     )
@@ -309,6 +243,7 @@ async function createOneTextProfile(
 
   const profileId = upserted.id as string;
   await supabase.from("profile_media").delete().eq("profile_id", profileId);
+  revalidateTag(PROFILES_CACHE_TAG);
 
   return {
     profileId,
@@ -321,15 +256,17 @@ async function createOneTextProfile(
   };
 }
 
-/** Maakt N West-Europese mannenprofielen aan zonder afbeeldingen (bio + naam per land). */
+/** Maakt N Nederlandse mannenprofielen aan zonder afbeeldingen. */
 export async function createWestEuropeTextProfiles(
-  count = DEFAULT_COUNT
+  count = DEFAULT_COUNT,
+  opts?: CreateWestEuropeTextOptions
 ): Promise<CreateWestEuropeTextBatchResult> {
   const supabase = getWritableSupabase();
   if (!supabase) {
     throw new Error("Supabase niet beschikbaar. Zet SUPABASE_URL + service role key.");
   }
 
+  const inactiveUntilPhotos = opts?.inactiveUntilPhotos !== false;
   const n = Math.min(Math.max(1, Math.floor(count)), 100);
   const created: CreatedTextProfile[] = [];
   const errors: { index: number; message: string }[] = [];
@@ -343,7 +280,7 @@ export async function createWestEuropeTextProfiles(
     const results = await Promise.all(
       chunk.map(async (index) => {
         try {
-          const profile = await createOneTextProfile(supabase, index);
+          const profile = await createOneTextProfile(supabase, index, inactiveUntilPhotos);
           return { ok: true as const, index, profile };
         } catch (e) {
           return {
