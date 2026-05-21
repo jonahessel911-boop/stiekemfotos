@@ -4,6 +4,7 @@ import { readJson, writeJson } from "@/lib/server/store";
 import { createUser, findUserByEmail, persistClickIdOnUser } from "@/lib/server/users";
 import { createSessionValue, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/server/session";
 import { SVL_CLICK_ID_COOKIE } from "@/lib/clickflare-postback";
+import { sendPlatform2SignupClickflareIfNeeded } from "@/lib/server/platform2-signup-conversion";
 
 type SignupBody = {
   naam: string;
@@ -15,6 +16,8 @@ type SignupBody = {
   zoekLeeftijdCategorie?: string;
   zoekEigenschappen?: string[];
   geschatteMatches?: number;
+  /** Bij `platform2`: ClickFlare-conversie direct na aanmelden. */
+  source?: string;
 };
 
 type StoredSignup = Omit<SignupBody, "wachtwoord"> & { createdAt: string };
@@ -96,7 +99,10 @@ export async function POST(req: Request) {
       createdAt: new Date().toISOString(),
     });
     writeJson("onboarding-signups.json", list);
-    /** click_id staat op user.clickId — ClickFlare pas na betaling (zie ontmoetjongens-conversion). */
+
+    if (String(body.source ?? "").trim() === "platform2") {
+      await sendPlatform2SignupClickflareIfNeeded(user.id, clickIdCookie);
+    }
 
     const res = NextResponse.json({
       ok: true,

@@ -104,12 +104,21 @@ export async function GET() {
     totalCreditsPurchased,
   } = revenueAndPurchasesByDay(paid, chartDays);
 
+  let openChats = 0;
+  for (const c of conversations) {
+    const msgs = c.messages;
+    if (msgs.length > 0 && msgs[msgs.length - 1]!.role === "user") {
+      openChats += 1;
+    }
+  }
+
   return NextResponse.json({
     stats: {
       users: users.length,
       signups: signups.length,
       purchases: purchasesTable.length,
       conversations: conversations.length,
+      openChats,
     },
     analytics: {
       ...conversationAnalytics,

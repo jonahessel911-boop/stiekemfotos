@@ -2,12 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { parseSessionValue, SESSION_COOKIE_NAME } from "@/lib/server/session";
 import { findUserById } from "@/lib/server/users";
-import {
-  CREDIT_PACKAGES,
-  type CreditPackageId,
-  getStripe,
-  resolveReturnUrl,
-} from "@/lib/server/stripe";
+import { getStripe, resolveReturnUrl } from "@/lib/server/stripe";
+import { resolveStripeCreditPackage } from "@/lib/server/resolveCreditPackage";
 import { upsertStripeCheckoutRecord } from "@/lib/server/stripeCheckoutStore";
 
 function withQuery(urlStr: string, params: Record<string, string>) {
@@ -38,12 +34,12 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: "Gebruiker niet gevonden." }, { status: 401 });
     }
-    const body = (await req.json()) as { packageId?: CreditPackageId; returnUrl?: string };
-    const packageId = body.packageId;
-    if (!packageId || !(packageId in CREDIT_PACKAGES)) {
+    const body = (await req.json()) as { packageId?: string; returnUrl?: string };
+    const packageId = String(body.packageId ?? "").trim();
+    const pkg = resolveStripeCreditPackage(packageId);
+    if (!pkg) {
       return NextResponse.json({ error: "Ongeldig pakket." }, { status: 400 });
     }
-    const pkg = CREDIT_PACKAGES[packageId];
     const returnUrl = resolveReturnUrl(body.returnUrl);
     const successUrl = appendStripeSessionPlaceholder(
       withQuery(returnUrl, { stripe_success: "1" })

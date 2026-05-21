@@ -7,6 +7,8 @@ import {
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { upsertAppUserToSupabaseUsers } from "@/lib/server/supabaseUserSync";
 import { mergePersonalFacts, type UserPersonalFacts } from "@/lib/user-personal-facts";
+import type { UserMyProfile } from "@/lib/user-my-profile";
+export type { UserMyProfile } from "@/lib/user-my-profile";
 
 const FILE = "users.json";
 
@@ -64,7 +66,44 @@ export type UserRecord = {
   abandonmentOfferDueAt?: string;
   /** Abandonment-mail met 62% korting verstuurd. */
   abandonmentOfferEmailSentAt?: string;
+  /** ClickFlare postback na signup op platform/2 (éénmalig). */
+  clickflareSignupSentAt?: string;
+  /** Eigen profiel (platform/2 — Mijn profiel). */
+  profilePhotoUrl?: string;
+  profileBio?: string;
+  profileHobbies?: string[];
+  profileLocation?: string;
 };
+
+export function toUserMyProfile(u: UserRecord): UserMyProfile {
+  return {
+    id: u.id,
+    email: u.email,
+    naam: u.naam,
+    leeftijd: u.leeftijd,
+    profilePhotoUrl: u.profilePhotoUrl?.trim() || null,
+    profileBio: u.profileBio?.trim() ?? "",
+    profileHobbies: Array.isArray(u.profileHobbies)
+      ? u.profileHobbies.map((h) => String(h).trim()).filter(Boolean)
+      : [],
+    profileLocation: u.profileLocation?.trim() ?? "",
+    zoekEigenschappen: u.zoekEigenschappen ?? [],
+  };
+}
+
+export function parseHobbiesInput(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((h) => String(h).trim()).filter(Boolean).slice(0, 12);
+  }
+  if (typeof raw === "string") {
+    return raw
+      .split(/[,;]+/)
+      .map((h) => h.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+  }
+  return [];
+}
 
 export type ReactionNudge = {
   profileId: string;

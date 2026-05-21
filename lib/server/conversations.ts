@@ -23,6 +23,7 @@ import {
   INITIAL_FREE_CREDITS,
 } from "@/lib/credit-packages";
 import type { UserMessageCreditLine } from "@/lib/types/credit-usage";
+import { isChatAiEnabled } from "@/lib/server/chat-ai-enabled";
 import { readAiSettings } from "@/lib/server/aiSettings";
 import { randomTypingDelayMs, replyTypingDelayMsForConversation, sleep } from "@/lib/chat-typing-delay";
 import {
@@ -421,6 +422,7 @@ function messageEndsConversationForNow(text: string): boolean {
 }
 
 function shouldSuppressNoReplyReminder(conv: Conversation): boolean {
+  if (!isChatAiEnabled()) return true;
   const lastAssistant = [...conv.messages].reverse().find((m) => m.role === "assistant");
   if (!lastAssistant) return false;
   return messageEndsConversationForNow(lastAssistant.content ?? "");
@@ -1204,6 +1206,43 @@ export async function appendAssistantOutboundForOwner(params: {
   return { conversationId: conversation.id, message };
 }
 
+/** Handmatig antwoord vanuit admin — als profiel (assistant), zonder AI. */
+export async function appendAdminAssistantReply(
+  conversationId: string,
+  content: string
+): Promise<{ message: ChatMessage; conversationId: string }> {
+  const text = content.trim();
+  if (!text) throw new Error("Bericht is leeg");
+
+  const conv = await loadNormalizedConversationById(conversationId);
+  if (!conv) throw new Error("Gesprek niet gevonden");
+
+  const message: ChatMessage = {
+    id: randomUUID(),
+    role: "assistant",
+    content: text,
+    createdAt: new Date().toISOString(),
+  };
+
+  await updateConversationAtomic(conversationId, (latestConv) => {
+    markPendingUserMessagesAsReadByPeer(latestConv);
+    latestConv.messages = [...latestConv.messages, message];
+    latestConv.updatedAt = message.createdAt;
+    latestConv.pendingPhotoPreferenceRequest = false;
+    latestConv.pendingNoReplyReminderStage = undefined;
+    latestConv.pendingNoReplyAfterAssistantId = undefined;
+    latestConv.pendingNoReplyFollowUpAt = undefined;
+    if (!isChatAiEnabled()) {
+      latestConv.pendingPhotoCycleIntent = undefined;
+    } else {
+      scheduleNoReplyReminderAfterAssistant(latestConv, message.id);
+    }
+  });
+
+  void maybeSendOfflineAssistantEmail(conversationId, message);
+  return { conversationId, message };
+}
+
 export type UserMessagePayload = {
   clientMessageId?: string;
   text: string;
@@ -1235,6 +1274,7 @@ function stripDataUrlAudioBase64(input: string): string {
  * Eerder: 4 aparte passes elk met eigen load/save → merkbaar traag op Supabase app_blobs.
  */
 export async function flushInboxAutomationsForOwner(ownerUserId: string): Promise<void> {
+  if (!isChatAiEnabled()) return;
   const list = await loadList();
   const user = await findUserById(ownerUserId);
 
@@ -3042,6 +3082,25 @@ export async function appendUserMessagesAndReply(
 
     existingIds.add(userMessage.id);
     userMessages.push(userMessage);
+  }
+
+  if (!isChatAiEnabled()) {
+    await updateConversationAtomic(conversationId, (latestConv) => {
+      latestConv.messages = [...latestConv.messages, ...userMessages];
+      latestConv.updatedAt = userMessages[userMessages.length - 1]!.createdAt;
+      latestConv.pendingPhotoPreferenceRequest = false;
+      latestConv.pendingPhotoCycleIntent = undefined;
+      latestConv.pendingNoReplyReminderStage = undefined;
+      latestConv.pendingNoReplyAfterAssistantId = undefined;
+      latestConv.pendingNoReplyFollowUpAt = undefined;
+    });
+    if (conv.ownerUserId) {
+      await deductMessageCredits(conv.ownerUserId, userMessages.length, conversationId);
+    }
+    return {
+      userMessages,
+      assistantMessage: null,
+    };
   }
 
   const joinedUserText = payloads.map((p) => p.text).join("\n");

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useAdmin } from '@/components/admin/AdminProvider';
 
 /** West-EU tekstprofielen in één API-call (geen images). */
 const TEXT_PROFILE_BATCH_COUNT = 10;
@@ -64,7 +65,7 @@ type RandomProfileResult = {
 };
 
 export default function AdminImageTest() {
-  const [authorized, setAuthorized] = useState(false);
+  const { loading: adminLoading } = useAdmin();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState('');
   const [userRequest, setUserRequest] = useState('stuur een naaktfoto van je kut');
@@ -94,21 +95,11 @@ export default function AdminImageTest() {
 
   const loadProfiles = async () => {
     try {
-      const r = await fetch('/api/admin/overview', { credentials: 'include' });
-      if (r.status === 401) {
-        setAuthorized(false);
-        return;
-      }
-      const data = await r.json();
-      // Get unique profiles from conversations
-      const profileSet = new Map<string, Profile>();
-      // We need to fetch profiles separately
       const profRes = await fetch('/api/profiles', { credentials: 'include' });
-      const profData = await profRes.json();
+      const profData = (await profRes.json()) as { profiles?: Profile[] };
       if (profData.profiles) {
         setProfiles(profData.profiles);
       }
-      setAuthorized(true);
     } catch (e) {
       console.error(e);
     }
@@ -385,31 +376,18 @@ export default function AdminImageTest() {
     }
   };
 
-  if (!authorized) {
-    return (
-      <main className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="text-center">
-          <p className="text-gray-600">Log in via /admin first</p>
-        </div>
-      </main>
-    );
+  if (adminLoading) {
+    return <p className="admin-chats-empty">Laden…</p>;
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Profielen beheren</h1>
-          <a href="/admin" className="text-sm text-gray-500 hover:text-gray-700">
-            ← Admin
-          </a>
-        </div>
-
-        <div className="rounded-2xl border-2 border-primary/30 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">
+    <div style={{ maxWidth: 960 }}>
+        <div className="admin-panel" style={{ marginBottom: 12 }}>
+          <div className="admin-panel-head">
             Stap 1 — {TEXT_PROFILE_BATCH_COUNT} West-Europese profielen (alleen tekst)
-          </h2>
-          <p className="mt-1 text-sm text-gray-600">
+          </div>
+          <div style={{ padding: 12 }}>
+          <p className="text-sm text-gray-600" style={{ marginTop: 0 }}>
             Nederlandse steden, logische voornaam per land (NL, Vlaams, Duits, Frans, Pools, Oekraïens, …).
             Uitgebreide bio via AI. Geen foto&apos;s — die upload je hieronder per profiel.
           </p>
@@ -444,10 +422,12 @@ export default function AdminImageTest() {
               </ul>
             </div>
           ) : null}
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-1 text-lg font-semibold text-gray-900">Stap 2 — Foto&apos;s per profiel</h2>
+        <div className="admin-panel" style={{ marginBottom: 12 }}>
+          <div className="admin-panel-head">Stap 2 — Foto&apos;s per profiel</div>
+          <div style={{ padding: 12 }}>
           <p className="mb-4 text-sm text-gray-600">Kies een profiel, upload JPEG/PNG/WebP, of verwijder bestaande foto&apos;s.</p>
 
           <div className="space-y-4">
@@ -537,6 +517,7 @@ export default function AdminImageTest() {
                 </p>
               </div>
             ) : null}
+          </div>
           </div>
         </div>
 
@@ -752,7 +733,6 @@ export default function AdminImageTest() {
             )}
           </div>
         )}
-      </div>
-    </main>
+    </div>
   );
 }
